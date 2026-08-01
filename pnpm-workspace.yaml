@@ -4,4 +4,7 @@ packages:
 
 minimumReleaseAge: 1440
 
-onlyBuiltDependencies: []
+onlyBuiltDependencies:
+  # Vitest/Vite use esbuild and its install script only selects/downloads the
+  # platform-specific binary. Keep every other dependency script denied.
+  - esbuild
