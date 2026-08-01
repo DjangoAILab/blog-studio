@@ -5,8 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "lint": "eslint src test",
+    "lint": "eslint src server test",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@blog-studio/adapter-command": "workspace:*",
+    "@blog-studio/adapter-hexo": "workspace:*",
+    "@blog-studio/config": "workspace:*",
+    "@blog-studio/core": "workspace:*",
+    "@blog-studio/persistence": "workspace:*",
+    "@fastify/cookie": "11.1.2",
+    "fastify": "5.11.0"
   }
 }

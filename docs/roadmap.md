@@ -19,7 +19,7 @@ only after its acceptance checklist and real-environment verification pass.
 
 **Outcome:** an existing compatible site can be opened and edited safely.
 
-- [ ] Workspace registration and compatibility scan.
+- [x] Administrator-managed workspace registration and compatibility scan.
 - [x] Generic command and Hexo generator adapters.
 - [x] Document discovery, front matter round-trip, and stable document IDs.
 - [x] Draft snapshot persistence with optimistic revisions.
