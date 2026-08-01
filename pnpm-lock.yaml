@@ -37,6 +37,12 @@ importers:
 
   apps/website: {}
 
+  packages/adapter-testkit:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/config:
     dependencies:
       yaml:
