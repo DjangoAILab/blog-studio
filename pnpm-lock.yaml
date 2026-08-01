@@ -54,6 +54,21 @@ importers:
 
   packages/core: {}
 
+  packages/jobs:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+      '@blog-studio/persistence':
+        specifier: workspace:*
+        version: link:../persistence
+
+  packages/persistence:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@emnapi/core@2.0.0-alpha.3':
