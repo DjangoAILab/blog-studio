@@ -1,0 +1,42 @@
+version: 1
+
+workspace:
+  id: example-blog
+  root: /workspaces/example-blog
+
+generator:
+  adapter: generic-command
+  options:
+    build:
+      command: npm
+      args: [run, build]
+    outputDirectory: public
+
+repository:
+  adapter: local-git
+  options:
+    remote: origin
+
+assets:
+  adapter: filesystem
+  options:
+    directory: public/media/posts
+    publicBaseUrl: https://blog.example.com/media/posts
+
+publish:
+  adapter: filesystem
+  options:
+    directory: /srv/www/blog
+
+cache:
+  adapter: noop
+
+content:
+  collections:
+    posts:
+      path: content/posts
+      draftPath: content/drafts
+      assetScope: media/posts/{documentId}
+
+verification:
+  baseUrl: https://blog.example.com

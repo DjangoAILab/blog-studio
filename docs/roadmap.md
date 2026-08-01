@@ -7,12 +7,12 @@ only after its acceptance checklist and real-environment verification pass.
 
 **Outcome:** a public, documented repository with enforceable architecture.
 
-- [ ] Create public `DjangoAILab/blog-studio` repository.
+- [x] Create public `DjangoAILab/blog-studio` repository.
 - [x] Record product definition, architecture, roadmap, and v0.1 checklist.
-- [ ] Scaffold pnpm/Turborepo TypeScript workspace.
-- [ ] Add formatting, linting, unit tests, type checking, and CI.
+- [x] Scaffold pnpm/Turborepo TypeScript workspace.
+- [x] Add formatting, linting, unit tests, type checking, and CI.
 - [ ] Define core schemas and adapter contracts with conformance tests.
-- [ ] Publish configuration JSON Schema and example configuration.
+- [x] Publish configuration JSON Schema and example configuration.
 - [ ] Add contribution, security, and architecture decision documentation.
 
 ## Phase 1 — Content and writing vertical
