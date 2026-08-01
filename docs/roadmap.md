@@ -20,9 +20,9 @@ only after its acceptance checklist and real-environment verification pass.
 **Outcome:** an existing compatible site can be opened and edited safely.
 
 - [ ] Workspace registration and compatibility scan.
-- [ ] Generic command and Hexo generator adapters.
-- [ ] Document discovery, front matter round-trip, and stable document IDs.
-- [ ] Draft snapshot persistence with optimistic revisions.
+- [x] Generic command and Hexo generator adapters.
+- [x] Document discovery, front matter round-trip, and stable document IDs.
+- [x] Draft snapshot persistence with optimistic revisions.
 - [ ] Responsive editor shell with visual and source modes.
 - [ ] Immediate local image preview and background upload state.
 - [ ] Real Hexo preview lifecycle and proxy.

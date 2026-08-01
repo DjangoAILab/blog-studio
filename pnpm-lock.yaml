@@ -37,6 +37,35 @@ importers:
 
   apps/website: {}
 
+  packages/adapter-command:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@blog-studio/adapter-testkit':
+        specifier: workspace:*
+        version: link:../adapter-testkit
+
+  packages/adapter-hexo:
+    dependencies:
+      '@blog-studio/adapter-command':
+        specifier: workspace:*
+        version: link:../adapter-command
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@blog-studio/adapter-testkit':
+        specifier: workspace:*
+        version: link:../adapter-testkit
+
   packages/adapter-testkit:
     dependencies:
       '@blog-studio/core':

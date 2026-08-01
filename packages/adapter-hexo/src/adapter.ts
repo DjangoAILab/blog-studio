@@ -1,0 +1,343 @@
+import { readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, extname, join, relative, sep } from 'node:path';
+
+import { resolveWorkspacePath, runCommand } from '@blog-studio/adapter-command';
+import {
+  ADAPTER_API_VERSION,
+  createDocumentId,
+  createWorkspaceId,
+  type AdapterDiagnostic,
+  type BuildInput,
+  type BuildResult,
+  type DetectionResult,
+  type DocumentRef,
+  type DocumentSource,
+  type DocumentSummary,
+  type FrontMatterValue,
+  type GeneratorAdapter,
+  type SiteModel,
+  type WriteDocumentInput,
+  type WriteDocumentResult,
+} from '@blog-studio/core';
+import { parse } from 'yaml';
+
+import { createManifest, hashContent, walkFiles } from './files.js';
+import { parseMarkdown, serializeMarkdown } from './front-matter.js';
+
+interface HexoConfiguration {
+  readonly url?: string;
+  readonly root?: string;
+  readonly permalink?: string;
+  readonly source_dir?: string;
+  readonly public_dir?: string;
+}
+
+export interface HexoAdapterOptions {
+  readonly workspaceId: string;
+  readonly buildTimeoutMs?: number;
+  readonly executable?: string;
+  readonly executableArgs?: readonly string[];
+}
+
+function portablePath(path: string): string {
+  return path.split(sep).join('/');
+}
+
+function safeId(path: string) {
+  return createDocumentId(
+    `doc-${hashContent(path).slice('sha256:'.length, 25)}`,
+  );
+}
+
+function stringValue(value: FrontMatterValue | undefined): string | undefined {
+  return typeof value === 'string' || typeof value === 'number'
+    ? String(value)
+    : undefined;
+}
+
+async function workspacePathExists(
+  workspaceRoot: string,
+  candidate: string,
+): Promise<boolean> {
+  try {
+    await resolveWorkspacePath(workspaceRoot, candidate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export class HexoGeneratorAdapter implements GeneratorAdapter {
+  public readonly apiVersion = ADAPTER_API_VERSION;
+  public readonly id = 'hexo';
+  public readonly displayName = 'Hexo';
+  public readonly capabilities = {
+    preview: true,
+    drafts: true,
+    mdx: false,
+  } as const;
+
+  readonly #workspaceId;
+  readonly #buildTimeoutMs: number;
+  readonly #executable: string;
+  readonly #executableArgs: readonly string[];
+
+  public constructor(options: HexoAdapterOptions) {
+    this.#workspaceId = createWorkspaceId(options.workspaceId);
+    this.#buildTimeoutMs = options.buildTimeoutMs ?? 180_000;
+    this.#executable = options.executable ?? 'node_modules/.bin/hexo';
+    this.#executableArgs = options.executableArgs ?? [];
+  }
+
+  async #configuration(workspaceRoot: string): Promise<HexoConfiguration> {
+    const path = await resolveWorkspacePath(workspaceRoot, '_config.yml');
+    return parse(await readFile(path, 'utf8')) as HexoConfiguration;
+  }
+
+  public async detect(workspaceRoot: string): Promise<DetectionResult> {
+    const diagnostics: AdapterDiagnostic[] = [];
+    const configFound = await workspacePathExists(workspaceRoot, '_config.yml');
+    let packageFound: boolean;
+
+    try {
+      const packagePath = await resolveWorkspacePath(
+        workspaceRoot,
+        'package.json',
+      );
+      const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+        dependencies?: Readonly<Record<string, string>>;
+        devDependencies?: Readonly<Record<string, string>>;
+        hexo?: unknown;
+      };
+      packageFound = Boolean(
+        packageJson.hexo ??
+        packageJson.dependencies?.hexo ??
+        packageJson.devDependencies?.hexo,
+      );
+    } catch {
+      packageFound = false;
+    }
+
+    if (!configFound)
+      diagnostics.push({
+        severity: 'error',
+        code: 'HEXO_CONFIG_MISSING',
+        message: '_config.yml was not found',
+      });
+    if (!packageFound)
+      diagnostics.push({
+        severity: 'warning',
+        code: 'HEXO_PACKAGE_MISSING',
+        message: 'package.json does not declare Hexo',
+      });
+
+    return {
+      detected: configFound && packageFound,
+      confidence: configFound && packageFound ? 1 : configFound ? 0.6 : 0,
+      diagnostics,
+    };
+  }
+
+  public async inspect(workspaceRoot: string): Promise<SiteModel> {
+    const config = await this.#configuration(workspaceRoot);
+    const sourceDirectory = config.source_dir ?? 'source';
+    const collections = [
+      {
+        id: 'posts',
+        label: 'Posts',
+        formats: ['markdown'] as const,
+        canCreate: true,
+        canDelete: true,
+      },
+      {
+        id: 'drafts',
+        label: 'Drafts',
+        formats: ['markdown'] as const,
+        canCreate: true,
+        canDelete: true,
+      },
+    ];
+
+    return {
+      collections,
+      ...(config.url === undefined ? {} : { siteUrl: config.url }),
+      outputDirectory: join(workspaceRoot, config.public_dir ?? 'public'),
+      diagnostics: (await workspacePathExists(workspaceRoot, sourceDirectory))
+        ? []
+        : [
+            {
+              severity: 'error',
+              code: 'HEXO_SOURCE_MISSING',
+              message: `Source directory does not exist: ${sourceDirectory}`,
+            },
+          ],
+    };
+  }
+
+  async #collectionDirectory(
+    workspaceRoot: string,
+    collectionId: string,
+  ): Promise<string> {
+    const config = await this.#configuration(workspaceRoot);
+    const source = config.source_dir ?? 'source';
+    const relativeDirectory =
+      collectionId === 'posts'
+        ? join(source, '_posts')
+        : collectionId === 'drafts'
+          ? join(source, '_drafts')
+          : undefined;
+    if (!relativeDirectory)
+      throw new Error(`Unknown collection: ${collectionId}`);
+    return await resolveWorkspacePath(workspaceRoot, relativeDirectory);
+  }
+
+  public async listDocuments(
+    workspaceRoot: string,
+    collectionId: string,
+  ): Promise<readonly DocumentSummary[]> {
+    const resolvedRoot = await resolveWorkspacePath(workspaceRoot, '.');
+    const directory = await this.#collectionDirectory(
+      workspaceRoot,
+      collectionId,
+    );
+    const files = (await walkFiles(directory)).filter((path) =>
+      ['.md', '.markdown'].includes(extname(path).toLowerCase()),
+    );
+
+    return await Promise.all(
+      files.map(async (path): Promise<DocumentSummary> => {
+        const raw = await readFile(path, 'utf8');
+        const { frontMatter } = parseMarkdown(raw);
+        const relativePath = portablePath(relative(resolvedRoot, path));
+        const details = await stat(path);
+        return {
+          ref: {
+            workspaceId: this.#workspaceId,
+            collectionId,
+            documentId: safeId(relativePath),
+            path: relativePath,
+          },
+          title:
+            stringValue(frontMatter.title) ?? basename(path, extname(path)),
+          updatedAt:
+            stringValue(frontMatter.updated) ?? details.mtime.toISOString(),
+          state: collectionId === 'drafts' ? 'draft' : 'published',
+        };
+      }),
+    );
+  }
+
+  public async readDocument(
+    workspaceRoot: string,
+    ref: DocumentRef,
+  ): Promise<DocumentSource> {
+    const path = await resolveWorkspacePath(workspaceRoot, ref.path);
+    const raw = await readFile(path, 'utf8');
+    const parsed = parseMarkdown(raw);
+    return {
+      ref,
+      revision: hashContent(raw),
+      frontMatter: parsed.frontMatter,
+      body: parsed.body,
+      raw,
+      format: 'markdown',
+    };
+  }
+
+  public async writeDocument(
+    workspaceRoot: string,
+    input: WriteDocumentInput,
+  ): Promise<WriteDocumentResult> {
+    const path = await resolveWorkspacePath(workspaceRoot, input.ref.path);
+    const current = await readFile(path, 'utf8');
+    if (hashContent(current) !== input.expectedRevision) {
+      throw new Error('Document revision conflict');
+    }
+    const next = serializeMarkdown(input.frontMatter, input.body);
+    const parsedCurrent = parseMarkdown(current);
+    if (
+      parsedCurrent.body === input.body &&
+      JSON.stringify(parsedCurrent.frontMatter) ===
+        JSON.stringify(input.frontMatter)
+    )
+      return { revision: input.expectedRevision, changed: false };
+
+    await writeFile(path, next, 'utf8');
+    return { revision: hashContent(next), changed: true };
+  }
+
+  public async resolvePublicUrl(
+    workspaceRoot: string,
+    ref: DocumentRef,
+  ): Promise<string> {
+    const source = await this.readDocument(workspaceRoot, ref);
+    const config = await this.#configuration(workspaceRoot);
+    if (!config.url) throw new Error('Hexo site URL is not configured');
+    const fileTitle = basename(ref.path, extname(ref.path));
+    const title = stringValue(source.frontMatter.slug) ?? fileTitle;
+    const dateText = stringValue(source.frontMatter.date) ?? '';
+    const date = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/.exec(dateText);
+    const pattern = config.permalink ?? ':year/:month/:day/:title/';
+    if (!date && /:(?:year|month|day)\b/.test(pattern)) {
+      throw new Error(`Invalid Hexo document date: ${dateText || '(missing)'}`);
+    }
+    const values: Readonly<Record<string, string>> = {
+      year: date?.[1] ?? '',
+      month: date?.[2]?.padStart(2, '0') ?? '',
+      day: date?.[3]?.padStart(2, '0') ?? '',
+      title,
+      name: fileTitle,
+      id: fileTitle,
+    };
+    const permalink = pattern.replace(/:([a-z_]+)/g, (_, token: string) =>
+      encodeURIComponent(values[token] ?? ''),
+    );
+    const root = config.root ?? '/';
+    return new URL(
+      join(root, permalink).split(sep).join('/'),
+      config.url,
+    ).toString();
+  }
+
+  public async build(input: BuildInput): Promise<BuildResult> {
+    const config = await this.#configuration(input.workspaceRoot);
+    const result = await runCommand({
+      executable: this.#executable,
+      args: [
+        ...this.#executableArgs,
+        'generate',
+        ...(input.mode === 'preview' ? ['--draft'] : []),
+      ],
+      workspaceRoot: input.workspaceRoot,
+      timeoutMs: this.#buildTimeoutMs,
+      environmentAllowlist: ['CI', 'NODE_ENV'],
+      environment: {
+        CI: 'true',
+        NODE_ENV: input.mode === 'production' ? 'production' : 'development',
+      },
+    });
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Hexo build failed (${result.exitCode}): ${result.stderr}`,
+      );
+    }
+    const outputDirectory = await resolveWorkspacePath(
+      input.workspaceRoot,
+      config.public_dir ?? 'public',
+    );
+    return {
+      outputDirectory,
+      manifest: await createManifest(outputDirectory),
+      durationMs: result.durationMs,
+      diagnostics: result.stderr
+        ? [
+            {
+              severity: 'warning',
+              code: 'HEXO_BUILD_STDERR',
+              message: result.stderr,
+            },
+          ]
+        : [],
+    };
+  }
+}

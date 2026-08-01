@@ -1,0 +1,6 @@
+title: Synthetic Blog
+url: https://example.com
+root: /
+permalink: :year/:month/:day/:title/
+source_dir: source
+public_dir: public

@@ -1,0 +1,7 @@
+{
+  "name": "synthetic-hexo-site",
+  "private": true,
+  "dependencies": {
+    "hexo": "0.0.0-test"
+  }
+}
