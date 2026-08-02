@@ -35,6 +35,8 @@ pull request to exercise the protected-branch path.
 - online backup and isolated restore within the 15-minute RTO.
 - dependency-free, documentation-only generic command Quick Start through
   authenticated edit, durable autosave, and real preview.
+- deterministic release-artifact generation and verification, including a
+  corrected multi-platform OCI dry-run with provenance and SBOM attestations.
 
 ## Open external gate
 
