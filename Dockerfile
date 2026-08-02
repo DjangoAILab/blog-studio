@@ -13,11 +13,6 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 
 FROM node:22.21.1-alpine3.23@sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf AS runtime
 
-ARG VCS_REF=unknown
-LABEL org.opencontainers.image.source="https://github.com/DjangoAILab/blog-studio" \
-      org.opencontainers.image.revision="$VCS_REF" \
-      org.opencontainers.image.licenses="Apache-2.0"
-
 ENV NODE_ENV=production \
     BLOG_STUDIO_HOST=0.0.0.0 \
     BLOG_STUDIO_PORT=4310 \
@@ -31,6 +26,11 @@ RUN apk upgrade --no-cache libcrypto3 libssl3 && \
 
 COPY --from=build --chown=node:node /opt/blog-studio/ /app/
 COPY --from=build --chown=node:node /source/scripts/ /opt/blog-studio/scripts/
+
+ARG VCS_REF=unknown
+LABEL org.opencontainers.image.source="https://github.com/DjangoAILab/blog-studio" \
+      org.opencontainers.image.revision="$VCS_REF" \
+      org.opencontainers.image.licenses="Apache-2.0"
 
 WORKDIR /app
 USER node
