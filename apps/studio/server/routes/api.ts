@@ -237,6 +237,7 @@ export function registerApiRoutes(
       id: workspace.config.workspace.id,
       generator: workspace.generator.id,
       capabilities: workspace.generator.capabilities,
+      canCreateDocuments: workspace.generator.createDocument !== undefined,
       publishTarget: dependencies.releases.target(workspace),
     })),
   }));

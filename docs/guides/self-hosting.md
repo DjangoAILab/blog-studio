@@ -48,6 +48,12 @@ destinations must be explicit mounted paths or configured remote providers.
 Keep secrets out of this YAML; provider secret fields refer to environment
 variable names.
 
+For a dependency-free first run, copy `examples/workspace/.` into `workspace/`
+and use `examples/config/blog-studio.yml`. Initialize and commit that directory
+as a local Git repository. This uses the built-in command generator and
+`publish.adapter: none`: writing, durable autosave, and real preview work, while
+the release button remains disabled until a verified target is configured.
+
 Validate and start:
 
 ```sh

@@ -1,0 +1,16 @@
+:root {
+  color: #24211d;
+  background: #f6f1e7;
+  font-family: Georgia, 'Noto Serif', serif;
+}
+
+body {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 4rem 1.5rem;
+  line-height: 1.7;
+}
+
+a {
+  color: #a33d2b;
+}

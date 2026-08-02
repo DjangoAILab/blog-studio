@@ -1,7 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { relative } from 'node:path';
 
-import { resolveWorkspacePath } from '@blog-studio/adapter-command';
+import {
+  CommandGeneratorAdapter,
+  resolveWorkspacePath,
+  type CommandCollectionOptions,
+} from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
 import { AssetPipeline } from '@blog-studio/assets';
 import {
@@ -42,14 +46,190 @@ const builtInRegistry: AdapterRegistry = {
   generator: new Set(['hexo', 'command']),
   repository: new Set(['local-git']),
   assets: new Set(['filesystem', 'tencent-cos']),
-  publish: new Set(['filesystem', 'tencent-cos']),
+  publish: new Set(['none', 'filesystem', 'tencent-cos']),
   cache: new Set(['none', 'tencent-cdn', 'tencent-edgeone']),
 };
 
+function optionRecord(
+  value: unknown,
+  path: string,
+): Readonly<Record<string, unknown>> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value))
+    throw new Error(`${path} must be an object`);
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function rejectUnknownOptions(
+  options: Readonly<Record<string, unknown>>,
+  allowed: ReadonlySet<string>,
+  path: string,
+): void {
+  const unknown = Object.keys(options).find((key) => !allowed.has(key));
+  if (unknown) throw new Error(`${path}.${unknown} is not supported`);
+}
+
+function requiredString(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  path: string,
+): string {
+  const value = options[key];
+  if (typeof value !== 'string' || value.trim().length === 0)
+    throw new Error(`${path}.${key} must be a non-empty string`);
+  return value;
+}
+
+function optionalString(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  path: string,
+): string | undefined {
+  if (options[key] === undefined) return undefined;
+  return requiredString(options, key, path);
+}
+
+function stringArray(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  path: string,
+  fallback: readonly string[] = [],
+): readonly string[] {
+  const value = options[key];
+  if (value === undefined) return fallback;
+  if (
+    !Array.isArray(value) ||
+    value.some((item) => typeof item !== 'string' || item.trim().length === 0)
+  )
+    throw new Error(`${path}.${key} must be an array of non-empty strings`);
+  return value as readonly string[];
+}
+
+function optionalPositiveInteger(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  path: string,
+): number | undefined {
+  const value = options[key];
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || Number(value) < 1)
+    throw new Error(`${path}.${key} must be a positive integer`);
+  return Number(value);
+}
+
+function commandCollections(
+  config: BlogStudioConfig,
+): readonly CommandCollectionOptions[] {
+  const posts = config.content?.collections.posts;
+  if (!posts)
+    throw new Error(
+      'content.collections.posts is required by the command generator',
+    );
+  return [
+    {
+      id: 'posts',
+      label: 'Posts',
+      path: posts.path,
+      state: 'published',
+    },
+    ...(posts.draftPath
+      ? [
+          {
+            id: 'drafts',
+            label: 'Drafts',
+            path: posts.draftPath,
+            state: 'draft' as const,
+          },
+        ]
+      : []),
+  ];
+}
+
+function createCommandGenerator(config: BlogStudioConfig): GeneratorAdapter {
+  const options = config.generator.options;
+  const path = 'generator.options';
+  rejectUnknownOptions(
+    options,
+    new Set(['build', 'displayName', 'markers', 'outputDirectory', 'siteUrl']),
+    path,
+  );
+  const build = optionRecord(options.build, `${path}.build`);
+  rejectUnknownOptions(
+    build,
+    new Set([
+      'args',
+      'command',
+      'environmentAllowlist',
+      'previewArgs',
+      'timeoutMs',
+    ]),
+    `${path}.build`,
+  );
+  const buildArgs = stringArray(build, 'args', `${path}.build`);
+  const siteUrl = optionalString(options, 'siteUrl', path);
+  if (siteUrl) {
+    let parsed: URL;
+    try {
+      parsed = new URL(siteUrl);
+    } catch {
+      throw new Error(`${path}.siteUrl must be a valid HTTP(S) URL`);
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol))
+      throw new Error(`${path}.siteUrl must be a valid HTTP(S) URL`);
+  }
+  const displayName = optionalString(options, 'displayName', path);
+  const timeoutMs = optionalPositiveInteger(
+    build,
+    'timeoutMs',
+    `${path}.build`,
+  );
+  return new CommandGeneratorAdapter({
+    workspaceId: config.workspace.id,
+    ...(displayName ? { displayName } : {}),
+    markers: stringArray(options, 'markers', path),
+    outputDirectory: requiredString(options, 'outputDirectory', path),
+    ...(siteUrl ? { siteUrl } : {}),
+    collections: commandCollections(config),
+    command: {
+      executable: requiredString(build, 'command', `${path}.build`),
+      buildArgs,
+      previewArgs: stringArray(
+        build,
+        'previewArgs',
+        `${path}.build`,
+        buildArgs,
+      ),
+      ...(timeoutMs ? { timeoutMs } : {}),
+      environmentAllowlist: stringArray(
+        build,
+        'environmentAllowlist',
+        `${path}.build`,
+      ),
+    },
+  });
+}
+
 function createGenerator(config: BlogStudioConfig): GeneratorAdapter {
   if (config.generator.adapter === 'hexo') {
-    return new HexoGeneratorAdapter({ workspaceId: config.workspace.id });
+    const options = config.generator.options;
+    rejectUnknownOptions(
+      options,
+      new Set(['buildTimeoutMs', 'config']),
+      'generator.options',
+    );
+    const configPath = optionalString(options, 'config', 'generator.options');
+    const buildTimeoutMs = optionalPositiveInteger(
+      options,
+      'buildTimeoutMs',
+      'generator.options',
+    );
+    return new HexoGeneratorAdapter({
+      workspaceId: config.workspace.id,
+      ...(configPath ? { configPath } : {}),
+      ...(buildTimeoutMs ? { buildTimeoutMs } : {}),
+    });
   }
+  if (config.generator.adapter === 'command')
+    return createCommandGenerator(config);
   throw new Error(
     `Generator ${config.generator.adapter} requires an administrator-provided factory`,
   );
@@ -150,10 +330,11 @@ export class WorkspaceService {
       if (service.#workspaces.has(config.workspace.id)) {
         throw new Error(`Duplicate workspace ID: ${config.workspace.id}`);
       }
+      const generator = createGenerator(config);
       const assets = await createAssets(config, options.assetFactories ?? {});
       service.#workspaces.set(config.workspace.id, {
         config,
-        generator: createGenerator(config),
+        generator,
         assetProvider: assets.provider,
         assetRootPrefix: assets.rootPrefix,
         assets: assets.pipeline,

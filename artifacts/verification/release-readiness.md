@@ -33,6 +33,8 @@ pull request to exercise the protected-branch path.
 - deployed Docker/Traefik runtime, HTTPS, auth boundary, and health checks;
 - draft cold restart, public-blog independence, API/autosave latency;
 - online backup and isolated restore within the 15-minute RTO.
+- dependency-free, documentation-only generic command Quick Start through
+  authenticated edit, durable autosave, and real preview.
 
 ## Open external gate
 

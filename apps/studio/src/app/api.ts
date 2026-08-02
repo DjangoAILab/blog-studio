@@ -1,6 +1,7 @@
 export interface WorkspaceSummary {
   readonly id: string;
   readonly generator: string;
+  readonly canCreateDocuments: boolean;
   readonly publishTarget: {
     readonly id: string;
     readonly adapter: string;

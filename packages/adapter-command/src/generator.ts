@@ -193,8 +193,8 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
         id: collection.id,
         label: collection.label,
         formats: collection.formats ?? ['markdown'],
-        canCreate: true,
-        canDelete: true,
+        canCreate: false,
+        canDelete: false,
       })),
       ...(this.#options.siteUrl === undefined
         ? {}

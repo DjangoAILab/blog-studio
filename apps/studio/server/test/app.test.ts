@@ -69,6 +69,8 @@ workspace:
   root: ${workspace}
 generator:
   adapter: hexo
+  options:
+    config: _config.yml
 repository:
   adapter: local-git
 assets:

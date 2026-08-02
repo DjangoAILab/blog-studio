@@ -28,15 +28,23 @@ memory limit.
 mkdir -p config data secrets workspace backups
 cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
+cp -R examples/workspace/. workspace/
 umask 077
 openssl rand -base64 32 > secrets/auth_token
 openssl rand -base64 48 > secrets/cookie_secret
+git -C workspace init
+git -C workspace config user.name "Blog Studio Quick Start"
+git -C workspace config user.email "quick-start@localhost"
+git -C workspace add .
+git -C workspace commit -m "Initialize example workspace"
 chown -R 1000:1000 data workspace
 ```
 
-Clone or copy the site into `workspace/` and install dependencies with its own
-lockfile. Set `workspace.root: /workspaces/blog` in the configuration. Ensure the
-configured UID can write source, generated output, and local publish targets.
+The example is dependency-free, uses the built-in command generator, and keeps
+publishing disabled while writing, autosave, and preview remain functional. To
+connect a real site, replace `workspace/` with a clean trusted checkout, install
+its locked dependencies on the host, and update the adapter configuration. The
+container path remains `/workspaces/blog`.
 
 ## 2. Validate and start
 
@@ -64,6 +72,11 @@ docker compose \
   -f deploy/traefik/docker-compose.override.yml \
   up -d
 ```
+
+Use both `-f` arguments for every later `up`, `restart`, `pull`, and recreated
+deployment. Using only the base file removes the Traefik network and labels
+from the replacement container, so local health may pass while the HTTPS route
+returns `404`.
 
 The reference defaults use `blog-editor.internal.wj2015.com`, the external
 network `home-server_default`, and the `websecure` entrypoint. Override them in
