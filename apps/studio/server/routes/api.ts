@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 
 import { resolveWorkspacePath } from '@blog-studio/adapter-command';
@@ -9,7 +10,10 @@ import {
   createWorkspaceId,
   type FrontMatterValue,
 } from '@blog-studio/core';
-import type { SqliteDraftRepository } from '@blog-studio/persistence';
+import {
+  RevisionConflictError,
+  type SqliteDraftRepository,
+} from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
 
 import type { PreviewService } from '../services/previews.js';
@@ -85,6 +89,18 @@ const mediaTypes: Readonly<Record<string, string>> = {
   '.webp': 'image/webp',
 };
 
+function defaultSlug(title: string, now: Date): string {
+  const fromTitle = title
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  if (fromTitle) return fromTitle;
+  return `draft-${now.toISOString().replace(/\D/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+}
+
 function rewritePreviewText(
   input: string,
   contentType: string,
@@ -152,6 +168,53 @@ export function registerApiRoutes(
       publishTarget: dependencies.releases.target(workspace),
     })),
   }));
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: { title: string; slug?: string };
+  }>(
+    '/api/workspaces/:workspaceId/documents',
+    {
+      schema: {
+        params: workspaceParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title'],
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 200 },
+            slug: {
+              type: 'string',
+              pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$',
+              maxLength: 80,
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const now = new Date();
+      const created = await dependencies.workspaces.createDocument(
+        request.params.workspaceId,
+        {
+          collectionId: 'drafts',
+          title: request.body.title,
+          slug: request.body.slug ?? defaultSlug(request.body.title, now),
+          createdAt: now.toISOString(),
+        },
+      );
+      const draft = dependencies.drafts.save({
+        workspaceId: created.source.ref.workspaceId,
+        documentId: created.source.ref.documentId,
+        expectedVersion: 0,
+        sourceRevision: created.source.revision,
+        frontMatter: created.source.frontMatter,
+        body: created.source.body,
+        savedAt: now.toISOString(),
+      });
+      return reply.code(201).send({ source: created.source, draft });
+    },
+  );
 
   app.get<{ Params: { workspaceId: string } }>(
     '/api/workspaces/:workspaceId/releases',
@@ -387,6 +450,47 @@ export function registerApiRoutes(
         savedAt: new Date().toISOString(),
       });
       return reply.code(200).send({ draft: snapshot });
+    },
+  );
+
+  app.delete<{
+    Params: { workspaceId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { expectedVersion: number };
+  }>(
+    '/api/workspaces/:workspaceId/documents/:documentId/draft',
+    {
+      schema: {
+        params: documentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedVersion'],
+          properties: { expectedVersion: { type: 'integer', minimum: 1 } },
+        },
+      },
+    },
+    async (request) => {
+      const { ref } = await dependencies.workspaces.findDocument(
+        request.params.workspaceId,
+        request.query.collection,
+        request.params.documentId,
+      );
+      const current = dependencies.drafts.get(ref.workspaceId, ref.documentId);
+      if (
+        !current ||
+        !dependencies.drafts.delete(
+          ref.workspaceId,
+          ref.documentId,
+          request.body.expectedVersion,
+        )
+      )
+        throw new RevisionConflictError(
+          request.body.expectedVersion,
+          current?.version ?? 0,
+        );
+      return { discarded: true };
     },
   );
 

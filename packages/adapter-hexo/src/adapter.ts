@@ -4,6 +4,7 @@ import { basename, dirname, extname, join, relative, sep } from 'node:path';
 import { resolveWorkspacePath, runCommand } from '@blog-studio/adapter-command';
 import {
   ADAPTER_API_VERSION,
+  BlogStudioError,
   createDocumentId,
   createWorkspaceId,
   type AdapterDiagnostic,
@@ -322,7 +323,10 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       await writeFile(path, raw, { encoding: 'utf8', flag: 'wx' });
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST')
-        throw new Error(`Hexo draft slug already exists: ${input.slug}`);
+        throw new BlogStudioError(
+          'DOCUMENT_CONFLICT',
+          `Hexo draft slug already exists: ${input.slug}`,
+        );
       throw error;
     }
     const root = await resolveWorkspacePath(workspaceRoot, '.');

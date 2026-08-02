@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { AssetPolicyError } from '@blog-studio/assets';
+import { BlogStudioError } from '@blog-studio/core';
 import {
   ActiveReleaseConflictError,
   RevisionConflictError,
@@ -245,36 +246,39 @@ export async function createStudioServer(
     const status =
       error instanceof RevisionConflictError
         ? 409
-        : error instanceof ActiveReleaseConflictError
+        : error instanceof BlogStudioError && error.code === 'DOCUMENT_CONFLICT'
           ? 409
-          : error instanceof BaselineAdoptionRequiredError ||
-              error instanceof BaselineAlreadyAdoptedError ||
-              message ===
-                'Existing deployment baseline must be adopted before publishing' ||
-              message === 'A verified baseline already exists'
+          : error instanceof ActiveReleaseConflictError
             ? 409
-            : error instanceof AssetPolicyError
-              ? error.code === 'ASSET_TOO_LARGE'
-                ? 413
-                : 422
-              : message === 'Draft source revision conflict'
-                ? 409
-                : message.startsWith('Invalid Hexo document date:')
-                  ? 422
-                  : validationError
-                    ? 400
-                    : declaredStatus !== undefined
-                      ? declaredStatus
-                      : /^(Unknown|Unsupported)/.test(message)
-                        ? 404
-                        : 500;
+            : error instanceof BaselineAdoptionRequiredError ||
+                error instanceof BaselineAlreadyAdoptedError ||
+                message ===
+                  'Existing deployment baseline must be adopted before publishing' ||
+                message === 'A verified baseline already exists'
+              ? 409
+              : error instanceof AssetPolicyError
+                ? error.code === 'ASSET_TOO_LARGE'
+                  ? 413
+                  : 422
+                : message === 'Draft source revision conflict'
+                  ? 409
+                  : message.startsWith('Invalid Hexo document date:')
+                    ? 422
+                    : validationError
+                      ? 400
+                      : declaredStatus !== undefined
+                        ? declaredStatus
+                        : /^(Unknown|Unsupported)/.test(message)
+                          ? 404
+                          : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
       type: 'about:blank',
       title: status === 500 ? 'Internal server error' : message,
       status,
-      ...(error instanceof RevisionConflictError
+      ...(error instanceof RevisionConflictError ||
+      error instanceof BlogStudioError
         ? { code: error.code, details: error.details }
         : {}),
     });

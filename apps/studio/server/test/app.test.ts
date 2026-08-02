@@ -297,6 +297,70 @@ describe('Studio workspace API', () => {
     expect(conflict.json()).toMatchObject({ code: 'REVISION_CONFLICT' });
   });
 
+  it('creates native drafts and discards only a version-matched snapshot', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const withoutCsrf = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers: { cookie: session.cookie, origin },
+      payload: { title: 'New draft', slug: 'new-draft' },
+    });
+    expect(withoutCsrf.statusCode).toBe(403);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'New draft', slug: 'new-draft' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const payload = created.json<{
+      source: { ref: { documentId: string; path: string } };
+      draft: { version: number };
+    }>();
+    expect(payload.source.ref.path).toBe('source/_drafts/new-draft.md');
+    expect(payload.draft.version).toBe(1);
+    await expect(
+      readFile(join(workspace, payload.source.ref.path), 'utf8'),
+    ).resolves.toContain('title: New draft');
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Duplicate', slug: 'new-draft' },
+    });
+    expect(duplicate.statusCode, duplicate.body).toBe(409);
+    expect(duplicate.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
+
+    const discardUrl = `/api/workspaces/test-blog/documents/${payload.source.ref.documentId}/draft?collection=drafts`;
+    const stale = await app.inject({
+      method: 'DELETE',
+      url: discardUrl,
+      headers,
+      payload: { expectedVersion: 2 },
+    });
+    expect(stale.statusCode).toBe(409);
+    const discarded = await app.inject({
+      method: 'DELETE',
+      url: discardUrl,
+      headers,
+      payload: { expectedVersion: 1 },
+    });
+    expect(discarded.json()).toEqual({ discarded: true });
+    const read = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${payload.source.ref.documentId}?collection=drafts`,
+      headers: { cookie: session.cookie },
+    });
+    expect(read.json()).toMatchObject({ draft: null });
+  });
+
   it('rejects missing CSRF and reuses a healthy preview until stopped', async () => {
     const { app, workspace } = await fixture();
     const session = await login(app);

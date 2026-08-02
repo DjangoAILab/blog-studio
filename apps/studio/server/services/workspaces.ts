@@ -12,6 +12,8 @@ import {
 } from '@blog-studio/config';
 import type {
   AssetProvider,
+  CreateDocumentInput,
+  CreateDocumentResult,
   DocumentRef,
   DocumentSummary,
   GeneratorAdapter,
@@ -168,6 +170,21 @@ export class WorkspaceService {
     const workspace = this.#workspaces.get(workspaceId);
     if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
     return workspace;
+  }
+
+  public async createDocument(
+    workspaceId: string,
+    input: CreateDocumentInput,
+  ): Promise<CreateDocumentResult> {
+    const workspace = this.get(workspaceId);
+    if (!workspace.generator.createDocument)
+      throw new Error(
+        `Generator ${workspace.generator.id} does not support document creation`,
+      );
+    return await workspace.generator.createDocument(
+      workspace.config.workspace.root,
+      input,
+    );
   }
 
   public async findDocument(

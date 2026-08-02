@@ -129,6 +129,19 @@ export class StudioApi {
     );
   }
 
+  public createDocument(
+    workspaceId: string,
+    input: { readonly title: string; readonly slug?: string },
+  ) {
+    return this.#request<DocumentPayload>(
+      `/api/workspaces/${workspaceId}/documents`,
+      {
+        method: 'POST',
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
   public saveDraft(input: {
     readonly workspaceId: string;
     readonly documentId: string;
@@ -148,6 +161,21 @@ export class StudioApi {
           frontMatter: input.frontMatter,
           body: input.body,
         }),
+      },
+    );
+  }
+
+  public discardDraft(input: {
+    readonly workspaceId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedVersion: number;
+  }) {
+    return this.#request<{ discarded: true }>(
+      `/api/workspaces/${input.workspaceId}/documents/${input.documentId}/draft?collection=${input.collection}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ expectedVersion: input.expectedVersion }),
       },
     );
   }
