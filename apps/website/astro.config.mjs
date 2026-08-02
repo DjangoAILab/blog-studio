@@ -45,6 +45,7 @@ export default defineConfig({
             { slug: 'docs/providers/tencent' },
             { slug: 'docs/operations/security' },
             { slug: 'docs/operations/backup-restore' },
+            { slug: 'docs/operations/upgrading' },
             { slug: 'docs/operations/troubleshooting' },
           ],
         },

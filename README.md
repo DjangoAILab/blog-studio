@@ -98,6 +98,8 @@ final container image for unaccepted critical findings.
 - [v0.1 implementation plan](docs/plans/2026-08-02-blog-studio-v0.1.md)
 - [Self-hosting](docs/guides/self-hosting.md)
 - [Backup and restore](docs/guides/backup-restore.md)
+- [Upgrade and rollback](docs/guides/upgrading.md)
+- [v0.1.0 release notes](docs/releases/v0.1.0.md)
 - [Verification evidence](artifacts/verification/release-readiness.md)
 
 ## License
