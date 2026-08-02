@@ -55,6 +55,36 @@ function stringValue(value: FrontMatterValue | undefined): string | undefined {
     : undefined;
 }
 
+function hexoDateParts(
+  value: string,
+):
+  | { readonly year: string; readonly month: string; readonly day: string }
+  | undefined {
+  // Hexo 6 uses Moment's permissive parser, which accepts legacy zero-padded
+  // three-digit days such as 014. Preserve that established URL behavior while
+  // still rejecting impossible calendar dates.
+  const match = /^(\d{4})-(\d{1,2})-(\d{1,3})(?:[T\s]|$)/.exec(value);
+  if (!match) return undefined;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  )
+    return undefined;
+  return {
+    year: String(year).padStart(4, '0'),
+    month: String(month).padStart(2, '0'),
+    day: String(day).padStart(2, '0'),
+  };
+}
+
 async function workspacePathExists(
   workspaceRoot: string,
   candidate: string,
@@ -276,15 +306,15 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
     const fileTitle = basename(ref.path, extname(ref.path));
     const title = stringValue(source.frontMatter.slug) ?? fileTitle;
     const dateText = stringValue(source.frontMatter.date) ?? '';
-    const date = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s]|$)/.exec(dateText);
+    const date = hexoDateParts(dateText);
     const pattern = config.permalink ?? ':year/:month/:day/:title/';
     if (!date && /:(?:year|month|day)\b/.test(pattern)) {
       throw new Error(`Invalid Hexo document date: ${dateText || '(missing)'}`);
     }
     const values: Readonly<Record<string, string>> = {
-      year: date?.[1] ?? '',
-      month: date?.[2]?.padStart(2, '0') ?? '',
-      day: date?.[3]?.padStart(2, '0') ?? '',
+      year: date?.year ?? '',
+      month: date?.month ?? '',
+      day: date?.day ?? '',
       title,
       name: fileTitle,
       id: fileTitle,

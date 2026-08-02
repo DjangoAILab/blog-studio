@@ -54,6 +54,24 @@ Open the configured HTTPS hostname and enter the value in
 `secrets/auth_token`. A successful health response alone does not bypass the
 session and CSRF boundary used by the remaining API.
 
+## Tencent provider secrets
+
+When a workspace uses Tencent COS, CDN, or EdgeOne, keep the credential values
+in Docker secrets and leave only references in YAML:
+
+```sh
+umask 077
+printf '%s' "$TENCENT_SECRET_ID" > secrets/tencent_secret_id
+printf '%s' "$TENCENT_SECRET_KEY" > secrets/tencent_secret_key
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/tencent/docker-compose.override.yml \
+  up -d
+```
+
+The override mounts both files read-only and sets only their file-location
+variables in the container environment. Do not commit either file.
+
 ## Traefik
 
 The supplied override joins an existing external Traefik Docker network and

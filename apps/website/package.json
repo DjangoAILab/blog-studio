@@ -4,15 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "audit:lighthouse": "pnpm build && node scripts/audit-lighthouse.mjs",
-    "build": "pnpm docs:generate && astro build && node scripts/check-links.mjs",
-    "dev": "pnpm docs:generate && astro dev",
+    "audit:lighthouse": "corepack pnpm build && node scripts/audit-lighthouse.mjs",
+    "build": "corepack pnpm docs:generate && astro build && node scripts/check-links.mjs",
+    "dev": "corepack pnpm docs:generate && astro dev",
     "docs:generate": "node scripts/generate-reference.mjs",
-    "e2e": "pnpm build && playwright test",
-    "lint": "pnpm docs:generate && astro sync && eslint src/index.ts src/content.config.ts test e2e playwright.config.ts vitest.config.ts",
+    "e2e": "corepack pnpm build && playwright test",
+    "lint": "corepack pnpm docs:generate && astro sync && eslint src/index.ts src/content.config.ts test e2e playwright.config.ts vitest.config.ts",
     "preview": "astro preview",
     "test": "vitest run",
-    "typecheck": "pnpm docs:generate && astro check"
+    "typecheck": "corepack pnpm docs:generate && astro check"
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.6",

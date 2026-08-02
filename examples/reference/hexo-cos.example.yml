@@ -1,0 +1,65 @@
+version: 1
+
+# Copy this file outside the repository and replace every example value. This
+# profile deliberately targets an isolated COS prefix. Do not point it at an
+# existing bucket root until the reference adoption procedure has passed.
+workspace:
+  id: reference-blog-staging
+  root: /workspaces/blog
+
+generator:
+  adapter: hexo
+  options:
+    buildTimeoutMs: 180000
+
+repository:
+  adapter: local-git
+  options:
+    remote: origin
+
+assets:
+  adapter: tencent-cos
+  options:
+    bucket: example-1250000000
+    region: ap-guangzhou
+    publicBaseUrl: https://example-1250000000.cos.ap-guangzhou.myqcloud.com/
+    managedPrefix: blog-studio-staging/site/media/posts
+    protectedPrefixes: []
+    maxAttempts: 3
+  credentials:
+    secretId:
+      env: TENCENT_SECRET_ID
+    secretKey:
+      env: TENCENT_SECRET_KEY
+
+publish:
+  adapter: tencent-cos
+  options:
+    targetId: reference-staging
+    bucket: example-1250000000
+    region: ap-guangzhou
+    targetPrefix: blog-studio-staging/site
+    statePrefix: blog-studio-staging/state
+    protectedPrefixes: []
+    concurrency: 6
+    maxAttempts: 3
+  credentials:
+    secretId:
+      env: TENCENT_SECRET_ID
+    secretKey:
+      env: TENCENT_SECRET_KEY
+
+# A direct COS staging origin does not need cache invalidation. Switch this to
+# tencent-cdn or tencent-edgeone only after a separate staging domain exists.
+cache:
+  adapter: none
+
+content:
+  collections:
+    posts:
+      path: source/_posts
+      draftPath: source/_drafts
+      assetScope: blog-studio-staging/site/media/posts/{documentId}
+
+verification:
+  baseUrl: https://example-1250000000.cos.ap-guangzhou.myqcloud.com/blog-studio-staging/site/

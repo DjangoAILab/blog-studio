@@ -4,11 +4,33 @@ description: Provider contracts, deployment shape, and the staging gates require
 ---
 
 :::caution[Integration status]
-The COS publisher/storage and Tencent CDN/EdgeOne cache contracts have unit and
-fault-injection coverage. The production Studio registry and reference-account
-end-to-end wiring are not yet complete. Do not configure production credentials
-until the reference staging task is explicitly promoted.
+The COS publisher/storage and Tencent CDN/EdgeOne clients are wired into the
+production Studio registry and covered by unit and fault-injection tests. The
+reference-account end-to-end release is still gated on isolated staging. Do not
+point a configuration at an existing bucket root until that staging task is
+explicitly promoted.
 :::
+
+## Runtime credentials
+
+YAML contains only environment-variable references. A direct environment value
+is supported, but the supplied Tencent Compose override uses Docker secret
+files so credentials do not appear in the workspace configuration:
+
+```sh
+umask 077
+printf '%s' "$TENCENT_SECRET_ID" > secrets/tencent_secret_id
+printf '%s' "$TENCENT_SECRET_KEY" > secrets/tencent_secret_key
+
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/tencent/docker-compose.override.yml \
+  up -d
+```
+
+For a reference such as `env: TENCENT_SECRET_ID`, Studio first reads
+`TENCENT_SECRET_ID`; when it is absent, it reads the file named by
+`TENCENT_SECRET_ID_FILE`. The browser receives neither value nor file path.
 
 ## COS publishing model
 
@@ -44,3 +66,7 @@ replaceable cache adapter—not as a required migration for the first release.
 7. Promote one controlled real change only after every earlier gate passes.
 
 The public blog must not depend on the internal Studio host after promotion.
+
+Start from the repository's
+[`examples/reference/hexo-cos.example.yml`](https://github.com/DjangoAILab/blog-studio/blob/main/examples/reference/hexo-cos.example.yml)
+and keep staging under an isolated prefix and origin URL.

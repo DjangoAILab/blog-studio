@@ -22,7 +22,10 @@ import {
   ReleaseService,
   type ReleaseServiceOptions,
 } from './services/releases.js';
-import { WorkspaceService } from './services/workspaces.js';
+import {
+  WorkspaceService,
+  type AssetProviderFactory,
+} from './services/workspaces.js';
 
 const SESSION_COOKIE = 'blog_studio_session';
 const CSRF_COOKIE = 'blog_studio_csrf';
@@ -40,6 +43,7 @@ export interface StudioServerOptions {
   readonly clientDirectory?: string;
   readonly logger?: FastifyServerOptions['logger'];
   readonly releaseVerifierFactory?: ReleaseServiceOptions['verifierFactory'];
+  readonly assetFactories?: Readonly<Record<string, AssetProviderFactory>>;
   readonly publisherFactories?: ReleaseServiceOptions['publisherFactories'];
   readonly cacheFactories?: ReleaseServiceOptions['cacheFactories'];
 }
@@ -92,6 +96,9 @@ export async function createStudioServer(
   const workspaces = await WorkspaceService.load({
     configurationPaths: options.configurationPaths,
     allowedWorkspaceRoot: options.allowedWorkspaceRoot,
+    ...(options.assetFactories
+      ? { assetFactories: options.assetFactories }
+      : {}),
   });
   const database = openStudioDatabase(options.databasePath);
   const drafts = new SqliteDraftRepository(database);

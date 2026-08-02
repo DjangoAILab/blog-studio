@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createStudioServer } from './app.js';
+import { createTencentProviderFactories } from './providers/tencent.js';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
@@ -36,6 +37,7 @@ function portEnvironment(): number {
   return value;
 }
 
+const providerFactories = createTencentProviderFactories();
 const app = await createStudioServer({
   configurationPaths: listEnvironment('BLOG_STUDIO_CONFIG_PATHS'),
   allowedWorkspaceRoot: requiredEnvironment('BLOG_STUDIO_WORKSPACE_ROOT'),
@@ -49,6 +51,7 @@ const app = await createStudioServer({
       fileURLToPath(new URL('../client', import.meta.url)),
   ),
   logger: true,
+  ...providerFactories,
 });
 
 await app.listen({

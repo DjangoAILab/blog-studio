@@ -61,9 +61,12 @@ credentials:
     env: TENCENT_SECRET_KEY
 ```
 
-Supply those variables to the server from a secret manager or mounted runtime
-environment. They are never returned to the browser. The Studio login and
-cookie secrets use Docker secret files in the supplied Compose deployment.
+Supply those variables to the server from a secret manager. They are never
+returned to the browser. For containers, the companion
+`TENCENT_SECRET_ID_FILE` and `TENCENT_SECRET_KEY_FILE` variables can point at
+mounted Docker secrets; the Tencent deployment override configures this
+automatically. The Studio login and cookie secrets use the same file-based
+pattern in the supplied Compose deployment.
 
 ## Multiple workspaces
 

@@ -1,0 +1,14 @@
+services:
+  studio:
+    environment:
+      TENCENT_SECRET_ID_FILE: /run/secrets/tencent_secret_id
+      TENCENT_SECRET_KEY_FILE: /run/secrets/tencent_secret_key
+    secrets:
+      - tencent_secret_id
+      - tencent_secret_key
+
+secrets:
+  tencent_secret_id:
+    file: ${BLOG_STUDIO_TENCENT_SECRET_ID_PATH:-./secrets/tencent_secret_id}
+  tencent_secret_key:
+    file: ${BLOG_STUDIO_TENCENT_SECRET_KEY_PATH:-./secrets/tencent_secret_key}

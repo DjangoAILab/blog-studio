@@ -26,12 +26,22 @@ export interface WorkspaceHandle {
   readonly assets: AssetPipeline;
 }
 
+export type AssetProviderFactory = (config: BlogStudioConfig) =>
+  | {
+      readonly provider: AssetProvider;
+      readonly rootPrefix: string;
+    }
+  | Promise<{
+      readonly provider: AssetProvider;
+      readonly rootPrefix: string;
+    }>;
+
 const builtInRegistry: AdapterRegistry = {
   generator: new Set(['hexo', 'command']),
   repository: new Set(['local-git']),
   assets: new Set(['filesystem', 'tencent-cos']),
   publish: new Set(['filesystem', 'tencent-cos']),
-  cache: new Set(['none', 'tencent-cdn']),
+  cache: new Set(['none', 'tencent-cdn', 'tencent-edgeone']),
 };
 
 function createGenerator(config: BlogStudioConfig): GeneratorAdapter {
@@ -66,15 +76,24 @@ function stringArrayOption(
   return value as readonly string[];
 }
 
-async function createAssets(config: BlogStudioConfig): Promise<{
+async function createAssets(
+  config: BlogStudioConfig,
+  factories: Readonly<Record<string, AssetProviderFactory>>,
+): Promise<{
   readonly provider: AssetProvider;
   readonly rootPrefix: string;
   readonly pipeline: AssetPipeline;
 }> {
-  if (config.assets.adapter !== 'filesystem')
-    throw new Error(
-      `Asset adapter ${config.assets.adapter} requires an administrator-provided client factory`,
-    );
+  if (config.assets.adapter !== 'filesystem') {
+    const factory = factories[config.assets.adapter];
+    if (!factory)
+      throw new Error(`Unsupported asset adapter: ${config.assets.adapter}`);
+    const created = await factory(config);
+    return {
+      ...created,
+      pipeline: new AssetPipeline(created.provider),
+    };
+  }
   const rootDirectory = await resolveWorkspacePath(
     config.workspace.root,
     stringOption(config, 'rootDirectory', 'source'),
@@ -105,6 +124,7 @@ export class WorkspaceService {
   public static async load(options: {
     readonly configurationPaths: readonly string[];
     readonly allowedWorkspaceRoot: string;
+    readonly assetFactories?: Readonly<Record<string, AssetProviderFactory>>;
   }): Promise<WorkspaceService> {
     const service = new WorkspaceService();
     const allowedRoot = await resolveWorkspacePath(
@@ -128,7 +148,7 @@ export class WorkspaceService {
       if (service.#workspaces.has(config.workspace.id)) {
         throw new Error(`Duplicate workspace ID: ${config.workspace.id}`);
       }
-      const assets = await createAssets(config);
+      const assets = await createAssets(config, options.assetFactories ?? {});
       service.#workspaces.set(config.workspace.id, {
         config,
         generator: createGenerator(config),

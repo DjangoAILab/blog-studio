@@ -127,7 +127,7 @@ describe('HexoGeneratorAdapter', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('rejects malformed dates instead of inventing a public URL', async () => {
+  it('matches Hexo date normalization for legacy three-digit days', async () => {
     const root = await copySite();
     const adapter = createAdapter();
     const [summary] = await adapter.listDocuments(root, 'posts');
@@ -136,7 +136,25 @@ describe('HexoGeneratorAdapter', () => {
     await adapter.writeDocument(root, {
       ref: summary.ref,
       expectedRevision: source.revision,
-      frontMatter: { ...source.frontMatter, date: '2026-08-002 09:30:00' },
+      frontMatter: { ...source.frontMatter, date: '2026-08-014 09:30:00' },
+      body: source.body,
+    });
+
+    await expect(adapter.resolvePublicUrl(root, summary.ref)).resolves.toBe(
+      'https://example.com/2026/08/14/%E4%BD%A0%E5%A5%BD-%E4%B8%96%E7%95%8C/',
+    );
+  });
+
+  it('rejects impossible dates instead of inventing a public URL', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    const [summary] = await adapter.listDocuments(root, 'posts');
+    if (!summary) throw new Error('fixture post missing');
+    const source = await adapter.readDocument(root, summary.ref);
+    await adapter.writeDocument(root, {
+      ref: summary.ref,
+      expectedRevision: source.revision,
+      frontMatter: { ...source.frontMatter, date: '2026-02-030 09:30:00' },
       body: source.body,
     });
 
