@@ -13,7 +13,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Add formatting, linting, unit tests, type checking, and CI.
 - [x] Define core schemas and adapter contracts with conformance tests.
 - [x] Publish configuration JSON Schema and example configuration.
-- [ ] Add contribution, security, and architecture decision documentation.
+- [x] Add contribution, security, and architecture decision documentation.
 
 ## Phase 1 — Content and writing vertical
 
@@ -26,7 +26,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Responsive editor shell with visual and source modes.
 - [x] Immediate local image preview and background upload state.
 - [x] Real Hexo preview lifecycle and proxy.
-- [ ] Browser tests covering create, edit, autosave, reload, and preview.
+- [x] Browser tests covering create, edit, autosave, reload, and preview.
 
 ## Phase 2 — Assets and publishing
 
@@ -56,7 +56,7 @@ only after its acceptance checklist and real-environment verification pass.
       providers, security, operations, and Hexo migration.
 - [x] API and adapter reference generated from source.
 - [x] Accessibility, responsive, performance, and visual QA.
-- [ ] Deploy to the home server and pass cold-restart verification.
+- [x] Deploy to the home server and pass cold-restart verification.
 - [ ] Publish v0.1.0 release with checksums and release notes.
 
 ## Phase 4 — Ecosystem hardening
