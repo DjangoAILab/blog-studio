@@ -1,0 +1,71 @@
+@import '@fontsource-variable/ibm-plex-sans';
+@import '@fontsource-variable/newsreader';
+
+:root {
+  --sl-font: 'IBM Plex Sans Variable', 'PingFang SC', sans-serif;
+  --sl-font-system-mono: 'SFMono-Regular', Consolas, monospace;
+  --sl-color-accent-low: #f4d7cc;
+  --sl-color-accent: #b23c20;
+  --sl-color-accent-high: #65200f;
+  --sl-color-white: #1d2824;
+  --sl-color-gray-1: #303a35;
+  --sl-color-gray-2: #53605a;
+  --sl-color-gray-3: #53615a;
+  --sl-color-gray-4: #b7b8ae;
+  --sl-color-gray-5: #d9d6ca;
+  --sl-color-gray-6: #ece8dd;
+  --sl-color-black: #f8f5eb;
+}
+
+:root[data-theme='dark'] {
+  --sl-color-accent-low: #572314;
+  --sl-color-accent: #ef7b58;
+  --sl-color-accent-high: #ffd9cd;
+  --sl-color-white: #f8f5eb;
+  --sl-color-gray-1: #e2dfd4;
+  --sl-color-gray-2: #b8beb7;
+  --sl-color-gray-3: #8e9991;
+  --sl-color-gray-4: #58635d;
+  --sl-color-gray-5: #35413b;
+  --sl-color-gray-6: #27332e;
+  --sl-color-black: #18211e;
+}
+
+.site-title {
+  font-size: 0.82rem;
+  font-weight: 780;
+  letter-spacing: 0.15em;
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  font-family: 'Newsreader Variable', 'Songti SC', serif;
+  font-weight: 520;
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content h1 {
+  font-size: clamp(2.6rem, 7vw, 4.7rem);
+  line-height: 0.95;
+}
+
+.sl-markdown-content h2 {
+  font-size: clamp(1.8rem, 4vw, 2.7rem);
+}
+
+.hero h1 {
+  font-family: 'Newsreader Variable', 'Songti SC', serif;
+  font-weight: 450;
+  letter-spacing: -0.04em;
+}
+
+.card {
+  border-radius: 0;
+  box-shadow: 5px 5px 0
+    color-mix(in srgb, var(--sl-color-accent) 28%, transparent);
+}
+
+code {
+  border-radius: 0;
+}

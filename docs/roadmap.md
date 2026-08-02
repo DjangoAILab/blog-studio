@@ -51,11 +51,11 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Production Docker image and Compose file.
 - [x] Traefik deployment example for `blog-editor.internal.wj2015.com`.
 - [x] Backup, restore, upgrade, and rollback commands.
-- [ ] Landing page based on the verified product journey.
-- [ ] Documentation site: quick start, concepts, configuration, adapters,
+- [x] Landing page based on the verified product journey.
+- [x] Documentation site: quick start, concepts, configuration, adapters,
       providers, security, operations, and Hexo migration.
-- [ ] API and adapter reference generated from source.
-- [ ] Accessibility, responsive, performance, and visual QA.
+- [x] API and adapter reference generated from source.
+- [x] Accessibility, responsive, performance, and visual QA.
 - [ ] Deploy to the home server and pass cold-restart verification.
 - [ ] Publish v0.1.0 release with checksums and release notes.
 

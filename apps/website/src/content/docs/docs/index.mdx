@@ -1,0 +1,57 @@
+---
+title: Blog Studio documentation
+description: Self-host a reliable browser writing and publishing journey without replacing your file-based site.
+template: splash
+hero:
+  title: Publish without leaving your site behind.
+  tagline: Blog Studio keeps files, Git, your generator, and hosting canonical—then makes writing, preview, release, and recovery one visible journey.
+  actions:
+    - text: Self-host Blog Studio
+      link: /docs/guides/self-hosting/
+      icon: right-arrow
+    - text: Understand the journey
+      link: /docs/concepts/core-journey/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Start with the job, not the stack
+
+<CardGrid>
+  <Card title="Write" icon="pencil">
+    Open an existing Markdown document, work in visual or source mode, and get
+    an acknowledged draft without waiting for Git or a deployment.
+  </Card>
+  <Card title="Preview" icon="open-book">
+    Run the real generator and theme. Preview correctness comes from your site,
+    not from a second renderer that drifts over time.
+  </Card>
+  <Card title="Release" icon="rocket">
+    Inspect the manifest diff, publish immutable assets before pages, refresh
+    cache paths, and verify a public release marker.
+  </Card>
+  <Card title="Recover" icon="setting">
+    Keep exact manifests and structured events so retries, cancellation, restart
+    recovery, and rollback are explicit operations.
+  </Card>
+</CardGrid>
+
+## Choose a path
+
+- **I want to install it:** follow [Self-hosting](/docs/guides/self-hosting/),
+  then [configure a workspace](/docs/configuration/workspaces/).
+- **I have a Hexo site:** read the [Hexo guide](/docs/guides/hexo/) before
+  mounting the repository.
+- **I operate Tencent COS/CDN:** understand the current
+  [Tencent provider status and safety gates](/docs/providers/tencent/).
+- **I want to build an adapter:** begin with the
+  [adapter model](/docs/adapters/overview/) and generated
+  [v1 API reference](/docs/reference/adapter-api/).
+
+:::caution[Current v0.1 status]
+The filesystem vertical and provider-independent release behavior are verified.
+The real Tencent reference integration, home-server deployment, and v0.1.0
+release remain gated work. The docs label planned or unverified behavior instead
+of presenting it as shipped.
+:::

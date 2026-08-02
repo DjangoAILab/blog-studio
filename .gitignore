@@ -9,3 +9,7 @@ coverage/
 .DS_Store
 data/
 workspaces/
+apps/website/public/favicon.png
+apps/website/.astro/
+apps/website/test-results/
+apps/website/playwright-report/

@@ -16,6 +16,10 @@
     "typecheck": {
       "dependsOn": ["^typecheck"],
       "outputs": []
+    },
+    "@blog-studio/website#typecheck": {
+      "dependsOn": ["build", "^typecheck"],
+      "outputs": []
     }
   }
 }
