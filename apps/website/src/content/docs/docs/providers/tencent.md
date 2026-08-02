@@ -42,6 +42,36 @@ Assets are promoted before pages. The marker and exact manifest become the
 verification and rollback boundary. Provider deletion is limited to the
 configured managed target; protected legacy prefixes remain outside ownership.
 
+## Adopting an existing deployment
+
+An existing bucket root is never treated as an empty Blog Studio target. To
+manage it without changing legacy URLs, opt in explicitly:
+
+```yaml
+publish:
+  adapter: tencent-cos
+  options:
+    targetPrefix: /
+    allowBucketRoot: true
+    allowBaselineAdoption: true
+    statePrefix: _blog-studio
+    protectedPrefixes:
+      - static
+```
+
+Studio then disables ordinary publishing until an administrator confirms
+**adopt existing deployment**. Adoption paginates the managed COS target,
+excludes Blog Studio's state prefix, downloads every object, and records its
+exact content hash, size, media type, and cache policy. Only after the complete
+inventory succeeds does it write a release marker and retained baseline state;
+public site bytes are not rewritten.
+
+The operation refuses a target that already contains a Blog Studio marker. A
+partial or previously managed target must be recovered from its retained state,
+not silently re-adopted. After adoption, the first normal release is planned
+against the verified baseline, so unchanged legacy paths remain untouched and
+rollback has a precise boundary.
+
 ## CDN and EdgeOne cache model
 
 The cache adapter accepts exact URLs and directory paths, selects the configured
@@ -63,7 +93,9 @@ replaceable cache adapter—not as a required migration for the first release.
 4. Publish a synthetic article and article-scoped image.
 5. Inject build, upload, cache, network, and restart failures.
 6. Compare generated URL inventory and legacy resources.
-7. Promote one controlled real change only after every earlier gate passes.
+7. Adopt the existing deployment as a verified baseline without rewriting its
+   public objects.
+8. Promote one controlled real change only after every earlier gate passes.
 
 The public blog must not depend on the internal Studio host after promotion.
 

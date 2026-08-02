@@ -35,6 +35,22 @@ export interface ReleaseDetails extends StoredRelease {
   readonly events: ReturnType<SqliteReleaseRepository['events']>;
 }
 
+export const BASELINE_ADOPTION_CONFIRMATION = 'ADOPT EXISTING DEPLOYMENT';
+
+export class BaselineAdoptionRequiredError extends Error {
+  public constructor() {
+    super('Existing deployment baseline must be adopted before publishing');
+    this.name = 'BaselineAdoptionRequiredError';
+  }
+}
+
+export class BaselineAlreadyAdoptedError extends Error {
+  public constructor() {
+    super('A verified baseline already exists');
+    this.name = 'BaselineAlreadyAdoptedError';
+  }
+}
+
 export interface ReleaseServiceOptions {
   readonly workspaces: WorkspaceService;
   readonly repository: SqliteReleaseRepository;
@@ -73,6 +89,17 @@ function stringArrayOption(
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
     throw new Error(`publish.options.${key} must be an array of strings`);
   return value as readonly string[];
+}
+
+function booleanOption(
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+  fallback = false,
+): boolean {
+  const value = options[key] ?? fallback;
+  if (typeof value !== 'boolean')
+    throw new Error(`publish.options.${key} must be a boolean`);
+  return value;
 }
 
 function releaseTarget(workspace: WorkspaceHandle): string {
@@ -122,13 +149,33 @@ export class ReleaseService {
     readonly id: string;
     readonly adapter: string;
     readonly configured: boolean;
+    readonly baselineAdoption: 'disabled' | 'required' | 'complete';
   } {
     const adapter = workspace.config.publish.adapter;
     const configured =
       adapter === 'filesystem'
         ? typeof workspace.config.publish.options.directory === 'string'
         : Boolean(this.options.publisherFactories?.[adapter]);
-    return { id: releaseTarget(workspace), adapter, configured };
+    const adoptionEnabled = booleanOption(
+      workspace.config.publish.options,
+      'allowBaselineAdoption',
+    );
+    const adopted = Boolean(
+      this.options.repository.latestSucceededManifest(
+        createWorkspaceId(workspace.config.workspace.id),
+        releaseTarget(workspace),
+      ),
+    );
+    return {
+      id: releaseTarget(workspace),
+      adapter,
+      configured,
+      baselineAdoption: adoptionEnabled
+        ? adopted
+          ? 'complete'
+          : 'required'
+        : 'disabled',
+    };
   }
 
   #publisher(workspace: WorkspaceHandle): Publisher {
@@ -203,6 +250,19 @@ export class ReleaseService {
     if (!workspace.config.verification)
       throw new Error('Publishing requires verification.baseUrl');
 
+    const previous = this.options.repository.latestSucceeded(
+      createWorkspaceId(workspaceId),
+      configuredTarget,
+    );
+    if (
+      booleanOption(
+        workspace.config.publish.options,
+        'allowBaselineAdoption',
+      ) &&
+      !previous
+    )
+      throw new BaselineAdoptionRequiredError();
+
     let draft:
       | { readonly snapshot: DraftSnapshot; readonly ref: DocumentRef }
       | undefined;
@@ -219,10 +279,6 @@ export class ReleaseService {
     }
 
     const now = this.#now().toISOString();
-    const previous = this.options.repository.latestSucceeded(
-      createWorkspaceId(workspaceId),
-      configuredTarget,
-    );
     const release: ReleaseRecord = {
       id: createReleaseId(`release-${randomUUID()}`),
       workspaceId: createWorkspaceId(workspaceId),
@@ -252,11 +308,71 @@ export class ReleaseService {
     return { ...stored, events: [] };
   }
 
+  public adoptBaseline(
+    workspaceId: string,
+    targetId: string | undefined,
+    confirmation: string,
+  ): ReleaseDetails {
+    if (confirmation !== BASELINE_ADOPTION_CONFIRMATION)
+      throw new Error('Baseline adoption confirmation did not match');
+    const workspace = this.options.workspaces.get(workspaceId);
+    const configuredTarget = releaseTarget(workspace);
+    if (targetId !== undefined && targetId !== configuredTarget)
+      throw new Error(`Unknown release target: ${targetId}`);
+    if (
+      !booleanOption(workspace.config.publish.options, 'allowBaselineAdoption')
+    )
+      throw new Error('Baseline adoption is not enabled for this target');
+    if (!workspace.config.verification)
+      throw new Error('Baseline adoption requires verification.baseUrl');
+    if (
+      this.options.repository.latestSucceededManifest(
+        createWorkspaceId(workspaceId),
+        configuredTarget,
+      )
+    )
+      throw new BaselineAlreadyAdoptedError();
+    const publisher = this.#publisher(workspace);
+    if (!publisher.adoptBaseline)
+      throw new Error('Publisher does not support baseline adoption');
+    this.#cache(workspace);
+
+    const now = this.#now().toISOString();
+    const release: ReleaseRecord = {
+      id: createReleaseId(`release-${randomUUID()}`),
+      workspaceId: createWorkspaceId(workspaceId),
+      targetId: configuredTarget,
+      status: 'queued',
+      createdAt: now,
+      updatedAt: now,
+      stages: [],
+    };
+    const stored = this.options.repository.create(release);
+    const controller = new AbortController();
+    this.#active.set(release.id, controller);
+    const run = this.#execute(
+      workspace,
+      release,
+      controller.signal,
+      undefined,
+      { adoptBaseline: true },
+    ).finally(() => {
+      this.#active.delete(release.id);
+    });
+    this.#runs.add(run);
+    void run.then(
+      () => this.#runs.delete(run),
+      () => this.#runs.delete(run),
+    );
+    return { ...stored, events: [] };
+  }
+
   async #execute(
     workspace: WorkspaceHandle,
     release: ReleaseRecord,
     signal: AbortSignal,
     draft?: { readonly snapshot: DraftSnapshot; readonly ref: DocumentRef },
+    execution?: { readonly adoptBaseline?: boolean },
   ): Promise<void> {
     let persistedStatus = release.status;
     const previousManifest = this.options.repository.latestSucceededManifest(
@@ -312,6 +428,7 @@ export class ReleaseService {
       release,
       workspaceRoot: workspace.config.workspace.root,
       ...(previousManifest ? { previousManifest } : {}),
+      ...(execution?.adoptBaseline ? { adoptBaseline: true } : {}),
       signal,
     });
     if (result.manifest)

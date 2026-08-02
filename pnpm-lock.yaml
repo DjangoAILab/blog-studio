@@ -176,6 +176,9 @@ importers:
       '@blog-studio/core':
         specifier: workspace:*
         version: link:../core
+      '@blog-studio/release':
+        specifier: workspace:*
+        version: link:../release
       yaml:
         specifier: 2.9.0
         version: 2.9.0

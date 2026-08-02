@@ -18,6 +18,7 @@
   "dependencies": {
     "@blog-studio/adapter-command": "workspace:*",
     "@blog-studio/core": "workspace:*",
+    "@blog-studio/release": "workspace:*",
     "yaml": "2.9.0"
   },
   "devDependencies": {

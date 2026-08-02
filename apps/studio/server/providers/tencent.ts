@@ -94,6 +94,18 @@ function optionalIntegerOption(
   return value as number;
 }
 
+function optionalBooleanOption(
+  config: AdapterConfig,
+  section: string,
+  key: string,
+): boolean | undefined {
+  const value = config.options[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean')
+    throw new Error(`${section}.options.${key} must be a boolean`);
+  return value;
+}
+
 function stringArrayOption(
   config: AdapterConfig,
   section: string,
@@ -455,6 +467,11 @@ function cosPublisherOptions(
   const adapter = workspace.config.publish;
   const concurrency = optionalIntegerOption(adapter, 'publish', 'concurrency');
   const maxAttempts = optionalIntegerOption(adapter, 'publish', 'maxAttempts');
+  const allowBucketRoot = optionalBooleanOption(
+    adapter,
+    'publish',
+    'allowBucketRoot',
+  );
   return {
     client: new TencentCosSdkClient(
       sdkFactories.cos(credentials(adapter, 'publish', environment)),
@@ -470,6 +487,7 @@ function cosPublisherOptions(
     ),
     ...(concurrency === undefined ? {} : { concurrency }),
     ...(maxAttempts === undefined ? {} : { maxAttempts }),
+    ...(allowBucketRoot === undefined ? {} : { allowBucketRoot }),
   };
 }
 

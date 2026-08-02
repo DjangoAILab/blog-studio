@@ -26,6 +26,18 @@ the last verified one:
 A remote-object provider should use the retained manifest rather than issuing a
 HEAD request for every output file.
 
+## First release to an existing target
+
+Do not run an ordinary first release against a populated bucket or bucket root.
+When the provider supports baseline adoption, Studio requires an explicit
+administrator confirmation, inventories and hashes the existing public bytes,
+and stores only its marker and release state. It does not rewrite the site
+during adoption.
+
+The next release then produces a real diff from that verified baseline. If a
+marker already exists, adoption stops and the retained release state must be
+recovered instead of overwriting history.
+
 ## Verification
 
 Publishing is successful only after provider operations resolve and the public

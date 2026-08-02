@@ -44,6 +44,14 @@ class FakeClient implements CosPublisherClient {
           Object.assign(new Error('missing'), { statusCode: 404 }),
         );
   }
+  public listObjects(input: { readonly prefix: string }) {
+    this.calls.push(`list:${input.prefix}`);
+    return Promise.resolve({
+      objects: [...this.objects.entries()]
+        .filter(([key]) => key.startsWith(input.prefix))
+        .map(([key, body]) => ({ key, size: body.byteLength })),
+    });
+  }
   public copyObject(input: {
     readonly sourceKey: string;
     readonly destinationKey: string;
@@ -203,5 +211,78 @@ describe('TencentCosPublisher', () => {
       'put failed',
     );
     expect(client.active).toBe(0);
+  });
+
+  it('adopts an existing bucket-root baseline before enabling normal releases', async () => {
+    const client = new FakeClient();
+    client.objects.set('index.html', Buffer.from('old page'));
+    client.objects.set('static/legacy.bin', Buffer.from('legacy'));
+    client.objects.set('_blog-studio/unrelated.json', Buffer.from('state'));
+    const publisher = new TencentCosPublisher({
+      client,
+      bucket: 'example-123456',
+      region: 'ap-shanghai',
+      targetPrefix: '/',
+      allowBucketRoot: true,
+      statePrefix: '_blog-studio',
+      protectedPrefixes: ['static'],
+      concurrency: 2,
+      retryDelay: async () => {},
+      now: () => new Date('2026-08-02T00:00:00.000Z'),
+    });
+
+    await expect(
+      async () =>
+        await publisher.plan({
+          release: release(),
+          outputDirectory: '.',
+          manifest: createReleaseManifest({
+            version: 1,
+            releaseId: release().id,
+            targetId: 'production',
+            createdAt: '2026-08-02T00:00:00.000Z',
+            verificationToken: 'token',
+            entries: [],
+          }),
+        }),
+    ).rejects.toThrow('requires an adopted baseline');
+
+    const adopted = await publisher.adoptBaseline(
+      { release: release(), verificationToken: 'adoption-token' },
+      () => {},
+    );
+    expect(adopted.manifest.entries.map((item) => item.path)).toEqual([
+      'blog-studio-release.json',
+      'index.html',
+      'static/legacy.bin',
+    ]);
+    expect(client.objects.has('blog-studio-release.json')).toBe(true);
+    expect(client.objects.has('_blog-studio/active-manifest.json')).toBe(true);
+    expect(
+      client.calls.some(
+        (call) => call === 'put:index.html' || call === 'put:static/legacy.bin',
+      ),
+    ).toBe(false);
+  });
+
+  it('refuses to adopt a deployment that already has a release marker', async () => {
+    const client = new FakeClient();
+    client.objects.set('index.html', Buffer.from('old page'));
+    client.objects.set('blog-studio-release.json', Buffer.from('{}'));
+    const publisher = new TencentCosPublisher({
+      client,
+      bucket: 'example-123456',
+      region: 'ap-shanghai',
+      targetPrefix: '/',
+      allowBucketRoot: true,
+      statePrefix: '_blog-studio',
+    });
+    await expect(
+      publisher.adoptBaseline(
+        { release: release(), verificationToken: 'adoption-token' },
+        () => {},
+      ),
+    ).rejects.toThrow('requires recovery, not adoption');
+    expect(client.calls.some((call) => call.startsWith('put:'))).toBe(false);
   });
 });

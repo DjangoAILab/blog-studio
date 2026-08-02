@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { extname } from 'node:path';
 
 import {
   createContentHash,
@@ -6,9 +7,60 @@ import {
   type ManifestEntry,
   type PublishPlan,
   type ReleaseManifest,
+  type ReleaseId,
 } from '@blog-studio/core';
 
 const markerPath = 'blog-studio-release.json';
+
+function mediaType(path: string): string {
+  const types: Readonly<Record<string, string>> = {
+    '.css': 'text/css; charset=utf-8',
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.xml': 'application/xml; charset=utf-8',
+  };
+  return types[extname(path).toLowerCase()] ?? 'application/octet-stream';
+}
+
+export function manifestEntryForBytes(
+  path: string,
+  bytes: Uint8Array,
+): ManifestEntry {
+  assertPortablePath(path);
+  const extension = extname(path).toLowerCase();
+  return {
+    path,
+    contentHash: createContentHash(
+      `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+    ),
+    byteLength: bytes.byteLength,
+    mediaType: mediaType(path),
+    cacheClass:
+      extension === '.html'
+        ? 'page'
+        : extension === '.xml' || extension === '.json'
+          ? 'metadata'
+          : 'immutable',
+  };
+}
+
+export function createReleaseMarker(input: {
+  readonly releaseId: ReleaseId;
+  readonly verificationToken: string;
+  readonly manifestHash: ContentHash;
+}): { readonly bytes: Uint8Array; readonly entry: ManifestEntry } {
+  const bytes = Buffer.from(
+    `${JSON.stringify({
+      version: 1,
+      releaseId: input.releaseId,
+      verificationToken: input.verificationToken,
+      manifestHash: input.manifestHash,
+    })}\n`,
+  );
+  return { bytes, entry: manifestEntryForBytes(markerPath, bytes) };
+}
 
 function assertPortablePath(path: string): void {
   if (

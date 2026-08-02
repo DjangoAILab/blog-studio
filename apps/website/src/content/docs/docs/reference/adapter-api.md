@@ -88,6 +88,10 @@ export interface Publisher extends AdapterDescriptor {
   ): Promise<PublishBatchResult>;
   finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
+  adoptBaseline?(
+    input: BaselineAdoptionInput,
+    events: PublishEventSink,
+  ): Promise<BaselineAdoptionResult>;
 }
 ```
 

@@ -1,9 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
-  createContentHash,
   isTerminalReleaseStatus,
   transitionRelease,
   type CacheInvalidation,
@@ -21,6 +20,7 @@ import {
 
 import {
   createReleaseManifest,
+  createReleaseMarker,
   hashReleaseManifest,
   manifestsHaveSameContent,
   RELEASE_MARKER_PATH,
@@ -53,6 +53,7 @@ export interface RunReleaseInput {
   readonly release: ReleaseRecord;
   readonly workspaceRoot: string;
   readonly previousManifest?: ReleaseManifest;
+  readonly adoptBaseline?: boolean;
   readonly signal?: AbortSignal;
 }
 
@@ -95,26 +96,15 @@ async function defaultWriteMarker(input: {
   readonly verificationToken: string;
   readonly manifestHash: ContentHash;
 }): Promise<ManifestEntry> {
-  const bytes = Buffer.from(
-    `${JSON.stringify({
-      version: 1,
-      releaseId: input.releaseId,
-      verificationToken: input.verificationToken,
-      manifestHash: input.manifestHash,
-    })}\n`,
+  const marker = createReleaseMarker(input);
+  await writeFile(
+    join(input.outputDirectory, RELEASE_MARKER_PATH),
+    marker.bytes,
+    {
+      flag: 'w',
+    },
   );
-  await writeFile(join(input.outputDirectory, RELEASE_MARKER_PATH), bytes, {
-    flag: 'w',
-  });
-  return {
-    path: RELEASE_MARKER_PATH,
-    contentHash: createContentHash(
-      `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-    ),
-    byteLength: bytes.byteLength,
-    mediaType: 'application/json',
-    cacheClass: 'metadata',
-  };
+  return marker.entry;
 }
 
 export class ReleaseOrchestrator {
@@ -208,6 +198,60 @@ export class ReleaseOrchestrator {
       emit('preflight', 'Generator compatibility preflight passed');
 
       current = await this.#transition(current, 'building');
+      if (input.adoptBaseline) {
+        if (input.previousManifest)
+          throw new Error('A verified baseline already exists');
+        if (!this.options.publisher.adoptBaseline)
+          throw new Error('Publisher does not support baseline adoption');
+        emit('building', 'Inspecting the existing deployment read-only');
+        current = await this.#transition(current, 'planning');
+        const verificationToken = this.#token();
+        current = await this.#transition(current, 'uploading-assets');
+        const adopted = await this.options.publisher.adoptBaseline(
+          { release: current, verificationToken },
+          eventSink,
+        );
+        mutated = true;
+        manifest = adopted.manifest;
+        publishResult = adopted.publishResult;
+        current = {
+          ...current,
+          manifestHash: hashReleaseManifest(adopted.manifest),
+        };
+        current = await this.#transition(current, 'uploading-pages');
+        aborted();
+
+        current = await this.#transition(current, 'invalidating-cache');
+        const invalidation = cacheInvalidation(
+          adopted.plan,
+          this.options.baseUrl,
+        );
+        if (
+          this.options.cache &&
+          (invalidation.urls.length || invalidation.directories.length)
+        )
+          await this.options.cache.invalidate(invalidation);
+
+        current = await this.#transition(current, 'verifying');
+        const verified = await this.options.verifier.verify({
+          baseUrl: this.options.baseUrl,
+          markerPath: RELEASE_MARKER_PATH,
+          expectedReleaseId: current.id,
+          expectedVerificationToken: verificationToken,
+          expectedManifestHash: adopted.verificationManifestHash,
+        });
+        if (!verified)
+          throw new Error('Public baseline marker verification failed');
+        current = await this.#transition(current, 'succeeded');
+        emit('verifying', 'Existing deployment baseline was adopted safely');
+        return {
+          release: current,
+          events,
+          noOp: false,
+          manifest,
+          publishResult,
+        };
+      }
       if (this.options.prepare) {
         await this.options.prepare();
         emit('building', 'Workspace content prepared for release');

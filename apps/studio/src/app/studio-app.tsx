@@ -267,6 +267,7 @@ export function StudioApp() {
           );
           setRelease(next);
           if (becameTerminal && selected) {
+            void loadWorkspaces();
             void api
               .document(
                 workspace.id,
@@ -387,20 +388,43 @@ export function StudioApp() {
           className="publish-button"
           disabled={
             !workspace?.publishTarget.configured ||
-            !selected ||
-            ['changed', 'saving', 'error', 'conflict'].includes(saveState) ||
+            (workspace.publishTarget.baselineAdoption !== 'required' &&
+              (!selected ||
+                ['changed', 'saving', 'error', 'conflict'].includes(
+                  saveState,
+                ))) ||
             (release !== undefined &&
               !terminalReleaseStatuses.has(release.release.status))
           }
           title={
-            workspace?.publishTarget.configured
-              ? '发布当前已保存文章与站点变更'
-              : '管理员尚未配置发布目标'
+            workspace?.publishTarget.baselineAdoption === 'required'
+              ? '先逐个校验现有对象，仅写入可验证发布标记'
+              : workspace?.publishTarget.configured
+                ? '发布当前已保存文章与站点变更'
+                : '管理员尚未配置发布目标'
           }
           onClick={() => {
-            if (!workspace || !selected) return;
+            if (!workspace) return;
             setPanel('preview');
             setReleaseError('');
+            if (workspace.publishTarget.baselineAdoption === 'required') {
+              const confirmed = window.confirm(
+                '接管前会只读下载并校验现有部署，校验完成后仅写入 Blog Studio 发布标记。不会覆盖文章或旧资源。继续吗？',
+              );
+              if (!confirmed) return;
+              void api
+                .adoptBaseline(workspace.id, workspace.publishTarget.id)
+                .then(setRelease)
+                .catch((reason: unknown) =>
+                  setReleaseError(
+                    reason instanceof Error
+                      ? reason.message
+                      : '现有部署接管失败',
+                  ),
+                );
+              return;
+            }
+            if (!selected) return;
             void api
               .startRelease({
                 workspaceId: workspace.id,
@@ -425,7 +449,9 @@ export function StudioApp() {
         >
           {release && !terminalReleaseStatuses.has(release.release.status)
             ? `${releaseLabels[release.release.status]}…`
-            : '发布文章 →'}
+            : workspace?.publishTarget.baselineAdoption === 'required'
+              ? '核验并接管现有站点 →'
+              : '发布文章 →'}
         </button>
         <button
           className="preview-button"
@@ -725,7 +751,9 @@ export function StudioApp() {
                     取消发布
                   </button>
                 ) : null}
-                {release.release.status === 'succeeded' && workspace ? (
+                {release.release.status === 'succeeded' &&
+                release.release.previousReleaseId &&
+                workspace ? (
                   <button
                     className="danger-control"
                     onClick={() => {

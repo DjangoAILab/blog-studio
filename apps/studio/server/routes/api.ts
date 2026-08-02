@@ -13,7 +13,10 @@ import type { SqliteDraftRepository } from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
 
 import type { PreviewService } from '../services/previews.js';
-import type { ReleaseService } from '../services/releases.js';
+import {
+  BASELINE_ADOPTION_CONFIRMATION,
+  type ReleaseService,
+} from '../services/releases.js';
 import type { WorkspaceService } from '../services/workspaces.js';
 
 interface ApiDependencies {
@@ -211,6 +214,40 @@ export function registerApiRoutes(
       );
       return reply.code(202).send(release);
     },
+  );
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: { targetId?: string; confirmation: string };
+  }>(
+    '/api/workspaces/:workspaceId/releases/adopt-baseline',
+    {
+      schema: {
+        params: workspaceParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['confirmation'],
+          properties: {
+            targetId: { type: 'string', minLength: 1, maxLength: 64 },
+            confirmation: {
+              type: 'string',
+              enum: [BASELINE_ADOPTION_CONFIRMATION],
+            },
+          },
+        },
+      },
+    },
+    (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          dependencies.releases.adoptBaseline(
+            request.params.workspaceId,
+            request.body.targetId,
+            request.body.confirmation,
+          ),
+        ),
   );
 
   app.delete<{

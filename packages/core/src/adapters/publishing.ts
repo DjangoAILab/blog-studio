@@ -3,6 +3,7 @@ import type {
   ReleaseManifest,
   ReleaseRecord,
 } from '../domain/releases.js';
+import type { ContentHash } from '../domain/identifiers.js';
 import type { AdapterDescriptor } from './common.js';
 
 export interface PublishInput {
@@ -39,6 +40,18 @@ export interface RollbackResult {
   readonly restoredFiles: number;
 }
 
+export interface BaselineAdoptionInput {
+  readonly release: ReleaseRecord;
+  readonly verificationToken: string;
+}
+
+export interface BaselineAdoptionResult {
+  readonly manifest: ReleaseManifest;
+  readonly verificationManifestHash: ContentHash;
+  readonly plan: PublishPlan;
+  readonly publishResult: PublishResult;
+}
+
 export interface Publisher extends AdapterDescriptor {
   plan(input: PublishInput): Promise<PublishPlan>;
   apply(
@@ -48,4 +61,8 @@ export interface Publisher extends AdapterDescriptor {
   ): Promise<PublishBatchResult>;
   finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
+  adoptBaseline?(
+    input: BaselineAdoptionInput,
+    events: PublishEventSink,
+  ): Promise<BaselineAdoptionResult>;
 }

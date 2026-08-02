@@ -4,6 +4,7 @@ import {
   createReleaseId,
   createWorkspaceId,
   type BuildResult,
+  type BaselineAdoptionResult,
   type CacheInvalidation,
   type CacheProvider,
   type CacheResult,
@@ -25,6 +26,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ReleaseOrchestrator,
   createReleaseManifest,
+  hashReleaseManifest,
   type ReleaseVerifier,
   type VerifyReleaseInput,
 } from '../src/index.js';
@@ -37,6 +39,7 @@ class FakeGenerator implements GeneratorAdapter {
   public readonly displayName = 'Fake generator';
   public readonly capabilities = { preview: true, drafts: true, mdx: false };
   public buildError?: Error;
+  public buildCalls = 0;
 
   public detect(): Promise<DetectionResult> {
     return Promise.resolve({ detected: true, confidence: 1, diagnostics: [] });
@@ -61,6 +64,7 @@ class FakeGenerator implements GeneratorAdapter {
     return Promise.resolve('https://blog.example/');
   }
   public build(): Promise<BuildResult> {
+    this.buildCalls++;
     if (this.buildError) return Promise.reject(this.buildError);
     return Promise.resolve({
       outputDirectory,
@@ -108,6 +112,7 @@ class FakePublisher implements Publisher {
   public failPhase?: 'assets' | 'pages';
   public onApply?: (phase: 'assets' | 'pages') => void;
   public planResult?: PublishPlan;
+  public adoptResult?: BaselineAdoptionResult;
 
   public plan(input: PublishInput): Promise<PublishPlan> {
     this.calls.push('plan');
@@ -151,6 +156,12 @@ class FakePublisher implements Publisher {
   public rollback(release: ReleaseRecord) {
     this.calls.push('rollback');
     return Promise.resolve({ restoredReleaseId: release.id, restoredFiles: 1 });
+  }
+  public adoptBaseline() {
+    this.calls.push('adopt-baseline');
+    return this.adoptResult
+      ? Promise.resolve(this.adoptResult)
+      : Promise.reject(new Error('adoption unsupported'));
   }
 }
 
@@ -261,6 +272,85 @@ describe('ReleaseOrchestrator', () => {
     }).run({ release: release(), workspaceRoot: '/workspace' });
     expect(result.release.status).toBe('failed');
     expect(publisher.calls).toEqual([]);
+  });
+
+  it('adopts a remote baseline without rebuilding or overwriting site files', async () => {
+    const generator = new FakeGenerator();
+    const publisher = new FakePublisher();
+    const cache = new FakeCache();
+    const verifier = new FakeVerifier();
+    const baseline = createReleaseManifest({
+      version: 1,
+      releaseId: release().id,
+      targetId: 'production',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      verificationToken: 'verification-token',
+      entries: [
+        {
+          path: 'index.html',
+          contentHash: createContentHash(`sha256:${'a'.repeat(64)}`),
+          byteLength: 20,
+          mediaType: 'text/html; charset=utf-8',
+          cacheClass: 'page',
+        },
+      ],
+    });
+    const marker = {
+      path: 'blog-studio-release.json',
+      contentHash: createContentHash(`sha256:${'b'.repeat(64)}`),
+      byteLength: 80,
+      mediaType: 'application/json; charset=utf-8',
+      cacheClass: 'metadata' as const,
+    };
+    const manifest = createReleaseManifest({
+      ...baseline,
+      entries: [...baseline.entries, marker],
+    });
+    const plan: PublishPlan = {
+      releaseId: release().id,
+      targetId: 'production',
+      sourceDirectory: '.',
+      manifest,
+      previousManifest: baseline,
+      additions: [marker],
+      changes: [],
+      deletions: [],
+      protectedPrefixes: ['static'],
+    };
+    publisher.adoptResult = {
+      manifest,
+      verificationManifestHash: hashReleaseManifest(baseline),
+      plan,
+      publishResult: {
+        manifestPath: '_blog-studio/active-manifest.json',
+        uploaded: 1,
+        deleted: 0,
+      },
+    } satisfies BaselineAdoptionResult;
+
+    const result = await new ReleaseOrchestrator({
+      generator,
+      publisher,
+      cache,
+      verifier,
+      baseUrl: 'https://blog.example/',
+      createVerificationToken: () => 'verification-token',
+    }).run({
+      release: release(),
+      workspaceRoot: '/workspace',
+      adoptBaseline: true,
+    });
+
+    expect(result.release.status).toBe('succeeded');
+    expect(generator.buildCalls).toBe(0);
+    expect(publisher.calls).toEqual(['adopt-baseline']);
+    expect(cache.inputs[0]).toEqual({
+      urls: ['https://blog.example/blog-studio-release.json'],
+      directories: [],
+    });
+    expect(verifier.input?.expectedManifestHash).toBe(
+      hashReleaseManifest(baseline),
+    );
   });
 
   it('leaves the publisher untouched when workspace preparation fails', async () => {

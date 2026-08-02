@@ -5,6 +5,8 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   ADAPTER_API_VERSION,
   createReleaseId,
+  type BaselineAdoptionInput,
+  type BaselineAdoptionResult,
   type ManifestEntry,
   type PublishEventSink,
   type PublishInput,
@@ -12,7 +14,19 @@ import {
   type Publisher,
   type ReleaseRecord,
 } from '@blog-studio/core';
-import { createPublishPlan } from '@blog-studio/release';
+import {
+  RELEASE_MARKER_PATH,
+  createPublishPlan,
+  createReleaseManifest,
+  createReleaseMarker,
+  hashReleaseManifest,
+  manifestEntryForBytes,
+} from '@blog-studio/release';
+
+export interface CosPublisherObjectSummary {
+  readonly key: string;
+  readonly size: number;
+}
 
 export interface CosPublisherClient {
   putObject(input: {
@@ -29,6 +43,15 @@ export interface CosPublisherClient {
     readonly region: string;
     readonly key: string;
   }): Promise<Uint8Array>;
+  listObjects(input: {
+    readonly bucket: string;
+    readonly region: string;
+    readonly prefix: string;
+    readonly continuationToken?: string;
+  }): Promise<{
+    readonly objects: readonly CosPublisherObjectSummary[];
+    readonly nextContinuationToken?: string;
+  }>;
   copyObject(input: {
     readonly bucket: string;
     readonly region: string;
@@ -47,6 +70,7 @@ export interface TencentCosPublisherOptions {
   readonly bucket: string;
   readonly region: string;
   readonly targetPrefix: string;
+  readonly allowBucketRoot?: boolean;
   readonly statePrefix: string;
   readonly protectedPrefixes?: readonly string[];
   readonly concurrency?: number;
@@ -61,8 +85,9 @@ interface RollbackState {
   readonly backedUpPaths: readonly string[];
 }
 
-function portablePrefix(value: string): string {
+function portablePrefix(value: string, allowRoot = false): string {
   const prefix = value.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+  if (!prefix && allowRoot && value.trim() === '/') return '';
   if (
     !prefix ||
     prefix.split('/').some((part) => !part || part === '.' || part === '..')
@@ -161,7 +186,10 @@ export class TencentCosPublisher implements Publisher {
     this.#client = options.client;
     this.#bucket = options.bucket;
     this.#region = options.region;
-    this.#targetPrefix = portablePrefix(options.targetPrefix);
+    this.#targetPrefix = portablePrefix(
+      options.targetPrefix,
+      options.allowBucketRoot,
+    );
     this.#statePrefix = portablePrefix(options.statePrefix);
     this.#protectedPrefixes = options.protectedPrefixes ?? [];
     this.#concurrency = options.concurrency ?? 6;
@@ -183,7 +211,7 @@ export class TencentCosPublisher implements Publisher {
   }
 
   #targetKey(path: string): string {
-    return `${this.#targetPrefix}/${path}`;
+    return this.#targetPrefix ? `${this.#targetPrefix}/${path}` : path;
   }
 
   #releaseKey(releaseId: string, suffix: string): string {
@@ -207,6 +235,10 @@ export class TencentCosPublisher implements Publisher {
   }
 
   public plan(input: PublishInput): Promise<PublishPlan> {
+    if (!this.#targetPrefix && !input.previousManifest)
+      throw new Error(
+        'Bucket-root publishing requires an adopted baseline manifest',
+      );
     const plan = createPublishPlan(
       input.outputDirectory,
       input.manifest,
@@ -231,6 +263,157 @@ export class TencentCosPublisher implements Publisher {
         key,
       }),
     );
+  }
+
+  async #baselineObjects(): Promise<readonly CosPublisherObjectSummary[]> {
+    const prefix = this.#targetPrefix ? `${this.#targetPrefix}/` : '';
+    const objects: CosPublisherObjectSummary[] = [];
+    const seenTokens = new Set<string>();
+    let continuationToken: string | undefined;
+    do {
+      const page = await this.#retry(async () =>
+        this.#client.listObjects({
+          bucket: this.#bucket,
+          region: this.#region,
+          prefix,
+          ...(continuationToken ? { continuationToken } : {}),
+        }),
+      );
+      objects.push(
+        ...page.objects.filter((object) => {
+          const relativeKey = object.key.slice(prefix.length);
+          return (
+            object.key.startsWith(prefix) &&
+            relativeKey.length > 0 &&
+            !relativeKey.endsWith('/') &&
+            object.key !== this.#statePrefix &&
+            !object.key.startsWith(`${this.#statePrefix}/`)
+          );
+        }),
+      );
+      continuationToken = page.nextContinuationToken;
+      if (continuationToken) {
+        if (seenTokens.has(continuationToken))
+          throw new Error('COS baseline listing repeated a continuation token');
+        seenTokens.add(continuationToken);
+      }
+    } while (continuationToken);
+    return objects.sort((left, right) => left.key.localeCompare(right.key));
+  }
+
+  public async adoptBaseline(
+    input: BaselineAdoptionInput,
+    events: PublishEventSink,
+  ): Promise<BaselineAdoptionResult> {
+    const prefix = this.#targetPrefix ? `${this.#targetPrefix}/` : '';
+    const objects = await this.#baselineObjects();
+    if (objects.length === 0)
+      throw new Error('Cannot adopt an empty COS deployment');
+    if (
+      objects.some(
+        (object) => object.key.slice(prefix.length) === RELEASE_MARKER_PATH,
+      )
+    )
+      throw new Error(
+        'Existing Blog Studio release marker requires recovery, not adoption',
+      );
+
+    const entries = new Array<ManifestEntry>(objects.length);
+    let verified = 0;
+    await mapBounded(objects, this.#concurrency, async (object, index) => {
+      const bytes = await this.#get(object.key);
+      if (bytes.byteLength !== object.size)
+        throw new Error(
+          `COS object size changed during adoption: ${object.key}`,
+        );
+      entries[index] = manifestEntryForBytes(
+        object.key.slice(prefix.length),
+        bytes,
+      );
+      verified++;
+      if (verified === objects.length || verified % 25 === 0)
+        events({
+          at: this.#now().toISOString(),
+          stage: 'building',
+          level: 'info',
+          message: `Verified ${verified} existing COS objects`,
+          completed: verified,
+          total: objects.length,
+        });
+    });
+
+    const baseline = createReleaseManifest({
+      version: 1,
+      releaseId: input.release.id,
+      targetId: input.release.targetId,
+      createdAt: this.#now().toISOString(),
+      verificationToken: input.verificationToken,
+      entries,
+    });
+    const verificationManifestHash = hashReleaseManifest(baseline);
+    const marker = createReleaseMarker({
+      releaseId: input.release.id,
+      verificationToken: input.verificationToken,
+      manifestHash: verificationManifestHash,
+    });
+    const manifest = createReleaseManifest({
+      ...baseline,
+      entries: [...baseline.entries, marker.entry],
+    });
+    const plan = createPublishPlan(
+      '.',
+      manifest,
+      baseline,
+      this.#protectedPrefixes,
+    );
+
+    let prepared = false;
+    try {
+      await this.#prepare(plan);
+      prepared = true;
+      await this.#retry(async () =>
+        this.#client.putObject({
+          bucket: this.#bucket,
+          region: this.#region,
+          key: this.#targetKey(RELEASE_MARKER_PATH),
+          body: marker.bytes,
+          contentType: marker.entry.mediaType,
+          cacheControl: cacheControl(marker.entry),
+          metadata: {
+            'blog-studio-release': input.release.id,
+            'blog-studio-hash': marker.entry.contentHash,
+          },
+        }),
+      );
+      events({
+        at: this.#now().toISOString(),
+        stage: 'uploading-pages',
+        level: 'info',
+        message: `Uploaded ${RELEASE_MARKER_PATH} after baseline verification`,
+        completed: 1,
+        total: 1,
+      });
+      const publishResult = await this.finalize(plan);
+      return { manifest, verificationManifestHash, plan, publishResult };
+    } catch (error) {
+      if (prepared) {
+        try {
+          await this.rollback({ ...input.release, status: 'rolling-back' });
+        } catch (rollbackError) {
+          const adoptionMessage =
+            error instanceof Error ? error.message : 'unknown adoption error';
+          const rollbackMessage =
+            rollbackError instanceof Error
+              ? rollbackError.message
+              : 'unknown rollback error';
+          throw new Error(
+            `Baseline adoption failed (${adoptionMessage}) and rollback also failed: ${rollbackMessage}`,
+            { cause: rollbackError },
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async #prepare(plan: PublishPlan): Promise<RollbackState> {

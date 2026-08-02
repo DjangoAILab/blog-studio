@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { FastifyInstance } from 'fastify';
+import {
+  TencentCosPublisher,
+  type CosPublisherClient,
+} from '@blog-studio/publisher-cos';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -13,10 +17,15 @@ const authToken = 'test-auth-token-at-least-sixteen';
 const cookieSecret = 'test-cookie-secret-with-at-least-thirty-two-characters';
 const apps: FastifyInstance[] = [];
 
-async function fixture(): Promise<{
+interface FixtureOptions {
+  readonly existingCosObjects?: Map<string, Uint8Array>;
+}
+
+async function fixture(options: FixtureOptions = {}): Promise<{
   readonly app: FastifyInstance;
   readonly workspace: string;
   readonly publishTarget: string;
+  readonly cosObjects?: Map<string, Uint8Array>;
 }> {
   const parent = await mkdtemp(join(tmpdir(), 'blog-studio-api-'));
   const workspace = join(parent, 'site');
@@ -51,6 +60,7 @@ async function fixture(): Promise<{
   );
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
+  const usesCosBaseline = options.existingCosObjects !== undefined;
   await writeFile(
     configPath,
     `version: 1
@@ -69,13 +79,55 @@ assets:
     protectedPrefixes: [static]
     publicBaseUrl: https://blog.example.test/
 publish:
-  adapter: filesystem
+  adapter: ${usesCosBaseline ? 'tencent-cos' : 'filesystem'}
   options:
-    directory: ${publishTarget}
+    ${
+      usesCosBaseline
+        ? `targetId: production
+    allowBaselineAdoption: true`
+        : `directory: ${publishTarget}`
+    }
 verification:
   baseUrl: https://blog.example.test
 `,
   );
+
+  const cosObjects = options.existingCosObjects;
+  const cosClient: CosPublisherClient | undefined = cosObjects
+    ? {
+        putObject: ({ key, body }) => {
+          cosObjects.set(key, Uint8Array.from(body));
+          return Promise.resolve();
+        },
+        getObject: ({ key }) => {
+          const body = cosObjects.get(key);
+          if (!body)
+            throw Object.assign(new Error(`Missing COS object: ${key}`), {
+              statusCode: 404,
+            });
+          return Promise.resolve(Uint8Array.from(body));
+        },
+        listObjects: ({ prefix }) =>
+          Promise.resolve({
+            objects: [...cosObjects.entries()]
+              .filter(([key]) => key.startsWith(prefix))
+              .map(([key, body]) => ({ key, size: body.byteLength })),
+          }),
+        copyObject: ({ sourceKey, destinationKey }) => {
+          const body = cosObjects.get(sourceKey);
+          if (!body)
+            throw Object.assign(new Error(`Missing COS object: ${sourceKey}`), {
+              statusCode: 404,
+            });
+          cosObjects.set(destinationKey, Uint8Array.from(body));
+          return Promise.resolve();
+        },
+        deleteObject: ({ key }) => {
+          cosObjects.delete(key);
+          return Promise.resolve();
+        },
+      }
+    : undefined;
 
   const app = await createStudioServer({
     configurationPaths: [configPath],
@@ -89,9 +141,30 @@ verification:
     releaseVerifierFactory: () => ({
       verify: () => Promise.resolve(true),
     }),
+    ...(cosClient
+      ? {
+          publisherFactories: {
+            'tencent-cos': () =>
+              new TencentCosPublisher({
+                client: cosClient,
+                bucket: 'test-bucket-1234567890',
+                region: 'ap-test',
+                targetPrefix: '/',
+                allowBucketRoot: true,
+                statePrefix: '_blog-studio',
+                retryDelay: () => Promise.resolve(),
+              }),
+          },
+        }
+      : {}),
   });
   apps.push(app);
-  return { app, workspace, publishTarget };
+  return {
+    app,
+    workspace,
+    publishTarget,
+    ...(cosObjects ? { cosObjects } : {}),
+  };
 }
 
 async function login(app: FastifyInstance): Promise<{
@@ -499,5 +572,89 @@ describe('Studio workspace API', () => {
         'utf8',
       ),
     ).toContain('Published draft body');
+  });
+
+  it('requires and safely adopts a populated COS baseline before publishing', async () => {
+    const legacyBytes = Buffer.from('legacy production homepage');
+    const existingCosObjects = new Map<string, Uint8Array>([
+      ['index.html', legacyBytes],
+      ['static/legacy.png', Uint8Array.from([1, 2, 3, 4])],
+    ]);
+    const { app, cosObjects } = await fixture({ existingCosObjects });
+    if (!cosObjects) throw new Error('COS fixture was not created');
+    const session = await login(app);
+    const getHeaders = { cookie: session.cookie };
+    const mutationHeaders = {
+      ...getHeaders,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+
+    const before = await app.inject({
+      url: '/api/workspaces',
+      headers: getHeaders,
+    });
+    expect(before.json()).toMatchObject({
+      workspaces: [
+        { publishTarget: { baselineAdoption: 'required', configured: true } },
+      ],
+    });
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers: mutationHeaders,
+      payload: { targetId: 'production' },
+    });
+    expect(blocked.statusCode, blocked.body).toBe(409);
+
+    const invalidConfirmation = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases/adopt-baseline',
+      headers: mutationHeaders,
+      payload: { confirmation: 'yes' },
+    });
+    expect(invalidConfirmation.statusCode).toBe(400);
+
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases/adopt-baseline',
+      headers: mutationHeaders,
+      payload: { confirmation: 'ADOPT EXISTING DEPLOYMENT' },
+    });
+    expect(started.statusCode, started.body).toBe(202);
+    const releaseId = started.json<ReleaseDetails>().release.id;
+    expect(
+      (await waitForRelease(app, session.cookie, releaseId)).release.status,
+    ).toBe('succeeded');
+
+    expect(Buffer.from(cosObjects.get('index.html') ?? [])).toEqual(
+      legacyBytes,
+    );
+    expect(cosObjects.get('static/legacy.png')).toEqual(
+      Uint8Array.from([1, 2, 3, 4]),
+    );
+    expect(cosObjects.has('blog-studio-release.json')).toBe(true);
+    expect(
+      [...cosObjects.keys()].some((key) =>
+        key.startsWith(`_blog-studio/releases/${releaseId}/`),
+      ),
+    ).toBe(true);
+
+    const after = await app.inject({
+      url: '/api/workspaces',
+      headers: getHeaders,
+    });
+    expect(after.json()).toMatchObject({
+      workspaces: [
+        { publishTarget: { baselineAdoption: 'complete', configured: true } },
+      ],
+    });
+    const repeated = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases/adopt-baseline',
+      headers: mutationHeaders,
+      payload: { confirmation: 'ADOPT EXISTING DEPLOYMENT' },
+    });
+    expect(repeated.statusCode, repeated.body).toBe(409);
   });
 });

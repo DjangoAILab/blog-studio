@@ -19,6 +19,8 @@ import Fastify, {
 import { registerApiRoutes } from './routes/api.js';
 import { PreviewService } from './services/previews.js';
 import {
+  BaselineAdoptionRequiredError,
+  BaselineAlreadyAdoptedError,
   ReleaseService,
   type ReleaseServiceOptions,
 } from './services/releases.js';
@@ -245,21 +247,27 @@ export async function createStudioServer(
         ? 409
         : error instanceof ActiveReleaseConflictError
           ? 409
-          : error instanceof AssetPolicyError
-            ? error.code === 'ASSET_TOO_LARGE'
-              ? 413
-              : 422
-            : message === 'Draft source revision conflict'
-              ? 409
-              : message.startsWith('Invalid Hexo document date:')
-                ? 422
-                : validationError
-                  ? 400
-                  : declaredStatus !== undefined
-                    ? declaredStatus
-                    : /^(Unknown|Unsupported)/.test(message)
-                      ? 404
-                      : 500;
+          : error instanceof BaselineAdoptionRequiredError ||
+              error instanceof BaselineAlreadyAdoptedError ||
+              message ===
+                'Existing deployment baseline must be adopted before publishing' ||
+              message === 'A verified baseline already exists'
+            ? 409
+            : error instanceof AssetPolicyError
+              ? error.code === 'ASSET_TOO_LARGE'
+                ? 413
+                : 422
+              : message === 'Draft source revision conflict'
+                ? 409
+                : message.startsWith('Invalid Hexo document date:')
+                  ? 422
+                  : validationError
+                    ? 400
+                    : declaredStatus !== undefined
+                      ? declaredStatus
+                      : /^(Unknown|Unsupported)/.test(message)
+                        ? 404
+                        : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({

@@ -5,6 +5,7 @@ export interface WorkspaceSummary {
     readonly id: string;
     readonly adapter: string;
     readonly configured: boolean;
+    readonly baselineAdoption: 'disabled' | 'required' | 'complete';
   };
 }
 
@@ -31,6 +32,7 @@ export interface ReleaseDetails {
     readonly status: ReleaseStatus;
     readonly createdAt: string;
     readonly updatedAt: string;
+    readonly previousReleaseId?: string;
     readonly stages: readonly {
       readonly name: string;
       readonly status:
@@ -189,6 +191,19 @@ export class StudioApi {
         body: JSON.stringify({
           targetId: input.targetId,
           ...(input.draft ? { draft: input.draft } : {}),
+        }),
+      },
+    );
+  }
+
+  public adoptBaseline(workspaceId: string, targetId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/workspaces/${workspaceId}/releases/adopt-baseline`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          targetId,
+          confirmation: 'ADOPT EXISTING DEPLOYMENT',
         }),
       },
     );
