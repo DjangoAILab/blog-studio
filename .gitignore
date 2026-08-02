@@ -13,3 +13,5 @@ apps/website/public/favicon.png
 apps/website/.astro/
 apps/website/test-results/
 apps/website/playwright-report/
+apps/studio/test-results/
+apps/studio/playwright-report/

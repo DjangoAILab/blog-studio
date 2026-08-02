@@ -1,0 +1,37 @@
+import { expect, test } from '@playwright/test';
+
+test('creates, autosaves, reloads, previews, and discards a native draft', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByLabel('访问口令').fill('browser-test-auth-token');
+  await page.getByRole('button', { name: '进入 Studio' }).click();
+  await expect(page.getByLabel('当前工作区')).toHaveValue('test-browser-blog');
+
+  await page.getByRole('button', { name: '新建文章' }).click();
+  await page.getByLabel('标题', { exact: true }).fill('浏览器旅程');
+  await page.getByLabel(/Slug/).fill('journey-draft');
+  await page.getByRole('button', { name: '建立原生草稿' }).click();
+  await expect(page.getByLabel('文章标题')).toHaveValue('浏览器旅程');
+
+  await page.getByRole('button', { name: 'Markdown 源码' }).click();
+  await page
+    .getByLabel('Markdown 源码')
+    .fill('# 浏览器可靠草稿\n\n刷新后仍然存在。\n');
+  await expect(page.getByText('刚刚保存')).toBeVisible({ timeout: 5_000 });
+
+  await page.reload();
+  await expect(page.getByLabel('文章标题')).toHaveValue('浏览器旅程');
+  await page.getByRole('button', { name: 'Markdown 源码' }).click();
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue(/刷新后仍然存在/);
+
+  await page.getByRole('button', { name: '预览全文' }).click();
+  await expect(page.getByTitle('文章真实预览')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '放弃修改' }).click();
+  await expect(page.getByText('已同步')).toBeVisible();
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue('');
+});

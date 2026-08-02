@@ -63,6 +63,10 @@ export interface DocumentSummary {
 
 export interface DocumentPayload {
   readonly source: {
+    readonly ref: {
+      readonly documentId: string;
+      readonly collectionId: string;
+    };
     readonly revision: string;
     readonly frontMatter: Readonly<Record<string, unknown>>;
     readonly body: string;

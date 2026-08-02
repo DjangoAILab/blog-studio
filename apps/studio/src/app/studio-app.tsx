@@ -137,6 +137,10 @@ export function StudioApp() {
   const [uploads, setUploads] = useState<readonly AssetUpload[]>([]);
   const [release, setRelease] = useState<ReleaseDetails>();
   const [releaseError, setReleaseError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createTitle, setCreateTitle] = useState('');
+  const [createSlug, setCreateSlug] = useState('');
+  const [createError, setCreateError] = useState('');
   const assetInput = useRef<HTMLInputElement>(null);
 
   function uploadAsset(file: File): void {
@@ -203,11 +207,13 @@ export function StudioApp() {
   useEffect(() => {
     if (!workspace) return;
     void Promise.all([
-      api.documents(workspace.id),
+      api.documents(workspace.id, 'posts'),
+      api.documents(workspace.id, 'drafts'),
       api.releases(workspace.id),
-    ]).then(([documentResult, releaseResult]) => {
-      setDocuments(documentResult.documents);
-      setSelected(documentResult.documents[0]);
+    ]).then(([postResult, draftResult, releaseResult]) => {
+      const nextDocuments = [...draftResult.documents, ...postResult.documents];
+      setDocuments(nextDocuments);
+      setSelected(nextDocuments[0]);
       setRelease(releaseResult.releases[0]);
     });
   }, [api, workspace]);
@@ -268,27 +274,20 @@ export function StudioApp() {
           setRelease(next);
           if (becameTerminal && selected) {
             void loadWorkspaces();
-            void api
-              .document(
-                workspace.id,
-                selected.ref.documentId,
-                selected.ref.collectionId,
-              )
-              .then((result) => {
-                setDocument(result);
-                setLoadedDocumentId(selected.ref.documentId);
-                setBody(result.draft?.body ?? result.source.body);
-                const matter =
-                  result.draft?.frontMatter ?? result.source.frontMatter;
-                setFrontMatter(matter);
-                setTitle(
-                  typeof matter.title === 'string'
-                    ? matter.title
-                    : selected.title,
-                );
-                setVersion(result.draft?.version ?? 0);
-                setSaveState('clean');
-              });
+            void Promise.all([
+              api.documents(workspace.id, 'posts'),
+              api.documents(workspace.id, 'drafts'),
+            ]).then(([posts, drafts]) => {
+              const nextDocuments = [...drafts.documents, ...posts.documents];
+              setDocuments(nextDocuments);
+              setSelected(
+                nextDocuments.find(
+                  (item) => item.ref.documentId === selected.ref.documentId,
+                ) ??
+                  nextDocuments.find((item) => item.title === title) ??
+                  nextDocuments[0],
+              );
+            });
           }
         })
         .catch((reason: unknown) =>
@@ -500,39 +499,158 @@ export function StudioApp() {
         <aside className={`library-panel mobile-${panel}`}>
           <div className="panel-heading">
             <p>LIBRARY</p>
-            <button aria-label="新建文章">＋</button>
+            <button
+              aria-label="新建文章"
+              aria-expanded={creating}
+              onClick={() => {
+                setCreating((value) => !value);
+                setCreateError('');
+              }}
+            >
+              {creating ? '×' : '＋'}
+            </button>
           </div>
+          {creating ? (
+            <form
+              className="new-document-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!workspace || !createTitle.trim()) return;
+                setCreateError('');
+                void api
+                  .createDocument(workspace.id, {
+                    title: createTitle.trim(),
+                    ...(createSlug.trim() ? { slug: createSlug.trim() } : {}),
+                  })
+                  .then(async (created) => {
+                    const drafts = await api.documents(workspace.id, 'drafts');
+                    const posts = await api.documents(workspace.id, 'posts');
+                    const nextDocuments = [
+                      ...drafts.documents,
+                      ...posts.documents,
+                    ];
+                    setDocuments(nextDocuments);
+                    setSelected(
+                      nextDocuments.find(
+                        (item) =>
+                          item.ref.documentId === created.source.ref.documentId,
+                      ),
+                    );
+                    setCreateTitle('');
+                    setCreateSlug('');
+                    setCreating(false);
+                    setPanel('write');
+                  })
+                  .catch((reason: unknown) =>
+                    setCreateError(
+                      reason instanceof Error ? reason.message : '新建草稿失败',
+                    ),
+                  );
+              }}
+            >
+              <label>
+                标题
+                <input
+                  autoFocus
+                  maxLength={200}
+                  value={createTitle}
+                  onChange={(event) => setCreateTitle(event.target.value)}
+                  placeholder="这篇文章讲什么？"
+                />
+              </label>
+              <label>
+                Slug <small>可选，英文小写</small>
+                <input
+                  maxLength={80}
+                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+                  value={createSlug}
+                  onChange={(event) => setCreateSlug(event.target.value)}
+                  placeholder="my-new-post"
+                />
+              </label>
+              {createError ? (
+                <p className="form-error" role="alert">
+                  {createError}
+                </p>
+              ) : null}
+              <button className="primary-button" type="submit">
+                建立原生草稿
+              </button>
+            </form>
+          ) : null}
           <label className="search-box">
             <span>⌕</span>
             <input placeholder="搜索文章" />
           </label>
           <div className="collection-label">
-            <span>已发布</span>
-            <b>{documents.length}</b>
+            <span>原生草稿</span>
+            <b>
+              {
+                documents.filter((item) => item.ref.collectionId === 'drafts')
+                  .length
+              }
+            </b>
           </div>
           <ol className="document-list">
-            {documents.map((item) => (
-              <li key={item.ref.documentId}>
-                <button
-                  className={
-                    item.ref.documentId === selected?.ref.documentId
-                      ? 'selected'
-                      : ''
-                  }
-                  onClick={() => {
-                    setSelected(item);
-                    setPanel('write');
-                  }}
-                >
-                  <span>{item.title}</span>
-                  <small>
-                    {item.updatedAt
-                      ? new Date(item.updatedAt).toLocaleDateString('zh-CN')
-                      : item.state}
-                  </small>
-                </button>
-              </li>
-            ))}
+            {documents
+              .filter((item) => item.ref.collectionId === 'drafts')
+              .map((item) => (
+                <li key={item.ref.documentId}>
+                  <button
+                    className={
+                      item.ref.documentId === selected?.ref.documentId
+                        ? 'selected'
+                        : ''
+                    }
+                    onClick={() => {
+                      setSelected(item);
+                      setPanel('write');
+                    }}
+                  >
+                    <span>{item.title}</span>
+                    <small>
+                      {item.updatedAt
+                        ? new Date(item.updatedAt).toLocaleDateString('zh-CN')
+                        : item.state}
+                    </small>
+                  </button>
+                </li>
+              ))}
+          </ol>
+          <div className="collection-label">
+            <span>已发布</span>
+            <b>
+              {
+                documents.filter((item) => item.ref.collectionId === 'posts')
+                  .length
+              }
+            </b>
+          </div>
+          <ol className="document-list">
+            {documents
+              .filter((item) => item.ref.collectionId === 'posts')
+              .map((item) => (
+                <li key={item.ref.documentId}>
+                  <button
+                    className={
+                      item.ref.documentId === selected?.ref.documentId
+                        ? 'selected'
+                        : ''
+                    }
+                    onClick={() => {
+                      setSelected(item);
+                      setPanel('write');
+                    }}
+                  >
+                    <span>{item.title}</span>
+                    <small>
+                      {item.updatedAt
+                        ? new Date(item.updatedAt).toLocaleDateString('zh-CN')
+                        : item.state}
+                    </small>
+                  </button>
+                </li>
+              ))}
           </ol>
         </aside>
 
@@ -574,6 +692,46 @@ export function StudioApp() {
             >
               插入图片 ＋
             </button>
+            {version > 0 && workspace && selected ? (
+              <button
+                className="discard-button"
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      '放弃已自动保存的修改并恢复到文件版本？原生 Markdown 文件不会被删除。',
+                    )
+                  )
+                    return;
+                  void api
+                    .discardDraft({
+                      workspaceId: workspace.id,
+                      documentId: selected.ref.documentId,
+                      collection: selected.ref.collectionId,
+                      expectedVersion: version,
+                    })
+                    .then(async () => {
+                      const restored = await api.document(
+                        workspace.id,
+                        selected.ref.documentId,
+                        selected.ref.collectionId,
+                      );
+                      setDocument(restored);
+                      setBody(restored.source.body);
+                      setFrontMatter(restored.source.frontMatter);
+                      setTitle(
+                        typeof restored.source.frontMatter.title === 'string'
+                          ? restored.source.frontMatter.title
+                          : selected.title,
+                      );
+                      setVersion(0);
+                      setSaveState('clean');
+                    })
+                    .catch(() => setSaveState('conflict'));
+                }}
+              >
+                放弃修改
+              </button>
+            ) : null}
             <input
               ref={assetInput}
               hidden

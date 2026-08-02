@@ -34,6 +34,9 @@ jobs:
       - name: Run quality gates
         run: pnpm check
 
+      - name: Run browser authoring journey
+        run: pnpm --filter @blog-studio/studio e2e
+
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level=critical
 
