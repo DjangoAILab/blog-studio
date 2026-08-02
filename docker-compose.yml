@@ -1,0 +1,61 @@
+name: blog-studio
+
+services:
+  studio:
+    build:
+      context: .
+      args:
+        VCS_REF: ${BLOG_STUDIO_VCS_REF:-development}
+    image: ${BLOG_STUDIO_IMAGE:-blog-studio:local}
+    init: true
+    restart: unless-stopped
+    read_only: true
+    user: '${BLOG_STUDIO_UID:-1000}:${BLOG_STUDIO_GID:-1000}'
+    environment:
+      BLOG_STUDIO_CONFIG_PATHS: /config/blog-studio.yml
+      BLOG_STUDIO_WORKSPACE_ROOT: /workspaces
+      BLOG_STUDIO_DATABASE_PATH: /data/blog-studio.sqlite
+      BLOG_STUDIO_AUTH_TOKEN_FILE: /run/secrets/auth_token
+      BLOG_STUDIO_COOKIE_SECRET_FILE: /run/secrets/cookie_secret
+      BLOG_STUDIO_ALLOWED_ORIGINS: ${BLOG_STUDIO_ALLOWED_ORIGINS:-https://blog-editor.internal.example.com}
+      BLOG_STUDIO_SECURE_COOKIES: ${BLOG_STUDIO_SECURE_COOKIES:-true}
+    secrets:
+      - auth_token
+      - cookie_secret
+    volumes:
+      - ${BLOG_STUDIO_DATA_PATH:-./data}:/data
+      - ${BLOG_STUDIO_CONFIG_PATH:-./config/blog-studio.yml}:/config/blog-studio.yml:ro
+      - ${BLOG_STUDIO_WORKSPACE_PATH:-./workspace}:/workspaces/blog:rw
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+    ports:
+      - 127.0.0.1:${BLOG_STUDIO_LOCAL_PORT:-4310}:4310
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4310/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 3s
+      start_period: 15s
+      retries: 4
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2g
+        reservations:
+          memory: 256m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+secrets:
+  auth_token:
+    file: ${BLOG_STUDIO_AUTH_TOKEN_PATH:-./secrets/auth_token}
+  cookie_secret:
+    file: ${BLOG_STUDIO_COOKIE_SECRET_PATH:-./secrets/cookie_secret}

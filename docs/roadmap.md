@@ -48,9 +48,9 @@ only after its acceptance checklist and real-environment verification pass.
 
 **Outcome:** Blog Studio is installable, understandable, and maintainable.
 
-- [ ] Production Docker image and Compose file.
-- [ ] Traefik deployment example for `blog-editor.internal.wj2015.com`.
-- [ ] Backup, restore, upgrade, and rollback commands.
+- [x] Production Docker image and Compose file.
+- [x] Traefik deployment example for `blog-editor.internal.wj2015.com`.
+- [x] Backup, restore, upgrade, and rollback commands.
 - [ ] Landing page based on the verified product journey.
 - [ ] Documentation site: quick start, concepts, configuration, adapters,
       providers, security, operations, and Hexo migration.

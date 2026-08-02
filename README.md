@@ -26,6 +26,8 @@ deployment-independent.
 - [Roadmap](docs/roadmap.md)
 - [v0.1 release checklist](docs/checklists/v0.1.md)
 - [v0.1 implementation plan](docs/plans/2026-08-02-blog-studio-v0.1.md)
+- [Self-hosting](docs/guides/self-hosting.md)
+- [Backup and restore](docs/guides/backup-restore.md)
 
 ## License
 

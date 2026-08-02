@@ -1,0 +1,128 @@
+# Self-hosting Blog Studio
+
+This guide installs the single-user Studio as a container beside an existing
+file-based site. The generated public site does not depend on the Studio being
+available.
+
+## Prerequisites
+
+- Linux with Docker Engine 27 or newer and Docker Compose v2;
+- a checked-out, trusted site workspace with its locked generator dependencies;
+- a TLS reverse proxy or private network; and
+- a host user whose UID/GID owns the data and workspace directories.
+
+The image uses Node.js 22, runs as UID/GID `1000:1000` by default, has a
+read-only root filesystem, drops all Linux capabilities, and stores mutable
+state only in mounted paths. The direct recovery port binds to `127.0.0.1`.
+
+## Prepare the installation
+
+From a Blog Studio checkout:
+
+```sh
+mkdir -p config data secrets workspace backups
+cp deploy/traefik/.env.example .env
+cp examples/config/blog-studio.yml config/blog-studio.yml
+umask 077
+openssl rand -base64 32 > secrets/auth_token
+openssl rand -base64 48 > secrets/cookie_secret
+chown -R 1000:1000 data workspace
+```
+
+Put or clone the site into `workspace/`. Install its dependencies using its own
+lockfile and package manager, then make sure UID 1000 can write the workspace.
+The Studio invokes the generator already present in that workspace; it does not
+silently replace the site's toolchain.
+
+Edit `config/blog-studio.yml` so that `workspace.root` is
+`/workspaces/blog`. Relative asset paths are resolved below that root. Publisher
+destinations must be explicit mounted paths or configured remote providers.
+Keep secrets out of this YAML; provider secret fields refer to environment
+variable names.
+
+Validate and start:
+
+```sh
+docker compose config --quiet
+docker compose build --pull
+docker compose up -d
+docker compose ps
+curl --fail http://127.0.0.1:4310/api/health
+```
+
+Open the configured HTTPS hostname and enter the value in
+`secrets/auth_token`. A successful health response alone does not bypass the
+session and CSRF boundary used by the remaining API.
+
+## Traefik
+
+The supplied override joins an existing external Traefik Docker network and
+adds a TLS router:
+
+```sh
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/traefik/docker-compose.override.yml \
+  config --quiet
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/traefik/docker-compose.override.yml \
+  up -d
+```
+
+For the reference installation the defaults are:
+
+- hostname: `blog-editor.internal.wj2015.com`;
+- external network: `home-server_default`;
+- entrypoint: `websecure`; and
+- upstream container port: `4310`.
+
+Change these values in `.env`, not in the Compose files. Traefik must already
+own the certificate and `websecure` entrypoint. Do not publish port 4310 on a
+LAN or public interface. `BLOG_STUDIO_ALLOWED_ORIGINS` must exactly contain each
+browser-facing HTTPS origin; a wildcard is deliberately unsupported.
+
+## Configuration and filesystem boundaries
+
+| Host path                | Container path            | Purpose                           | Backup                   |
+| ------------------------ | ------------------------- | --------------------------------- | ------------------------ |
+| `data/`                  | `/data`                   | SQLite drafts, releases, jobs     | required                 |
+| `config/blog-studio.yml` | `/config/blog-studio.yml` | administrator policy              | required                 |
+| `workspace/`             | `/workspaces/blog`        | canonical files/Git and generator | required plus remote Git |
+| `secrets/*`              | `/run/secrets/*`          | login and cookie secrets          | external secret store    |
+
+The backup deliberately excludes generated `node_modules`, `public`, and
+`.published` directories. Reinstall locked dependencies after a restore. Media
+stored in COS or another provider needs that provider's own versioning and
+backup policy.
+
+## Upgrade and application rollback
+
+Create and verify a backup before changing the image. Pin a release tag or
+digest in `BLOG_STUDIO_IMAGE`, pull/build it, and recreate only Studio:
+
+```sh
+scripts/backup.sh
+docker compose pull studio
+docker compose up -d --no-deps studio
+docker compose ps
+```
+
+If health or the writing journey fails, restore the previous image value and
+run the last command again. Image rollback does not alter the published site.
+If the new version changed application data, follow the tested data restore
+procedure in [Backup and restore](backup-restore.md).
+
+## Operational checks
+
+```sh
+docker compose logs --tail=200 studio
+docker inspect --format '{{.State.Health.Status}}' "$(docker compose ps -q studio)"
+docker compose exec studio id
+docker compose stop -t 10 studio
+docker compose up -d studio
+```
+
+The repository's `pnpm container:smoke` reproduces the container security and
+cold-restart checks with an isolated synthetic Hexo site. It never uses a real
+workspace or provider.

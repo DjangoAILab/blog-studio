@@ -12,6 +12,8 @@
   "scripts": {
     "build": "turbo run build",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "container:smoke": "bash scripts/container-smoke.sh",
+    "operations:smoke": "bash scripts/operations-smoke.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",

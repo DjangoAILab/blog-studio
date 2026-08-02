@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,6 +7,16 @@ import { createStudioServer } from './app.js';
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function requiredSecret(name: string): string {
+  const direct = process.env[name]?.trim();
+  if (direct) return direct;
+  const file = process.env[`${name}_FILE`]?.trim();
+  if (!file) throw new Error(`${name} or ${name}_FILE is required`);
+  const value = readFileSync(file, 'utf8').trim();
+  if (!value) throw new Error(`${name}_FILE must not be empty`);
   return value;
 }
 
@@ -29,8 +40,8 @@ const app = await createStudioServer({
   configurationPaths: listEnvironment('BLOG_STUDIO_CONFIG_PATHS'),
   allowedWorkspaceRoot: requiredEnvironment('BLOG_STUDIO_WORKSPACE_ROOT'),
   databasePath: requiredEnvironment('BLOG_STUDIO_DATABASE_PATH'),
-  authToken: requiredEnvironment('BLOG_STUDIO_AUTH_TOKEN'),
-  cookieSecret: requiredEnvironment('BLOG_STUDIO_COOKIE_SECRET'),
+  authToken: requiredSecret('BLOG_STUDIO_AUTH_TOKEN'),
+  cookieSecret: requiredSecret('BLOG_STUDIO_COOKIE_SECRET'),
   allowedOrigins: listEnvironment('BLOG_STUDIO_ALLOWED_ORIGINS'),
   secureCookies: process.env.BLOG_STUDIO_SECURE_COOKIES !== 'false',
   clientDirectory: resolve(

@@ -1,0 +1,12 @@
+.git
+.github
+.turbo
+**/.turbo
+**/dist
+**/node_modules
+artifacts
+deploy/**/.env
+deploy/**/secrets
+node_modules
+npm-debug.log*
+pnpm-debug.log*
