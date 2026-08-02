@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   stat,
   writeFile,
 } from 'node:fs/promises';
@@ -24,9 +25,12 @@ async function copySite(): Promise<string> {
   return root;
 }
 
-function createAdapter(options: { readonly build?: boolean } = {}) {
+function createAdapter(
+  options: { readonly build?: boolean; readonly configPath?: string } = {},
+) {
   return new HexoGeneratorAdapter({
     workspaceId: 'synthetic-blog',
+    ...(options.configPath ? { configPath: options.configPath } : {}),
     ...(options.build
       ? {
           executable: process.execPath,
@@ -52,6 +56,26 @@ describe('HexoGeneratorAdapter', () => {
     expect(posts[0]?.ref.path).toBe('source/_posts/你好-世界.md');
     expect(posts[0]?.title).toBe('你好，世界');
     expect(drafts[0]?.state).toBe('draft');
+  });
+
+  it('uses an administrator-configured Hexo configuration path', async () => {
+    const root = await copySite();
+    await rename(join(root, '_config.yml'), join(root, 'custom.yml'));
+    const adapter = createAdapter({ build: true, configPath: 'custom.yml' });
+
+    await expect(adapter.detect(root)).resolves.toMatchObject({
+      detected: true,
+      confidence: 1,
+    });
+    const [summary] = await adapter.listDocuments(root, 'posts');
+    if (!summary) throw new Error('fixture post missing');
+    await expect(adapter.resolvePublicUrl(root, summary.ref)).resolves.toBe(
+      'https://example.com/2026/08/02/%E4%BD%A0%E5%A5%BD-%E4%B8%96%E7%95%8C/',
+    );
+    await adapter.build({ workspaceRoot: root, mode: 'production' });
+    await expect(
+      readFile(join(root, 'public', 'config-argument.txt'), 'utf8'),
+    ).resolves.toBe('custom.yml');
   });
 
   it('round-trips unknown front matter, Hexo tags, and raw HTML', async () => {

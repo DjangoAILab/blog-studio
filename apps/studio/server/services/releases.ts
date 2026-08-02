@@ -107,7 +107,7 @@ function releaseTarget(workspace: WorkspaceHandle): string {
   return stringOption(
     workspace.config.publish.options,
     'targetId',
-    'production',
+    workspace.config.publish.adapter === 'none' ? 'disabled' : 'production',
   );
 }
 
@@ -154,9 +154,11 @@ export class ReleaseService {
   } {
     const adapter = workspace.config.publish.adapter;
     const configured =
-      adapter === 'filesystem'
-        ? typeof workspace.config.publish.options.directory === 'string'
-        : Boolean(this.options.publisherFactories?.[adapter]);
+      adapter === 'none'
+        ? false
+        : adapter === 'filesystem'
+          ? typeof workspace.config.publish.options.directory === 'string'
+          : Boolean(this.options.publisherFactories?.[adapter]);
     const adoptionEnabled = booleanOption(
       workspace.config.publish.options,
       'allowBaselineAdoption',
@@ -181,6 +183,7 @@ export class ReleaseService {
 
   #publisher(workspace: WorkspaceHandle): Publisher {
     const adapter = workspace.config.publish.adapter;
+    if (adapter === 'none') throw new Error('Publishing is disabled');
     const factory = this.options.publisherFactories?.[adapter];
     if (factory) return factory(workspace, this.options.stateDirectory);
     if (adapter === 'filesystem') {

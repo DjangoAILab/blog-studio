@@ -2,15 +2,19 @@ version: 1
 
 workspace:
   id: example-blog
-  root: /workspaces/example-blog
+  root: /workspaces/blog
 
 generator:
   adapter: command
   options:
-    build:
-      command: npm
-      args: [run, build]
+    displayName: Example command site
+    markers: [.blog-studio-example]
     outputDirectory: public
+    siteUrl: https://blog.example.com/
+    build:
+      command: node
+      args: [scripts/build.mjs]
+      timeoutMs: 120000
 
 repository:
   adapter: local-git
@@ -20,15 +24,16 @@ repository:
 assets:
   adapter: filesystem
   options:
-    rootDirectory: public
+    rootDirectory: static
     managedPrefix: media/posts
-    protectedPrefixes: [static]
-    publicBaseUrl: https://blog.example.com/
+    protectedPrefixes: [legacy]
+    publicBaseUrl: https://blog.example.com/static/
 
+# Authoring and real preview work without a deployment target. Replace this
+# with a configured filesystem or remote publisher only after its verification
+# URL and rollback boundary are ready.
 publish:
-  adapter: filesystem
-  options:
-    directory: /srv/www/blog
+  adapter: none
 
 cache:
   adapter: none
@@ -39,6 +44,3 @@ content:
       path: content/posts
       draftPath: content/drafts
       assetScope: media/posts/{documentId}
-
-verification:
-  baseUrl: https://blog.example.com

@@ -23,8 +23,9 @@ deployment-independent.
 
 ## Quick start
 
-Requirements: Docker Engine 27+, Docker Compose v2, and a trusted file-based
-site checkout whose locked generator dependencies are already installed.
+Requirements: Docker Engine 27+ and Docker Compose v2. The checked-in example
+workspace has no external dependencies and proves the complete writing and
+preview path before you connect a real site.
 
 ```sh
 git clone https://github.com/DjangoAILab/blog-studio.git
@@ -32,14 +33,21 @@ cd blog-studio
 mkdir -p config data secrets workspace backups
 cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
+cp -R examples/workspace/. workspace/
 umask 077
 openssl rand -base64 32 > secrets/auth_token
 openssl rand -base64 48 > secrets/cookie_secret
+git -C workspace init
+git -C workspace config user.name "Blog Studio Quick Start"
+git -C workspace config user.email "quick-start@localhost"
+git -C workspace add .
+git -C workspace commit -m "Initialize example workspace"
 ```
 
-Put your site in `workspace/`, make sure UID/GID `1000:1000` can write
-`data/` and `workspace/`, then edit `config/blog-studio.yml`. Its
-`workspace.root` inside the container must be `/workspaces/blog`.
+Make sure the configured container UID/GID can write `data/` and `workspace/`.
+The supplied configuration already points at `/workspaces/blog`, uses the
+generic command adapter, and keeps publishing disabled until a real target is
+configured.
 
 ```sh
 docker compose config --quiet
@@ -47,6 +55,11 @@ docker compose build
 docker compose up -d
 curl --fail http://127.0.0.1:4310/api/health
 ```
+
+Open the configured HTTPS route, enter `secrets/auth_token`, edit “Welcome to
+Blog Studio,” and choose preview. To connect your own site, replace the example
+workspace with a clean trusted checkout, install its locked dependencies on the
+host, and select its generator/publisher adapters in the configuration.
 
 Port 4310 binds only to localhost. Use the supplied Traefik override, another
 TLS reverse proxy, or a private tunnel for browser access; do not expose the

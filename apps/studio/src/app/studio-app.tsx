@@ -508,18 +508,20 @@ export function StudioApp() {
         <aside className={`library-panel mobile-${panel}`}>
           <div className="panel-heading">
             <p>LIBRARY</p>
-            <button
-              aria-label="新建文章"
-              aria-expanded={creating}
-              onClick={() => {
-                setCreating((value) => !value);
-                setCreateError('');
-              }}
-            >
-              {creating ? '×' : '＋'}
-            </button>
+            {workspace?.canCreateDocuments ? (
+              <button
+                aria-label="新建文章"
+                aria-expanded={creating}
+                onClick={() => {
+                  setCreating((value) => !value);
+                  setCreateError('');
+                }}
+              >
+                {creating ? '×' : '＋'}
+              </button>
+            ) : null}
           </div>
-          {creating ? (
+          {creating && workspace?.canCreateDocuments ? (
             <form
               className="new-document-form"
               onSubmit={(event) => {

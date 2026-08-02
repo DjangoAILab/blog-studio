@@ -39,6 +39,7 @@ interface HexoConfiguration {
 
 export interface HexoAdapterOptions {
   readonly workspaceId: string;
+  readonly configPath?: string;
   readonly buildTimeoutMs?: number;
   readonly executable?: string;
   readonly executableArgs?: readonly string[];
@@ -113,25 +114,30 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
   } as const;
 
   readonly #workspaceId;
+  readonly #configPath: string;
   readonly #buildTimeoutMs: number;
   readonly #executable: string;
   readonly #executableArgs: readonly string[];
 
   public constructor(options: HexoAdapterOptions) {
     this.#workspaceId = createWorkspaceId(options.workspaceId);
+    this.#configPath = options.configPath ?? '_config.yml';
     this.#buildTimeoutMs = options.buildTimeoutMs ?? 180_000;
     this.#executable = options.executable ?? 'node_modules/.bin/hexo';
     this.#executableArgs = options.executableArgs ?? [];
   }
 
   async #configuration(workspaceRoot: string): Promise<HexoConfiguration> {
-    const path = await resolveWorkspacePath(workspaceRoot, '_config.yml');
+    const path = await resolveWorkspacePath(workspaceRoot, this.#configPath);
     return parse(await readFile(path, 'utf8')) as HexoConfiguration;
   }
 
   public async detect(workspaceRoot: string): Promise<DetectionResult> {
     const diagnostics: AdapterDiagnostic[] = [];
-    const configFound = await workspacePathExists(workspaceRoot, '_config.yml');
+    const configFound = await workspacePathExists(
+      workspaceRoot,
+      this.#configPath,
+    );
     let packageFound: boolean;
 
     try {
@@ -157,7 +163,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       diagnostics.push({
         severity: 'error',
         code: 'HEXO_CONFIG_MISSING',
-        message: '_config.yml was not found',
+        message: `${this.#configPath} was not found`,
       });
     if (!packageFound)
       diagnostics.push({
@@ -451,6 +457,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
         ...this.#executableArgs,
         'generate',
         ...(input.mode === 'preview' ? ['--draft'] : []),
+        ...(this.#configPath === '_config.yml'
+          ? []
+          : ['--config', this.#configPath]),
       ],
       workspaceRoot: input.workspaceRoot,
       timeoutMs: this.#buildTimeoutMs,

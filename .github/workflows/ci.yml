@@ -14,13 +14,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Enable Corepack
         run: corepack enable
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.21.1
           cache: pnpm
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Scan repository, secrets, licenses, and configuration
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -59,6 +59,12 @@ jobs:
 
       - name: Build production image
         run: docker build --build-arg VCS_REF=${{ github.sha }} --tag blog-studio:ci .
+
+      - name: Run documented Quick Start journey
+        env:
+          BLOG_STUDIO_QUICK_START_IMAGE: blog-studio:ci
+          BLOG_STUDIO_QUICK_START_SKIP_BUILD: 'true'
+        run: bash scripts/quick-start-smoke.sh
 
       - name: Scan production image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
