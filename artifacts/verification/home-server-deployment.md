@@ -4,7 +4,7 @@
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `eab5e24d65e42b49684a88728039fe8848090b1e`
+- verified revision: `1f879e9ced55f73f1e103666291dcc4a22befc66`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -83,3 +83,16 @@ Dockerfile hard-excludes `runtime/`, reducing the measured context to 590 KB.
 Moving the VCS label after the security-update and copy layers was verified by
 a second build with only a different VCS reference: it completed in under one
 second and reported all expensive runtime layers as cached.
+
+The final feature deployment sent 173.73 KiB of context, reused the OpenSSL
+layer, built in 40 seconds, and reached both local and external health before
+acceptance.
+
+## Managed-asset cleanup proof
+
+The final deployed container processed an existing PNG through the bounded
+Sharp Worker and stored it below the selected article's immutable managed
+prefix. The read-only orphan plan returned exactly that new key; confirmed
+deletion returned `200` and count 1; a second plan returned zero. The reference
+workspace returned to zero Git changes, while the public blog and sampled
+legacy resource remained `200`. No pre-existing asset was a deletion candidate.
