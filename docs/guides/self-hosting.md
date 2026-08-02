@@ -96,6 +96,11 @@ docker compose \
   up -d
 ```
 
+Use both `-f` arguments for every later `up`, `restart`, `pull`, and recreated
+deployment as well. Running `docker compose up` with only the base file replaces
+the container without its Traefik network and labels; the application may stay
+healthy locally while the public editor route returns `404`.
+
 For the reference installation the defaults are:
 
 - hostname: `blog-editor.internal.wj2015.com`;

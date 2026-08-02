@@ -29,6 +29,21 @@ After the final deployment, the local health endpoint, external HTTPS health,
 public blog, and sampled legacy resource all returned `200`; the container
 reported `healthy` with the exact verified revision in its OCI label.
 
+Before any Tencent credential is introduced, the deployed publisher was moved
+from the production target to the isolated target
+`blog.wj2015.com/__blog-studio-staging/v0.1`. Its retained state uses the
+matching `blog-studio-state/.../__blog-studio-staging/v0.1` prefix, baseline
+adoption is disabled, and public verification is rooted at
+`https://blog.wj2015.com/__blog-studio-staging/v0.1/`. Restarting with this
+configuration left the public root and sampled `/static/**` resource at `200`.
+
+One restart was intentionally diagnosed after the base Compose file recreated
+a locally healthy container without the Traefik override. The external route
+returned `404` until the service was recreated with both Compose files. Final
+inspection confirmed the `home-server_default` network, the exact Host router,
+external root and health `200`, and unauthenticated API `401`. The operations
+guide now makes the two-file lifecycle command invariant explicit.
+
 ## Real reference-site observations
 
 | Observation                                 |           Result |
