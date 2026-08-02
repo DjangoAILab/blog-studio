@@ -24,5 +24,8 @@ All notable changes to Blog Studio are documented here. The format follows
   scripts, landing page, and documentation site.
 - Killable, memory-bounded image processing with byte, pixel, cache, and
   wall-clock limits.
+- A dependency-free generic command Quick Start, authoring-only publish mode,
+  reproducible release bundles, signed-tag enforcement, and standalone artifact
+  verification.
 
 [Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.1.0...HEAD

@@ -15,6 +15,7 @@
     "container:smoke": "bash scripts/container-smoke.sh",
     "operations:smoke": "bash scripts/operations-smoke.sh",
     "quick-start:smoke": "bash scripts/quick-start-smoke.sh",
+    "release:smoke": "bash scripts/release-artifacts-smoke.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",

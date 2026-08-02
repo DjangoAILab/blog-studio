@@ -15,6 +15,34 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify annotated signed release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo 'release tag must be semantic version syntax such as v0.1.0' >&2
+            exit 1
+          fi
+          ref_path="repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"
+          if [[ "$(gh api "$ref_path" --jq '.object.type')" != 'tag' ]]; then
+            echo 'release tag must be an annotated signed tag' >&2
+            exit 1
+          fi
+          tag_object="$(gh api "$ref_path" --jq '.object.sha')"
+          tag_path="repos/${GITHUB_REPOSITORY}/git/tags/${tag_object}"
+          if [[ "$(gh api "$tag_path" --jq '.verification.verified')" != 'true' ]]; then
+            echo 'GitHub did not verify the release tag signature' >&2
+            exit 1
+          fi
+          if [[ "$(gh api "$tag_path" --jq '.object.type')" != 'commit' ]] || \
+             [[ "$(gh api "$tag_path" --jq '.object.sha')" != "$GITHUB_SHA" ]]; then
+            echo 'release tag does not point directly at the workflow commit' >&2
+            exit 1
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
@@ -50,21 +78,29 @@ jobs:
           provenance: mode=max
           sbom: true
 
-      - name: Create release evidence
+      - name: Create and verify release artifacts
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          mkdir -p release
-          printf '%s@%s\n' 'ghcr.io/djangoailab/blog-studio' "$IMAGE_DIGEST" > release/container-digest.txt
-          git archive --format=tar.gz --prefix="blog-studio-${RELEASE_TAG}/" -o "release/blog-studio-${RELEASE_TAG}.tar.gz" HEAD
-          sha256sum release/* > release/SHA256SUMS
+          bash scripts/create-release-artifacts.sh \
+            --tag "$RELEASE_TAG" \
+            --ref "$GITHUB_SHA" \
+            --image ghcr.io/djangoailab/blog-studio \
+            --digest "$IMAGE_DIGEST" \
+            --output release
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" release/* \
+          gh release create "${{ github.ref_name }}" \
+            release/blog-studio-${{ github.ref_name }}.tar.gz \
+            release/container-digest.txt \
+            release/release-metadata.json \
+            release/SHA256SUMS \
+            release/RELEASE_NOTES.md \
+            release/UPGRADE.md \
             --verify-tag \
-            --generate-notes \
+            --notes-file release/RELEASE_NOTES.md \
             --title "Blog Studio ${{ github.ref_name }}"

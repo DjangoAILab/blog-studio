@@ -34,6 +34,9 @@ jobs:
       - name: Run quality gates
         run: pnpm check
 
+      - name: Verify reproducible release artifacts
+        run: pnpm release:smoke
+
       - name: Run browser authoring journey
         run: pnpm --filter @blog-studio/studio e2e
 
