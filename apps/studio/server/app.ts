@@ -1,11 +1,14 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { dirname, join } from 'node:path';
 
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { AssetPolicyError } from '@blog-studio/assets';
 import {
+  ActiveReleaseConflictError,
   RevisionConflictError,
   SqliteDraftRepository,
+  SqliteReleaseRepository,
   openStudioDatabase,
 } from '@blog-studio/persistence';
 import Fastify, {
@@ -15,6 +18,10 @@ import Fastify, {
 
 import { registerApiRoutes } from './routes/api.js';
 import { PreviewService } from './services/previews.js';
+import {
+  ReleaseService,
+  type ReleaseServiceOptions,
+} from './services/releases.js';
 import { WorkspaceService } from './services/workspaces.js';
 
 const SESSION_COOKIE = 'blog_studio_session';
@@ -25,12 +32,16 @@ export interface StudioServerOptions {
   readonly configurationPaths: readonly string[];
   readonly allowedWorkspaceRoot: string;
   readonly databasePath: string;
+  readonly releaseStateDirectory?: string;
   readonly authToken: string;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
   readonly secureCookies?: boolean;
   readonly clientDirectory?: string;
   readonly logger?: FastifyServerOptions['logger'];
+  readonly releaseVerifierFactory?: ReleaseServiceOptions['verifierFactory'];
+  readonly publisherFactories?: ReleaseServiceOptions['publisherFactories'];
+  readonly cacheFactories?: ReleaseServiceOptions['cacheFactories'];
 }
 
 function equalSecret(left: string, right: string): boolean {
@@ -83,7 +94,26 @@ export async function createStudioServer(
     allowedWorkspaceRoot: options.allowedWorkspaceRoot,
   });
   const database = openStudioDatabase(options.databasePath);
+  const drafts = new SqliteDraftRepository(database);
   const previews = new PreviewService(workspaces);
+  const releases = new ReleaseService({
+    workspaces,
+    repository: new SqliteReleaseRepository(database),
+    drafts,
+    stateDirectory:
+      options.releaseStateDirectory ??
+      join(dirname(options.databasePath), 'release-state'),
+    ...(options.releaseVerifierFactory
+      ? { verifierFactory: options.releaseVerifierFactory }
+      : {}),
+    ...(options.publisherFactories
+      ? { publisherFactories: options.publisherFactories }
+      : {}),
+    ...(options.cacheFactories
+      ? { cacheFactories: options.cacheFactories }
+      : {}),
+  });
+  await releases.recover();
   const previewReaper = setInterval(() => {
     void previews.reapExpired().catch((error: unknown) => {
       app.log.error({ err: error }, 'Failed to reap expired previews');
@@ -93,6 +123,7 @@ export async function createStudioServer(
   app.addHook('onClose', async () => {
     clearInterval(previewReaper);
     await previews.dispose();
+    await releases.dispose();
     database.close();
   });
 
@@ -205,21 +236,23 @@ export async function createStudioServer(
     const status =
       error instanceof RevisionConflictError
         ? 409
-        : error instanceof AssetPolicyError
-          ? error.code === 'ASSET_TOO_LARGE'
-            ? 413
-            : 422
-          : message === 'Draft source revision conflict'
-            ? 409
-            : message.startsWith('Invalid Hexo document date:')
-              ? 422
-              : validationError
-                ? 400
-                : declaredStatus !== undefined
-                  ? declaredStatus
-                  : /^(Unknown|Unsupported)/.test(message)
-                    ? 404
-                    : 500;
+        : error instanceof ActiveReleaseConflictError
+          ? 409
+          : error instanceof AssetPolicyError
+            ? error.code === 'ASSET_TOO_LARGE'
+              ? 413
+              : 422
+            : message === 'Draft source revision conflict'
+              ? 409
+              : message.startsWith('Invalid Hexo document date:')
+                ? 422
+                : validationError
+                  ? 400
+                  : declaredStatus !== undefined
+                    ? declaredStatus
+                    : /^(Unknown|Unsupported)/.test(message)
+                      ? 404
+                      : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
@@ -234,8 +267,9 @@ export async function createStudioServer(
 
   registerApiRoutes(app, {
     workspaces,
-    drafts: new SqliteDraftRepository(database),
+    drafts,
     previews,
+    releases,
   });
 
   if (options.clientDirectory) {

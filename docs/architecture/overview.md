@@ -103,7 +103,12 @@ export interface AssetProvider {
 export interface Publisher {
   readonly id: string;
   plan(input: PublishInput): Promise<PublishPlan>;
-  apply(plan: PublishPlan, events: PublishEventSink): Promise<PublishResult>;
+  apply(
+    plan: PublishPlan,
+    phase: 'assets' | 'pages',
+    events: PublishEventSink,
+  ): Promise<PublishBatchResult>;
+  finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
 }
 
@@ -269,3 +274,14 @@ makes retries idempotent and cache-safe. Existing resource paths are resolved
 for editing and preview but live under separately configured protected prefixes;
 Blog Studio cannot overwrite or delete them. Migration is additive instead of a
 flag-day URL rewrite.
+
+### ADR-007: Manifest-driven, verified releases
+
+**Status:** Accepted.
+
+The generator owns a portable content-hash manifest. Publishers compare it with
+the last verified manifest without discovering remote state file by file, then
+publish immutable assets before pages, persist rollback state, invalidate only
+affected mutable URLs, and verify a release-specific public marker. A release is
+not successful merely because an upload API accepted a request: every upload,
+cache task, and public verification must reach a bounded terminal result.

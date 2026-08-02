@@ -4,6 +4,8 @@ import {
   StudioApi,
   type DocumentPayload,
   type DocumentSummary,
+  type ReleaseDetails,
+  type ReleaseStatus,
   type WorkspaceSummary,
 } from './api.js';
 
@@ -21,6 +23,30 @@ const VisualEditor = lazy(async () => {
   const module = await import('../features/editor/visual-editor.js');
   return { default: module.VisualEditor };
 });
+
+const terminalReleaseStatuses = new Set<ReleaseStatus>([
+  'succeeded',
+  'failed',
+  'rolled-back',
+  'canceled',
+]);
+
+const releaseLabels: Readonly<Record<ReleaseStatus, string>> = {
+  queued: '等待发布',
+  preflight: '环境检查',
+  building: '生成站点',
+  planning: '计算差异',
+  'uploading-assets': '上传资源',
+  'uploading-pages': '切换页面',
+  'invalidating-cache': '刷新缓存',
+  verifying: '公网验证',
+  succeeded: '发布成功',
+  failed: '发布失败',
+  'rollback-required': '需要回滚',
+  'rolling-back': '正在回滚',
+  'rolled-back': '已安全回滚',
+  canceled: '已取消',
+};
 
 function Login({
   onLogin,
@@ -109,6 +135,8 @@ export function StudioApp() {
   const [previewError, setPreviewError] = useState('');
   const [panel, setPanel] = useState<'library' | 'write' | 'preview'>('write');
   const [uploads, setUploads] = useState<readonly AssetUpload[]>([]);
+  const [release, setRelease] = useState<ReleaseDetails>();
+  const [releaseError, setReleaseError] = useState('');
   const assetInput = useRef<HTMLInputElement>(null);
 
   function uploadAsset(file: File): void {
@@ -174,9 +202,13 @@ export function StudioApp() {
   }, []);
   useEffect(() => {
     if (!workspace) return;
-    void api.documents(workspace.id).then((result) => {
-      setDocuments(result.documents);
-      setSelected(result.documents[0]);
+    void Promise.all([
+      api.documents(workspace.id),
+      api.releases(workspace.id),
+    ]).then(([documentResult, releaseResult]) => {
+      setDocuments(documentResult.documents);
+      setSelected(documentResult.documents[0]);
+      setRelease(releaseResult.releases[0]);
     });
   }, [api, workspace]);
   useEffect(() => {
@@ -218,6 +250,54 @@ export function StudioApp() {
       cancelled = true;
     };
   }, [api, selected, workspace]);
+
+  useEffect(() => {
+    if (
+      !workspace ||
+      !release ||
+      terminalReleaseStatuses.has(release.release.status)
+    )
+      return;
+    const timer = window.setInterval(() => {
+      void api
+        .release(workspace.id, release.release.id)
+        .then((next) => {
+          const becameTerminal = terminalReleaseStatuses.has(
+            next.release.status,
+          );
+          setRelease(next);
+          if (becameTerminal && selected) {
+            void api
+              .document(
+                workspace.id,
+                selected.ref.documentId,
+                selected.ref.collectionId,
+              )
+              .then((result) => {
+                setDocument(result);
+                setLoadedDocumentId(selected.ref.documentId);
+                setBody(result.draft?.body ?? result.source.body);
+                const matter =
+                  result.draft?.frontMatter ?? result.source.frontMatter;
+                setFrontMatter(matter);
+                setTitle(
+                  typeof matter.title === 'string'
+                    ? matter.title
+                    : selected.title,
+                );
+                setVersion(result.draft?.version ?? 0);
+                setSaveState('clean');
+              });
+          }
+        })
+        .catch((reason: unknown) =>
+          setReleaseError(
+            reason instanceof Error ? reason.message : '发布状态读取失败',
+          ),
+        );
+    }, 800);
+    return () => window.clearInterval(timer);
+  }, [api, release, selected, workspace]);
 
   useEffect(() => {
     if (
@@ -303,6 +383,50 @@ export function StudioApp() {
           <small>{workspace?.generator}</small>
         </div>
         <SaveBadge state={saveState} />
+        <button
+          className="publish-button"
+          disabled={
+            !workspace?.publishTarget.configured ||
+            !selected ||
+            ['changed', 'saving', 'error', 'conflict'].includes(saveState) ||
+            (release !== undefined &&
+              !terminalReleaseStatuses.has(release.release.status))
+          }
+          title={
+            workspace?.publishTarget.configured
+              ? '发布当前已保存文章与站点变更'
+              : '管理员尚未配置发布目标'
+          }
+          onClick={() => {
+            if (!workspace || !selected) return;
+            setPanel('preview');
+            setReleaseError('');
+            void api
+              .startRelease({
+                workspaceId: workspace.id,
+                targetId: workspace.publishTarget.id,
+                ...(version > 0
+                  ? {
+                      draft: {
+                        collectionId: selected.ref.collectionId,
+                        documentId: selected.ref.documentId,
+                        version,
+                      },
+                    }
+                  : {}),
+              })
+              .then(setRelease)
+              .catch((reason: unknown) =>
+                setReleaseError(
+                  reason instanceof Error ? reason.message : '发布启动失败',
+                ),
+              );
+          }}
+        >
+          {release && !terminalReleaseStatuses.has(release.release.status)
+            ? `${releaseLabels[release.release.status]}…`
+            : '发布文章 →'}
+        </button>
         <button
           className="preview-button"
           disabled={!workspace || !selected}
@@ -528,10 +652,107 @@ export function StudioApp() {
 
         <aside className={`preview-panel mobile-${panel}`}>
           <div className="panel-heading">
-            <p>LIVE PROOF</p>
-            <span>{previewState.toUpperCase()}</span>
+            <p>{release ? 'RELEASE PROOF' : 'LIVE PROOF'}</p>
+            <span>
+              {release
+                ? releaseLabels[release.release.status]
+                : previewState.toUpperCase()}
+            </span>
           </div>
-          {previewUrl ? (
+          {release ? (
+            <div className="release-proof" aria-live="polite">
+              <div
+                className={`release-summary release-${release.release.status}`}
+              >
+                <span>
+                  {release.release.status === 'succeeded' ? '✓' : '◒'}
+                </span>
+                <div>
+                  <small>{release.release.targetId}</small>
+                  <h2>{releaseLabels[release.release.status]}</h2>
+                  <p>{release.release.id}</p>
+                </div>
+              </div>
+              <ol className="release-timeline">
+                {release.release.stages.map((stage) => (
+                  <li className={`stage-${stage.status}`} key={stage.name}>
+                    <i />
+                    <span>
+                      <b>
+                        {releaseLabels[stage.name as ReleaseStatus] ??
+                          stage.name}
+                      </b>
+                      <small>{stage.status}</small>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              {release.events.length ? (
+                <div className="release-log">
+                  {release.events.slice(-5).map((event, index) => (
+                    <p key={`${event.at}-${index}`}>
+                      <time>
+                        {new Date(event.at).toLocaleTimeString('zh-CN')}
+                      </time>
+                      {event.message}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {releaseError ? (
+                <p className="form-error">{releaseError}</p>
+              ) : null}
+              <div className="release-controls">
+                {!terminalReleaseStatuses.has(release.release.status) &&
+                !['rollback-required', 'rolling-back'].includes(
+                  release.release.status,
+                ) ? (
+                  <button
+                    onClick={() => {
+                      if (!workspace) return;
+                      void api
+                        .cancelRelease(workspace.id, release.release.id)
+                        .then(setRelease)
+                        .catch((reason: unknown) =>
+                          setReleaseError(
+                            reason instanceof Error
+                              ? reason.message
+                              : '取消发布失败',
+                          ),
+                        );
+                    }}
+                  >
+                    取消发布
+                  </button>
+                ) : null}
+                {release.release.status === 'succeeded' && workspace ? (
+                  <button
+                    className="danger-control"
+                    onClick={() => {
+                      setReleaseError('');
+                      void api
+                        .rollbackRelease(workspace.id, release.release.id)
+                        .then(setRelease)
+                        .catch((reason: unknown) =>
+                          setReleaseError(
+                            reason instanceof Error
+                              ? reason.message
+                              : '回滚启动失败',
+                          ),
+                        );
+                    }}
+                  >
+                    回滚线上版本
+                  </button>
+                ) : null}
+                {terminalReleaseStatuses.has(release.release.status) ? (
+                  <button onClick={() => setRelease(undefined)}>
+                    返回真实预览
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : previewUrl ? (
             <iframe title="文章真实预览" sandbox="" src={previewUrl} />
           ) : (
             <div className="preview-empty" aria-live="polite">

@@ -100,4 +100,24 @@ describe('SQLite draft repository', () => {
     expect(repository.get(workspaceId, documentId)?.body).toBe('two');
     database.close();
   });
+
+  it('deletes only the expected acknowledged version', () => {
+    const database = openStudioDatabase(databasePath());
+    const repository = new SqliteDraftRepository(database);
+    const workspaceId = createWorkspaceId('personal-blog');
+    const documentId = createDocumentId('post-one');
+    repository.save({
+      workspaceId,
+      documentId,
+      expectedVersion: 0,
+      sourceRevision: createContentHash(`sha256:${'a'.repeat(64)}`),
+      frontMatter: { title: 'First' },
+      body: 'one',
+      savedAt: '2026-08-02T00:00:00.000Z',
+    });
+    expect(repository.delete(workspaceId, documentId, 2)).toBe(false);
+    expect(repository.delete(workspaceId, documentId, 1)).toBe(true);
+    expect(repository.get(workspaceId, documentId)).toBeNull();
+    database.close();
+  });
 });

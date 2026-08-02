@@ -43,4 +43,41 @@ describe('StudioApi', () => {
       'x-csrf-token': 'csrf-token',
     });
   });
+
+  it('starts a release with the exact saved draft version', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          release: { id: 'release-one', status: 'queued', stages: [] },
+          events: [],
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 202 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StudioApi('csrf-token').startRelease({
+      workspaceId: 'personal-blog',
+      targetId: 'production',
+      draft: {
+        collectionId: 'posts',
+        documentId: 'hello-world',
+        version: 4,
+      },
+    });
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('/api/workspaces/personal-blog/releases');
+    expect(request?.method).toBe('POST');
+    if (typeof request?.body !== 'string')
+      throw new Error('Expected a JSON string request body');
+    expect(JSON.parse(request.body)).toEqual({
+      targetId: 'production',
+      draft: {
+        collectionId: 'posts',
+        documentId: 'hello-world',
+        version: 4,
+      },
+    });
+  });
 });

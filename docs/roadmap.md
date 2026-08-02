@@ -35,11 +35,12 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Filesystem and Tencent COS asset adapters.
 - [x] image validation, metadata stripping, resizing, and WebP policy.
 - [x] article-scoped immutable asset keys.
-- [ ] Build manifest and local filesystem publisher.
-- [ ] Tencent COS diff publisher without per-file remote HEAD fan-out.
-- [ ] Tencent CDN cache adapter.
-- [ ] Release state machine, logs, cancellation, recovery, and rollback.
-- [ ] Public URL release-marker verification.
+- [x] Build manifest and local filesystem publisher.
+- [x] Tencent COS diff publisher without per-file remote HEAD fan-out.
+- [x] Tencent CDN and EdgeOne cache adapter contract.
+- [x] Release state machine, durable logs, cancellation, and rollback.
+- [x] Public URL release-marker verification.
+- [ ] Cold-restart release recovery against real provider state.
 - [ ] End-to-end publish against a non-production prefix.
 - [ ] Controlled production deployment without changing existing URLs.
 

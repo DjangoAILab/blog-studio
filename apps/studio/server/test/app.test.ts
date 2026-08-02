@@ -16,9 +16,11 @@ const apps: FastifyInstance[] = [];
 async function fixture(): Promise<{
   readonly app: FastifyInstance;
   readonly workspace: string;
+  readonly publishTarget: string;
 }> {
   const parent = await mkdtemp(join(tmpdir(), 'blog-studio-api-'));
   const workspace = join(parent, 'site');
+  const publishTarget = join(parent, 'published');
   const client = join(parent, 'client');
   await mkdir(join(workspace, 'source', '_posts'), { recursive: true });
   await mkdir(join(workspace, 'source', '_drafts'), { recursive: true });
@@ -68,6 +70,8 @@ assets:
     publicBaseUrl: https://blog.example.test/
 publish:
   adapter: filesystem
+  options:
+    directory: ${publishTarget}
 verification:
   baseUrl: https://blog.example.test
 `,
@@ -82,9 +86,12 @@ verification:
     allowedOrigins: [origin],
     secureCookies: false,
     clientDirectory: client,
+    releaseVerifierFactory: () => ({
+      verify: () => Promise.resolve(true),
+    }),
   });
   apps.push(app);
-  return { app, workspace };
+  return { app, workspace, publishTarget };
 }
 
 async function login(app: FastifyInstance): Promise<{
@@ -104,6 +111,37 @@ async function login(app: FastifyInstance): Promise<{
     cookie: values.map((value) => value.split(';')[0]).join('; '),
     csrfToken: response.json<{ csrfToken: string }>().csrfToken,
   };
+}
+
+interface ReleaseDetails {
+  readonly release: {
+    readonly id: string;
+    readonly status: string;
+    readonly stages: Array<{ readonly status: string }>;
+  };
+  readonly events: Array<{ readonly stage: string }>;
+}
+
+async function waitForRelease(
+  app: FastifyInstance,
+  cookie: string,
+  releaseId: string,
+): Promise<ReleaseDetails> {
+  for (let attempt = 0; attempt < 80; attempt++) {
+    const response = await app.inject({
+      url: `/api/workspaces/test-blog/releases/${releaseId}`,
+      headers: { cookie },
+    });
+    const details = response.json<ReleaseDetails>();
+    if (
+      ['succeeded', 'failed', 'rolled-back', 'canceled'].includes(
+        details.release.status,
+      )
+    )
+      return details;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Release did not reach a terminal state: ${releaseId}`);
 }
 
 afterEach(async () => {
@@ -325,5 +363,141 @@ describe('Studio workspace API', () => {
     expect(await readFile(join(workspace, 'source', asset.key))).not.toEqual(
       image,
     );
+  });
+
+  it('publishes a verified release and exposes its durable timeline', async () => {
+    const { app, publishTarget, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const documents = await app.inject({
+      url: '/api/workspaces/test-blog/documents?collection=posts',
+      headers: { cookie: session.cookie },
+    });
+    const documentId = documents.json<{
+      documents: Array<{ ref: { documentId: string } }>;
+    }>().documents[0]?.ref.documentId;
+    if (!documentId) throw new Error('fixture document missing');
+    const sourceResponse = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    const sourceRevision = sourceResponse.json<{
+      source: { revision: string };
+    }>().source.revision;
+    const draft = await app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/test-blog/documents/${documentId}/draft?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision,
+        frontMatter: {
+          title: 'Released from Studio',
+          date: '2026-08-02 10:00:00',
+        },
+        body: 'Published draft body\n',
+      },
+    });
+    expect(draft.statusCode, draft.body).toBe(200);
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers,
+      payload: {
+        targetId: 'production',
+        draft: { collectionId: 'posts', documentId, version: 1 },
+      },
+    });
+    expect(started.statusCode, started.body).toBe(202);
+    const releaseId = started.json<{ release: { id: string } }>().release.id;
+
+    const details = await waitForRelease(app, session.cookie, releaseId);
+    expect(details.release.status).toBe('succeeded');
+    expect(
+      details.release.stages.every((stage) => stage.status === 'succeeded'),
+    ).toBe(true);
+    expect(
+      details.events.some((event) => event.stage === 'uploading-pages'),
+    ).toBe(true);
+
+    const listed = await app.inject({
+      url: '/api/workspaces/test-blog/releases',
+      headers: { cookie: session.cookie },
+    });
+    expect(listed.json<{ releases: unknown[] }>().releases).toHaveLength(1);
+    expect(
+      await readFile(
+        join(publishTarget, '2026', '08', '02', 'hello', 'index.html'),
+        'utf8',
+      ),
+    ).toContain('Published draft body');
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Published draft body');
+    const sourceAfter = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    const sourceAfterPayload = sourceAfter.json<{
+      source: { revision: string };
+      draft: unknown;
+    }>();
+    expect(sourceAfterPayload.draft).toBeNull();
+
+    const secondDraft = await app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/test-blog/documents/${documentId}/draft?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: sourceAfterPayload.source.revision,
+        frontMatter: { title: 'Second release', date: '2026-08-02 10:00:00' },
+        body: 'Second release body\n',
+      },
+    });
+    expect(secondDraft.statusCode, secondDraft.body).toBe(200);
+    const secondStarted = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers,
+      payload: {
+        targetId: 'production',
+        draft: { collectionId: 'posts', documentId, version: 1 },
+      },
+    });
+    expect(secondStarted.statusCode, secondStarted.body).toBe(202);
+    const secondReleaseId = secondStarted.json<ReleaseDetails>().release.id;
+    expect(
+      (await waitForRelease(app, session.cookie, secondReleaseId)).release
+        .status,
+    ).toBe('succeeded');
+    expect(
+      await readFile(
+        join(publishTarget, '2026', '08', '02', 'hello', 'index.html'),
+        'utf8',
+      ),
+    ).toContain('Second release body');
+
+    const rollback = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/test-blog/releases/${secondReleaseId}/rollback`,
+      headers,
+      payload: {},
+    });
+    expect(rollback.statusCode, rollback.body).toBe(202);
+    expect(
+      (await waitForRelease(app, session.cookie, secondReleaseId)).release
+        .status,
+    ).toBe('rolled-back');
+    expect(
+      await readFile(
+        join(publishTarget, '2026', '08', '02', 'hello', 'index.html'),
+        'utf8',
+      ),
+    ).toContain('Published draft body');
   });
 });

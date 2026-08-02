@@ -105,7 +105,8 @@ body::before {
   outline: none;
 }
 .primary-button,
-.preview-button {
+.preview-button,
+.publish-button {
   border: 0;
   background: var(--accent);
   color: white;
@@ -131,7 +132,7 @@ body::before {
   background: var(--ink);
   color: #f7f2e6;
   display: grid;
-  grid-template-columns: 250px 1fr auto auto;
+  grid-template-columns: 250px 1fr auto auto auto;
   align-items: center;
   gap: 1.4rem;
   padding: 0 1.2rem 0 1.6rem;
@@ -196,6 +197,16 @@ body::before {
 }
 .preview-button {
   clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+}
+.publish-button {
+  background: #f1ead9;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.publish-button:disabled,
+.preview-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .workspace-grid {
@@ -522,6 +533,137 @@ body::before {
   max-width: 15rem;
   margin: auto;
 }
+.release-proof {
+  overflow: auto;
+  padding: 1.2rem;
+}
+.release-summary {
+  display: grid;
+  grid-template-columns: 46px 1fr;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 1rem;
+  background: var(--paper);
+  border-left: 4px solid #d7a24b;
+}
+.release-summary.release-succeeded {
+  border-color: var(--moss);
+}
+.release-summary.release-failed,
+.release-summary.release-rolled-back {
+  border-color: var(--accent);
+}
+.release-summary > span {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+.release-summary small,
+.release-summary p {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+.release-summary h2,
+.release-summary p {
+  margin: 0.2rem 0;
+}
+.release-summary h2 {
+  font:
+    600 1.35rem 'Songti SC',
+    serif;
+}
+.release-timeline {
+  list-style: none;
+  margin: 1.2rem 0;
+  padding: 0 0 0 0.7rem;
+}
+.release-timeline li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  min-height: 43px;
+  position: relative;
+}
+.release-timeline li::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 13px;
+  bottom: -10px;
+  width: 1px;
+  background: #bbb7ab;
+}
+.release-timeline li:last-child::before {
+  display: none;
+}
+.release-timeline i {
+  width: 11px;
+  height: 11px;
+  margin-top: 3px;
+  border-radius: 50%;
+  border: 2px solid #aaa69b;
+  background: #d7d4ca;
+  z-index: 1;
+}
+.release-timeline .stage-running i {
+  border-color: #d7a24b;
+  background: #d7a24b;
+}
+.release-timeline .stage-succeeded i {
+  border-color: var(--moss);
+  background: var(--moss);
+}
+.release-timeline .stage-failed i {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.release-timeline span {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.release-timeline b {
+  font-size: 0.74rem;
+}
+.release-timeline small {
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+}
+.release-log {
+  padding: 0.7rem;
+  background: #292f2c;
+  color: #d8ddd7;
+  font:
+    0.62rem/1.55 'SFMono-Regular',
+    Consolas,
+    monospace;
+}
+.release-log p {
+  margin: 0.35rem 0;
+}
+.release-log time {
+  color: #9dae91;
+  margin-right: 0.55rem;
+}
+.release-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+.release-controls button {
+  padding: 0.75rem;
+  border: 1px solid var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+.release-controls .danger-control {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .mobile-nav {
   display: none;
 }
@@ -534,7 +676,7 @@ body::before {
     display: none;
   }
   .topbar {
-    grid-template-columns: 220px 1fr auto;
+    grid-template-columns: 220px 1fr auto auto;
   }
   .save-badge {
     display: none;
@@ -543,7 +685,7 @@ body::before {
 @media (max-width: 720px) {
   .topbar {
     height: 58px;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     padding: 0 1rem;
   }
   .workspace-switcher,
@@ -551,6 +693,10 @@ body::before {
     display: none;
   }
   .preview-button {
+    padding: 0.65rem 0.8rem;
+    font-size: 0.72rem;
+  }
+  .publish-button {
     padding: 0.65rem 0.8rem;
     font-size: 0.72rem;
   }

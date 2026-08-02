@@ -48,9 +48,21 @@ export interface ManifestEntry {
   readonly cacheClass: 'immutable' | 'page' | 'metadata';
 }
 
+export interface ReleaseManifest {
+  readonly version: 1;
+  readonly releaseId: ReleaseId;
+  readonly targetId: string;
+  readonly createdAt: string;
+  readonly verificationToken: string;
+  readonly entries: readonly ManifestEntry[];
+}
+
 export interface PublishPlan {
   readonly releaseId: ReleaseId;
   readonly targetId: string;
+  readonly sourceDirectory: string;
+  readonly manifest: ReleaseManifest;
+  readonly previousManifest?: ReleaseManifest;
   readonly additions: readonly ManifestEntry[];
   readonly changes: readonly ManifestEntry[];
   readonly deletions: readonly ManifestEntry[];
@@ -64,13 +76,18 @@ const allowedTransitions: Readonly<
   preflight: ['building', 'failed', 'canceled'],
   building: ['planning', 'failed', 'canceled'],
   planning: ['uploading-assets', 'succeeded', 'failed', 'canceled'],
-  'uploading-assets': ['uploading-pages', 'failed', 'canceled'],
-  'uploading-pages': ['invalidating-cache', 'failed'],
-  'invalidating-cache': ['verifying', 'failed'],
+  'uploading-assets': [
+    'uploading-pages',
+    'rollback-required',
+    'failed',
+    'canceled',
+  ],
+  'uploading-pages': ['invalidating-cache', 'rollback-required', 'failed'],
+  'invalidating-cache': ['verifying', 'rollback-required', 'failed'],
   verifying: ['succeeded', 'rollback-required', 'failed'],
   'rollback-required': ['rolling-back', 'failed'],
   'rolling-back': ['rolled-back', 'failed'],
-  succeeded: [],
+  succeeded: ['rollback-required'],
   failed: [],
   'rolled-back': [],
   canceled: [],
@@ -100,5 +117,5 @@ export function transitionRelease(
 }
 
 export function isTerminalReleaseStatus(status: ReleaseStatus): boolean {
-  return allowedTransitions[status].length === 0;
+  return ['succeeded', 'failed', 'rolled-back', 'canceled'].includes(status);
 }

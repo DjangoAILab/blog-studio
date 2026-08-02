@@ -53,6 +53,12 @@ importers:
       '@blog-studio/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@blog-studio/publisher-filesystem':
+        specifier: workspace:*
+        version: link:../../packages/publisher-filesystem
+      '@blog-studio/release':
+        specifier: workspace:*
+        version: link:../../packages/release
       '@blog-studio/storage-filesystem':
         specifier: workspace:*
         version: link:../../packages/storage-filesystem
@@ -143,6 +149,12 @@ importers:
         specifier: 0.34.5
         version: 0.34.5
 
+  packages/cache-tencent:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/config:
     dependencies:
       yaml:
@@ -164,6 +176,30 @@ importers:
         version: link:../persistence
 
   packages/persistence:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/publisher-cos:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+      '@blog-studio/release':
+        specifier: workspace:*
+        version: link:../release
+
+  packages/publisher-filesystem:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
+      '@blog-studio/release':
+        specifier: workspace:*
+        version: link:../release
+
+  packages/release:
     dependencies:
       '@blog-studio/core':
         specifier: workspace:*

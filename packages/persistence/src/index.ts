@@ -6,3 +6,8 @@ export {
   type SaveDraftInput,
 } from './drafts.js';
 export { SqliteJobRepository, type CreateJobResult } from './jobs.js';
+export {
+  ActiveReleaseConflictError,
+  SqliteReleaseRepository,
+  type StoredRelease,
+} from './releases.js';

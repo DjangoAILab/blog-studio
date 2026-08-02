@@ -20,8 +20,15 @@ function EditorSurface({
   changeHandler.current = onChange;
   useEditor((root) => {
     const crepe = new Crepe({ root, defaultValue: markdown });
+    let initialized = false;
     crepe.on((listener) => {
       listener.markdownUpdated((_context, next, previous) => {
+        // Crepe emits one normalization update while loading defaultValue. It is
+        // editor initialization, not an author edit, so it must not create a draft.
+        if (!initialized) {
+          initialized = true;
+          return;
+        }
         if (next !== previous) changeHandler.current(next);
       });
     });

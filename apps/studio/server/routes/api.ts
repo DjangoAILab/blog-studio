@@ -13,12 +13,14 @@ import type { SqliteDraftRepository } from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
 
 import type { PreviewService } from '../services/previews.js';
+import type { ReleaseService } from '../services/releases.js';
 import type { WorkspaceService } from '../services/workspaces.js';
 
 interface ApiDependencies {
   readonly workspaces: WorkspaceService;
   readonly drafts: SqliteDraftRepository;
   readonly previews: PreviewService;
+  readonly releases: ReleaseService;
 }
 
 const workspaceParams = {
@@ -37,6 +39,16 @@ const documentParams = {
   properties: {
     workspaceId: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
     documentId: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+  },
+} as const;
+
+const releaseParams = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['workspaceId', 'releaseId'],
+  properties: {
+    workspaceId: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+    releaseId: { type: 'string', pattern: '^release-[a-z0-9-]+$' },
   },
 } as const;
 
@@ -130,12 +142,108 @@ export function registerApiRoutes(
   app.get('/api/health', () => ({ status: 'ok' as const }));
 
   app.get('/api/workspaces', () => ({
-    workspaces: dependencies.workspaces.list().map(({ config, generator }) => ({
-      id: config.workspace.id,
-      generator: generator.id,
-      capabilities: generator.capabilities,
+    workspaces: dependencies.workspaces.list().map((workspace) => ({
+      id: workspace.config.workspace.id,
+      generator: workspace.generator.id,
+      capabilities: workspace.generator.capabilities,
+      publishTarget: dependencies.releases.target(workspace),
     })),
   }));
+
+  app.get<{ Params: { workspaceId: string } }>(
+    '/api/workspaces/:workspaceId/releases',
+    { schema: { params: workspaceParams } },
+    (request) => ({
+      releases: dependencies.releases.list(request.params.workspaceId),
+    }),
+  );
+
+  app.get<{
+    Params: { workspaceId: string; releaseId: string };
+  }>(
+    '/api/workspaces/:workspaceId/releases/:releaseId',
+    { schema: { params: releaseParams } },
+    (request) =>
+      dependencies.releases.get(
+        request.params.workspaceId,
+        request.params.releaseId,
+      ),
+  );
+
+  app.post<{
+    Params: { workspaceId: string };
+    Body: {
+      targetId?: string;
+      draft?: { collectionId: string; documentId: string; version: number };
+    };
+  }>(
+    '/api/workspaces/:workspaceId/releases',
+    {
+      schema: {
+        params: workspaceParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            targetId: { type: 'string', minLength: 1, maxLength: 64 },
+            draft: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['collectionId', 'documentId', 'version'],
+              properties: {
+                collectionId: { type: 'string', minLength: 1, maxLength: 64 },
+                documentId: {
+                  type: 'string',
+                  pattern: '^[a-z0-9][a-z0-9._-]*$',
+                },
+                version: { type: 'integer', minimum: 1 },
+              },
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const release = await dependencies.releases.start(
+        request.params.workspaceId,
+        request.body.targetId,
+        request.body.draft,
+      );
+      return reply.code(202).send(release);
+    },
+  );
+
+  app.delete<{
+    Params: { workspaceId: string; releaseId: string };
+  }>(
+    '/api/workspaces/:workspaceId/releases/:releaseId',
+    { schema: { params: releaseParams } },
+    (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          dependencies.releases.cancel(
+            request.params.workspaceId,
+            request.params.releaseId,
+          ),
+        ),
+  );
+
+  app.post<{
+    Params: { workspaceId: string; releaseId: string };
+  }>(
+    '/api/workspaces/:workspaceId/releases/:releaseId/rollback',
+    { schema: { params: releaseParams } },
+    (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          dependencies.releases.rollback(
+            request.params.workspaceId,
+            request.params.releaseId,
+          ),
+        ),
+  );
 
   app.post<{ Params: { workspaceId: string } }>(
     '/api/workspaces/:workspaceId/scan',

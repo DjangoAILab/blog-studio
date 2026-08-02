@@ -1,11 +1,15 @@
-import type { ReleaseRecord } from '../domain/releases.js';
-import type { PublishPlan } from '../domain/releases.js';
+import type {
+  PublishPlan,
+  ReleaseManifest,
+  ReleaseRecord,
+} from '../domain/releases.js';
 import type { AdapterDescriptor } from './common.js';
 
 export interface PublishInput {
   readonly release: ReleaseRecord;
   readonly outputDirectory: string;
-  readonly previousManifestPath?: string;
+  readonly manifest: ReleaseManifest;
+  readonly previousManifest?: ReleaseManifest;
 }
 
 export interface PublishEvent {
@@ -25,6 +29,11 @@ export interface PublishResult {
   readonly deleted: number;
 }
 
+export interface PublishBatchResult {
+  readonly uploaded: number;
+  readonly deleted: number;
+}
+
 export interface RollbackResult {
   readonly restoredReleaseId: string;
   readonly restoredFiles: number;
@@ -32,6 +41,11 @@ export interface RollbackResult {
 
 export interface Publisher extends AdapterDescriptor {
   plan(input: PublishInput): Promise<PublishPlan>;
-  apply(plan: PublishPlan, events: PublishEventSink): Promise<PublishResult>;
+  apply(
+    plan: PublishPlan,
+    phase: 'assets' | 'pages',
+    events: PublishEventSink,
+  ): Promise<PublishBatchResult>;
+  finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
 }

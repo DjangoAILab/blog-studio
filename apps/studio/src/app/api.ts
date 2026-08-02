@@ -1,6 +1,52 @@
 export interface WorkspaceSummary {
   readonly id: string;
   readonly generator: string;
+  readonly publishTarget: {
+    readonly id: string;
+    readonly adapter: string;
+    readonly configured: boolean;
+  };
+}
+
+export type ReleaseStatus =
+  | 'queued'
+  | 'preflight'
+  | 'building'
+  | 'planning'
+  | 'uploading-assets'
+  | 'uploading-pages'
+  | 'invalidating-cache'
+  | 'verifying'
+  | 'succeeded'
+  | 'failed'
+  | 'rollback-required'
+  | 'rolling-back'
+  | 'rolled-back'
+  | 'canceled';
+
+export interface ReleaseDetails {
+  readonly release: {
+    readonly id: string;
+    readonly targetId: string;
+    readonly status: ReleaseStatus;
+    readonly createdAt: string;
+    readonly updatedAt: string;
+    readonly stages: readonly {
+      readonly name: string;
+      readonly status:
+        'pending' | 'running' | 'succeeded' | 'failed' | 'skipped';
+      readonly startedAt?: string;
+      readonly completedAt?: string;
+    }[];
+  };
+  readonly events: readonly {
+    readonly at: string;
+    readonly stage: string;
+    readonly level: 'info' | 'warning' | 'error';
+    readonly message: string;
+    readonly completed?: number;
+    readonly total?: number;
+  }[];
 }
 
 export interface DocumentSummary {
@@ -112,6 +158,53 @@ export class StudioApi {
     return this.#request<{ preview: { id: string; url: string } }>(
       `/api/workspaces/${workspaceId}/documents/${documentId}/preview?collection=${collection}`,
       { method: 'POST' },
+    );
+  }
+
+  public releases(workspaceId: string) {
+    return this.#request<{ releases: readonly ReleaseDetails[] }>(
+      `/api/workspaces/${workspaceId}/releases`,
+    );
+  }
+
+  public release(workspaceId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/workspaces/${workspaceId}/releases/${releaseId}`,
+    );
+  }
+
+  public startRelease(input: {
+    readonly workspaceId: string;
+    readonly targetId: string;
+    readonly draft?: {
+      readonly collectionId: string;
+      readonly documentId: string;
+      readonly version: number;
+    };
+  }) {
+    return this.#request<ReleaseDetails>(
+      `/api/workspaces/${input.workspaceId}/releases`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          targetId: input.targetId,
+          ...(input.draft ? { draft: input.draft } : {}),
+        }),
+      },
+    );
+  }
+
+  public cancelRelease(workspaceId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/workspaces/${workspaceId}/releases/${releaseId}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  public rollbackRelease(workspaceId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/workspaces/${workspaceId}/releases/${releaseId}/rollback`,
+      { method: 'POST', body: '{}' },
     );
   }
 

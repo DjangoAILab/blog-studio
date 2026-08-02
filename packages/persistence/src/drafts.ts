@@ -140,4 +140,19 @@ export class SqliteDraftRepository {
       throw error;
     }
   }
+
+  public delete(
+    workspaceId: WorkspaceId,
+    documentId: DocumentId,
+    expectedVersion: number,
+  ): boolean {
+    return (
+      this.database
+        .prepare(
+          `DELETE FROM drafts
+            WHERE workspace_id = ? AND document_id = ? AND version = ?`,
+        )
+        .run(workspaceId, documentId, expectedVersion).changes === 1
+    );
+  }
 }

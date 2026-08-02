@@ -18,6 +18,8 @@
     "@blog-studio/config": "workspace:*",
     "@blog-studio/core": "workspace:*",
     "@blog-studio/persistence": "workspace:*",
+    "@blog-studio/publisher-filesystem": "workspace:*",
+    "@blog-studio/release": "workspace:*",
     "@blog-studio/storage-filesystem": "workspace:*",
     "@fastify/cookie": "11.1.2",
     "@fastify/static": "10.1.2",
