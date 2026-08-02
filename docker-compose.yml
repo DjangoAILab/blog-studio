@@ -27,7 +27,7 @@ services:
       - ${BLOG_STUDIO_CONFIG_PATH:-./config/blog-studio.yml}:/config/blog-studio.yml:ro
       - ${BLOG_STUDIO_WORKSPACE_PATH:-./workspace}:/workspaces/blog:rw
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=256m,mode=1777
+      - /tmp:rw,noexec,nosuid,size=${BLOG_STUDIO_TMPFS_SIZE:-1g},mode=1777
     ports:
       - 127.0.0.1:${BLOG_STUDIO_LOCAL_PORT:-4310}:4310
     healthcheck:

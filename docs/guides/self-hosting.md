@@ -18,6 +18,10 @@ The final image intentionally omits npm and Git: install the site's locked
 dependencies before mounting the workspace, and perform Git administration on
 the host. Generator executables already installed in the workspace remain
 available to Studio.
+Preview isolation uses a `noexec,nosuid` tmpfs. Its size defaults to 1 GiB and
+can be changed with `BLOG_STUDIO_TMPFS_SIZE`; allow enough room for both a copy
+of the source tree and one generated site without exceeding the container's
+memory limit.
 
 ## Prepare the installation
 
