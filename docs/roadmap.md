@@ -23,9 +23,9 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Generic command and Hexo generator adapters.
 - [x] Document discovery, front matter round-trip, and stable document IDs.
 - [x] Draft snapshot persistence with optimistic revisions.
-- [ ] Responsive editor shell with visual and source modes.
+- [x] Responsive editor shell with visual and source modes.
 - [ ] Immediate local image preview and background upload state.
-- [ ] Real Hexo preview lifecycle and proxy.
+- [x] Real Hexo preview lifecycle and proxy.
 - [ ] Browser tests covering create, edit, autosave, reload, and preview.
 
 ## Phase 2 — Assets and publishing

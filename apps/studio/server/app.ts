@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import cookie from '@fastify/cookie';
+import staticFiles from '@fastify/static';
 import {
   RevisionConflictError,
   SqliteDraftRepository,
@@ -27,6 +28,7 @@ export interface StudioServerOptions {
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
   readonly secureCookies?: boolean;
+  readonly clientDirectory?: string;
   readonly logger?: FastifyServerOptions['logger'];
 }
 
@@ -75,7 +77,18 @@ export async function createStudioServer(
     allowedWorkspaceRoot: options.allowedWorkspaceRoot,
   });
   const database = openStudioDatabase(options.databasePath);
-  app.addHook('onClose', () => database.close());
+  const previews = new PreviewService(workspaces);
+  const previewReaper = setInterval(() => {
+    void previews.reapExpired().catch((error: unknown) => {
+      app.log.error({ err: error }, 'Failed to reap expired previews');
+    });
+  }, 60_000);
+  previewReaper.unref();
+  app.addHook('onClose', async () => {
+    clearInterval(previewReaper);
+    await previews.dispose();
+    database.close();
+  });
 
   app.post<{ Body: { token: string } }>(
     '/api/session',
@@ -127,7 +140,9 @@ export async function createStudioServer(
 
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
+    if (!path?.startsWith('/api/')) return;
     if (path === '/api/health' || path === '/api/session') return;
+    if (request.method === 'GET' && path.startsWith('/api/previews/')) return;
 
     const session = request.cookies[SESSION_COOKIE];
     if (!session) {
@@ -168,24 +183,24 @@ export async function createStudioServer(
     }
   });
 
-  registerApiRoutes(app, {
-    workspaces,
-    drafts: new SqliteDraftRepository(database),
-    previews: new PreviewService(workspaces),
-  });
-
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const validationError =
       error !== null && typeof error === 'object' && 'validation' in error;
     const status =
       error instanceof RevisionConflictError
         ? 409
-        : validationError
-          ? 400
-          : /^(Unknown|Unsupported)/.test(message)
-            ? 404
-            : 500;
+        : message === 'Draft source revision conflict'
+          ? 409
+          : message.startsWith('Invalid Hexo document date:')
+            ? 422
+            : validationError
+              ? 400
+              : /^(Unknown|Unsupported)/.test(message)
+                ? 404
+                : 500;
+    if (status === 500)
+      request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
       type: 'about:blank',
       title: status === 500 ? 'Internal server error' : message,
@@ -195,6 +210,31 @@ export async function createStudioServer(
         : {}),
     });
   });
+
+  registerApiRoutes(app, {
+    workspaces,
+    drafts: new SqliteDraftRepository(database),
+    previews,
+  });
+
+  if (options.clientDirectory) {
+    await app.register(staticFiles, {
+      root: options.clientDirectory,
+      index: false,
+      immutable: true,
+      maxAge: '30d',
+      setHeaders(reply) {
+        reply.header(
+          'Content-Security-Policy',
+          "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; frame-src 'self'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+        );
+        reply.header('X-Content-Type-Options', 'nosniff');
+      },
+    });
+    app.get('/', (_request, reply) =>
+      reply.sendFile('index.html', { immutable: false, maxAge: 0 }),
+    );
+  }
 
   return app;
 }

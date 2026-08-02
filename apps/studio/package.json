@@ -4,8 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "dev": "vite",
     "lint": "eslint src server test",
+    "start": "node dist/server/main.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -16,6 +18,18 @@
     "@blog-studio/core": "workspace:*",
     "@blog-studio/persistence": "workspace:*",
     "@fastify/cookie": "11.1.2",
-    "fastify": "5.11.0"
+    "@fastify/static": "10.1.2",
+    "@milkdown/crepe": "7.21.3",
+    "@milkdown/kit": "7.21.3",
+    "@milkdown/react": "7.21.3",
+    "fastify": "5.11.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "vite": "8.2.0"
   }
 }

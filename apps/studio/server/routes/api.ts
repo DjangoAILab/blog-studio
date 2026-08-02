@@ -1,3 +1,7 @@
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
+
+import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import { createContentHash, type FrontMatterValue } from '@blog-studio/core';
 import type { SqliteDraftRepository } from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
@@ -36,6 +40,34 @@ const collectionQuery = {
   required: ['collection'],
   properties: { collection: { type: 'string', minLength: 1, maxLength: 64 } },
 } as const;
+
+function rewritePreviewText(
+  input: string,
+  contentType: string,
+  prefix: string,
+): string {
+  if (contentType.startsWith('text/html')) {
+    const html = input
+      .replace(/\b(href|src|action|poster)=(['"])\/(?!\/)/gi, `$1=$2${prefix}/`)
+      .replace(
+        /\bsrcset=(['"])([^'"]+)\1/gi,
+        (_match, quote: string, sources: string) =>
+          `srcset=${quote}${sources
+            .split(',')
+            .map((source) =>
+              source.trimStart().startsWith('/')
+                ? `${prefix}${source.trimStart()}`
+                : source,
+            )
+            .join(',')}${quote}`,
+      );
+    return rewritePreviewText(html, 'text/css', prefix);
+  }
+  if (contentType.startsWith('text/css')) {
+    return input.replace(/url\(\s*(['"]?)\/(?!\/)/gi, `url($1${prefix}/`);
+  }
+  return input;
+}
 
 export function registerApiRoutes(
   app: FastifyInstance,
@@ -159,13 +191,30 @@ export function registerApiRoutes(
     },
   );
 
-  app.post<{ Params: { workspaceId: string } }>(
-    '/api/workspaces/:workspaceId/preview',
-    { schema: { params: workspaceParams } },
+  app.post<{
+    Params: { workspaceId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/workspaces/:workspaceId/documents/:documentId/preview',
+    { schema: { params: documentParams, querystring: collectionQuery } },
     async (request) => {
-      const preview = await dependencies.previews.start(
+      const workspace = dependencies.workspaces.get(request.params.workspaceId);
+      const { ref } = await dependencies.workspaces.findDocument(
         request.params.workspaceId,
+        request.query.collection,
+        request.params.documentId,
       );
+      const source = await workspace.generator.readDocument(
+        workspace.config.workspace.root,
+        ref,
+      );
+      const draft = dependencies.drafts.get(ref.workspaceId, ref.documentId);
+      const preview = await dependencies.previews.start({
+        workspaceId: request.params.workspaceId,
+        ref,
+        sourceRevision: source.revision,
+        ...(draft === null ? {} : { draft }),
+      });
       return {
         preview: {
           id: preview.id,
@@ -173,17 +222,20 @@ export function registerApiRoutes(
           files: preview.manifest.length,
           createdAt: preview.createdAt,
           expiresAt: preview.expiresAt,
-          url: `/api/previews/${preview.id}/content/`,
+          url: `/api/previews/${preview.id}/content${preview.contentPath}`,
         },
       };
     },
   );
 
-  app.delete<{ Params: { workspaceId: string } }>(
-    '/api/workspaces/:workspaceId/preview',
-    { schema: { params: workspaceParams } },
-    (request) => ({
-      stopped: dependencies.previews.stop(request.params.workspaceId),
+  app.delete<{
+    Params: { workspaceId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/workspaces/:workspaceId/documents/:documentId/preview',
+    { schema: { params: documentParams, querystring: collectionQuery } },
+    async (request) => ({
+      stopped: await dependencies.previews.stop(request.params.workspaceId),
     }),
   );
 
@@ -211,19 +263,26 @@ export function registerApiRoutes(
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
       };
+      const contentType =
+        types[extname(path).toLowerCase()] ?? 'application/octet-stream';
+      const content = await readFile(path);
+      const previewPrefix = `/api/previews/${preview.id}/content`;
       reply
         .header(
           'content-security-policy',
-          "sandbox allow-scripts; default-src 'self' data: blob:; object-src 'none'; base-uri 'none'",
+          "sandbox; default-src 'self' data: blob:; font-src 'self' data: https:; img-src 'self' data: blob: https:; object-src 'none'; script-src 'none'; style-src 'self' 'unsafe-inline' https:; base-uri 'none'",
         )
         .header('x-content-type-options', 'nosniff')
+        .header('referrer-policy', 'no-referrer')
         .header('cache-control', 'no-store')
-        .type(types[extname(path).toLowerCase()] ?? 'application/octet-stream');
-      return await readFile(path);
+        .type(contentType);
+      return contentType.startsWith('text/') || contentType.includes('json')
+        ? rewritePreviewText(
+            content.toString('utf8'),
+            contentType,
+            previewPrefix,
+          )
+        : content;
     },
   );
 }
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
-
-import { resolveWorkspacePath } from '@blog-studio/adapter-command';
