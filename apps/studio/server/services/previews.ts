@@ -1,9 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { cp, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, relative, sep } from 'node:path';
+import { rm, stat } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
-import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import type {
   ContentHash,
   DocumentRef,
@@ -12,6 +10,7 @@ import type {
 } from '@blog-studio/core';
 
 import type { WorkspaceService } from './workspaces.js';
+import { createWorkspaceSandbox } from './workspace-sandbox.js';
 
 export interface PreviewDraft {
   readonly version: number;
@@ -46,47 +45,6 @@ export class PreviewService {
     await rm(session.workspaceDirectory, { force: true, recursive: true });
   }
 
-  async #isolatedWorkspace(workspaceId: string): Promise<string> {
-    const workspace = this.workspaces.get(workspaceId);
-    const sourceRoot = await resolveWorkspacePath(
-      workspace.config.workspace.root,
-      '.',
-    );
-    const model = await workspace.generator.inspect(sourceRoot);
-    const outputPath = relative(sourceRoot, model.outputDirectory);
-    const temporaryRoot = await mkdtemp(join(tmpdir(), 'blog-studio-preview-'));
-    const destination = join(temporaryRoot, 'workspace');
-    const excludedRoots = new Set(['.git', 'node_modules']);
-    if (outputPath && !outputPath.startsWith('..'))
-      excludedRoots.add(outputPath.split(sep)[0] ?? outputPath);
-
-    try {
-      await cp(sourceRoot, destination, {
-        recursive: true,
-        filter(source) {
-          const path = relative(sourceRoot, source);
-          const root = path.split(sep)[0];
-          return path === '' || !root || !excludedRoots.has(root);
-        },
-      });
-      const dependencies = join(sourceRoot, 'node_modules');
-      try {
-        await stat(dependencies);
-        await symlink(
-          dependencies,
-          join(destination, 'node_modules'),
-          process.platform === 'win32' ? 'junction' : 'dir',
-        );
-      } catch {
-        // A generator may use a globally installed executable instead.
-      }
-      return destination;
-    } catch (error) {
-      await rm(temporaryRoot, { force: true, recursive: true });
-      throw error;
-    }
-  }
-
   public async start(input: {
     readonly workspaceId: string;
     readonly ref: DocumentRef;
@@ -114,7 +72,8 @@ export class PreviewService {
     }
 
     const workspace = this.workspaces.get(input.workspaceId);
-    const isolatedWorkspace = await this.#isolatedWorkspace(input.workspaceId);
+    const sandbox = await createWorkspaceSandbox(workspace, 'preview');
+    const isolatedWorkspace = sandbox.workspaceRoot;
     const temporaryRoot = dirname(isolatedWorkspace);
     try {
       if (input.draft) {

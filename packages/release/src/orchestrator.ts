@@ -45,6 +45,7 @@ export interface ReleaseOrchestratorOptions {
   readonly createVerificationToken?: () => string;
   readonly writeMarker?: MarkerWriter;
   readonly prepare?: () => Promise<void>;
+  readonly commit?: () => Promise<void>;
   readonly onUpdate?: (release: ReleaseRecord) => Promise<void>;
   readonly onEvent?: (event: PublishEvent) => void;
 }
@@ -269,6 +270,9 @@ export class ReleaseOrchestrator {
         manifestsHaveSameContent(baseEntries, input.previousManifest)
       ) {
         current = await this.#transition(current, 'planning');
+        await this.options.commit?.();
+        if (this.options.commit)
+          emit('planning', 'Canonical source committed after no-op build');
         current = await this.#transition(current, 'succeeded');
         emit('planning', 'Generated content is unchanged; release is a no-op');
         return { release: current, events, noOp: true };
@@ -335,6 +339,9 @@ export class ReleaseOrchestrator {
       });
       if (!verified)
         throw new Error('Public release marker verification failed');
+      await this.options.commit?.();
+      if (this.options.commit)
+        emit('verifying', 'Canonical source committed after verification');
       current = await this.#transition(current, 'succeeded');
       emit('verifying', 'Public release marker matched the expected release');
       return { release: current, events, noOp: false, manifest, publishResult };

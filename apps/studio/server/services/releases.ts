@@ -30,6 +30,7 @@ import {
 } from '@blog-studio/release';
 
 import type { WorkspaceHandle, WorkspaceService } from './workspaces.js';
+import { createWorkspaceSandbox } from './workspace-sandbox.js';
 
 export interface ReleaseDetails extends StoredRelease {
   readonly events: ReturnType<SqliteReleaseRepository['events']>;
@@ -380,59 +381,83 @@ export class ReleaseService {
       release.targetId,
     );
     const cache = this.#cache(workspace);
-    const result = await new ReleaseOrchestrator({
-      generator: workspace.generator,
-      publisher: this.#publisher(workspace),
-      ...(cache ? { cache } : {}),
-      verifier:
-        this.options.verifierFactory?.(workspace) ?? new HttpReleaseVerifier(),
-      baseUrl: workspace.config.verification!.baseUrl,
-      ...(draft
-        ? {
-            prepare: async () => {
-              const current = await workspace.generator.readDocument(
-                workspace.config.workspace.root,
-                draft.ref,
-              );
-              if (current.revision !== draft.snapshot.sourceRevision)
-                throw new Error('Draft source revision conflict');
-              await workspace.generator.writeDocument(
-                workspace.config.workspace.root,
-                {
-                  ref: draft.ref,
-                  expectedRevision: draft.snapshot.sourceRevision,
-                  frontMatter: draft.snapshot.frontMatter,
-                  body: draft.snapshot.body,
-                },
-              );
-              if (
-                !this.options.drafts.delete(
-                  draft.snapshot.workspaceId,
-                  draft.snapshot.documentId,
-                  draft.snapshot.version,
+    const sandbox = draft
+      ? await createWorkspaceSandbox(workspace, 'release')
+      : undefined;
+    try {
+      const prepareDraft = async (workspaceRoot: string) => {
+        if (!draft) return;
+        const current = await workspace.generator.readDocument(
+          workspaceRoot,
+          draft.ref,
+        );
+        if (current.revision !== draft.snapshot.sourceRevision)
+          throw new Error('Draft source revision conflict');
+        const written = await workspace.generator.writeDocument(workspaceRoot, {
+          ref: draft.ref,
+          expectedRevision: draft.snapshot.sourceRevision,
+          frontMatter: draft.snapshot.frontMatter,
+          body: draft.snapshot.body,
+        });
+        if (draft.ref.collectionId === 'drafts') {
+          if (!workspace.generator.promoteDocument)
+            throw new Error(
+              `Generator ${workspace.generator.id} does not support draft promotion`,
+            );
+          await workspace.generator.promoteDocument(workspaceRoot, {
+            ref: draft.ref,
+            targetCollectionId: 'posts',
+            expectedRevision: written.revision,
+          });
+        }
+      };
+      const result = await new ReleaseOrchestrator({
+        generator: workspace.generator,
+        publisher: this.#publisher(workspace),
+        ...(cache ? { cache } : {}),
+        verifier:
+          this.options.verifierFactory?.(workspace) ??
+          new HttpReleaseVerifier(),
+        baseUrl: workspace.config.verification!.baseUrl,
+        ...(draft
+          ? {
+              prepare: () => prepareDraft(sandbox!.workspaceRoot),
+              commit: async () => {
+                await prepareDraft(workspace.config.workspace.root);
+                if (
+                  !this.options.drafts.delete(
+                    draft.snapshot.workspaceId,
+                    draft.snapshot.documentId,
+                    draft.snapshot.version,
+                  )
                 )
-              )
-                throw new Error('Draft changed while preparing release');
-            },
-          }
-        : {}),
-      onUpdate: (next) => {
-        if (!this.options.repository.update(next, persistedStatus))
-          throw new Error(`Release state changed concurrently: ${release.id}`);
-        persistedStatus = next.status;
-        return Promise.resolve();
-      },
-      onEvent: (event) =>
-        this.options.repository.appendEvent(release.id, event),
-    }).run({
-      release,
-      workspaceRoot: workspace.config.workspace.root,
-      ...(previousManifest ? { previousManifest } : {}),
-      ...(execution?.adoptBaseline ? { adoptBaseline: true } : {}),
-      signal,
-    });
-    if (result.manifest)
-      this.options.repository.saveManifest(release.id, result.manifest);
+                  throw new Error('Draft changed while committing release');
+              },
+            }
+          : {}),
+        onUpdate: (next) => {
+          if (!this.options.repository.update(next, persistedStatus))
+            throw new Error(
+              `Release state changed concurrently: ${release.id}`,
+            );
+          persistedStatus = next.status;
+          return Promise.resolve();
+        },
+        onEvent: (event) =>
+          this.options.repository.appendEvent(release.id, event),
+      }).run({
+        release,
+        workspaceRoot:
+          sandbox?.workspaceRoot ?? workspace.config.workspace.root,
+        ...(previousManifest ? { previousManifest } : {}),
+        ...(execution?.adoptBaseline ? { adoptBaseline: true } : {}),
+        signal,
+      });
+      if (result.manifest)
+        this.options.repository.saveManifest(release.id, result.manifest);
+    } finally {
+      await sandbox?.dispose();
+    }
   }
 
   public cancel(workspaceId: string, releaseId: string): ReleaseDetails {

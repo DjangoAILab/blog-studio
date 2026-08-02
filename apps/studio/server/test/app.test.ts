@@ -638,6 +638,134 @@ describe('Studio workspace API', () => {
     ).toContain('Published draft body');
   });
 
+  it('promotes exactly one native draft only after a verified release', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Native release', slug: 'native-release' },
+    });
+    const createdPayload = created.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+        ref: { documentId: string };
+      };
+      draft: { version: number };
+    }>();
+    const documentId = createdPayload.source.ref.documentId;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/test-blog/documents/${documentId}/draft?collection=drafts`,
+      headers,
+      payload: {
+        expectedVersion: 1,
+        sourceRevision: createdPayload.source.revision,
+        frontMatter: createdPayload.source.frontMatter,
+        body: 'Native draft body\n',
+      },
+    });
+    expect(saved.json()).toMatchObject({ draft: { version: 2 } });
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers,
+      payload: {
+        targetId: 'production',
+        draft: { collectionId: 'drafts', documentId, version: 2 },
+      },
+    });
+    const releaseId = started.json<ReleaseDetails>().release.id;
+    expect(
+      (await waitForRelease(app, session.cookie, releaseId)).release.status,
+    ).toBe('succeeded');
+    await expect(
+      readFile(
+        join(workspace, 'source', '_posts', 'native-release.md'),
+        'utf8',
+      ),
+    ).resolves.toContain('Native draft body');
+    await expect(
+      readFile(
+        join(workspace, 'source', '_drafts', 'native-release.md'),
+        'utf8',
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('keeps canonical source and acknowledged draft when an isolated build fails', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const documents = await app.inject({
+      url: '/api/workspaces/test-blog/documents?collection=posts',
+      headers: { cookie: session.cookie },
+    });
+    const documentId = documents.json<{
+      documents: Array<{ ref: { documentId: string } }>;
+    }>().documents[0]!.ref.documentId;
+    const source = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    const sourcePayload = source.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+      };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/workspaces/test-blog/documents/${documentId}/draft?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: sourcePayload.revision,
+        frontMatter: sourcePayload.frontMatter,
+        body: 'Must survive failed build\n',
+      },
+    });
+    await writeFile(
+      join(workspace, 'node_modules', '.bin', 'hexo'),
+      '#!/usr/bin/env node\nprocess.exit(7);\n',
+    );
+    await chmod(join(workspace, 'node_modules', '.bin', 'hexo'), 0o755);
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers,
+      payload: {
+        targetId: 'production',
+        draft: { collectionId: 'posts', documentId, version: 1 },
+      },
+    });
+    const releaseId = started.json<ReleaseDetails>().release.id;
+    expect(
+      (await waitForRelease(app, session.cookie, releaseId)).release.status,
+    ).toBe('failed');
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Body');
+    const after = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    expect(after.json()).toMatchObject({
+      draft: { version: 1, body: 'Must survive failed build\n' },
+    });
+  });
+
   it('requires and safely adopts a populated COS baseline before publishing', async () => {
     const legacyBytes = Buffer.from('legacy production homepage');
     const existingCosObjects = new Map<string, Uint8Array>([
