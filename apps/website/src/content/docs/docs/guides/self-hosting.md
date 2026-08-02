@@ -13,6 +13,10 @@ description: Install the single-user Studio with durable mounts, mounted secrets
 The supplied container runs as UID/GID 1000, uses a read-only root filesystem,
 drops Linux capabilities, and binds its direct recovery port only to
 `127.0.0.1`.
+The final image intentionally omits npm and Git: install the site's locked
+dependencies before mounting the workspace, and perform Git administration on
+the host. Generator executables already installed in the workspace remain
+available to Studio.
 
 ## 1. Prepare directories and secrets
 

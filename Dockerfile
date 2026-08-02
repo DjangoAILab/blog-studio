@@ -1,4 +1,4 @@
-FROM node:22.21.1-bookworm-slim@sha256:25b3eb23a00590b7499f2a2ce939322727fcce1b15fdd69754fcd09536a3ae2c AS build
+FROM node:22.21.1-alpine3.23@sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf AS build
 
 ENV CI=true
 WORKDIR /source
@@ -11,7 +11,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm --filter @blog-studio/studio... build && \
     pnpm --filter @blog-studio/studio deploy --prod --legacy /opt/blog-studio
 
-FROM node:22.21.1-bookworm-slim@sha256:25b3eb23a00590b7499f2a2ce939322727fcce1b15fdd69754fcd09536a3ae2c AS runtime
+FROM node:22.21.1-alpine3.23@sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf AS runtime
 
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.source="https://github.com/DjangoAILab/blog-studio" \
@@ -23,9 +23,9 @@ ENV NODE_ENV=production \
     BLOG_STUDIO_PORT=4310 \
     BLOG_STUDIO_CLIENT_DIRECTORY=/app/dist/client
 
-RUN apt-get update && \
-    apt-get install --yes --no-install-recommends ca-certificates git && \
-    rm -rf /var/lib/apt/lists/* && \
+RUN apk upgrade --no-cache libcrypto3 libssl3 && \
+    rm -rf /usr/local/lib/node_modules/npm && \
+    rm -f /usr/local/bin/npm /usr/local/bin/npx && \
     mkdir -p /app /data /workspaces && \
     chown -R node:node /app /data /workspaces
 

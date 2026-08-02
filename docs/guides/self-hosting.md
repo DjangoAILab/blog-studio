@@ -14,6 +14,10 @@ available.
 The image uses Node.js 22, runs as UID/GID `1000:1000` by default, has a
 read-only root filesystem, drops all Linux capabilities, and stores mutable
 state only in mounted paths. The direct recovery port binds to `127.0.0.1`.
+The final image intentionally omits npm and Git: install the site's locked
+dependencies before mounting the workspace, and perform Git administration on
+the host. Generator executables already installed in the workspace remain
+available to Studio.
 
 ## Prepare the installation
 
