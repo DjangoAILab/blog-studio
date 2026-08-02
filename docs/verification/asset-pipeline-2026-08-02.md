@@ -16,6 +16,9 @@ and isolated preview resolve them through the generator adapter.
 
 - content signatures are checked independently from browser MIME declarations;
 - byte and decoded-pixel budgets are enforced before encoding;
+- encoding runs in a terminable Worker with a 15-second default deadline,
+  256 MiB V8 old-generation limit, 64 MiB libvips cache, one Sharp thread, and
+  the outer 2 GiB container memory limit;
 - Sharp auto-orients, bounds dimensions, strips metadata, and creates
   deterministic WebP output;
 - filesystem storage is idempotent and refuses to overwrite corrupted content;
@@ -27,8 +30,8 @@ and isolated preview resolve them through the generator adapter.
 - preview integration proves a root-relative legacy source asset is served from
   the isolated workspace when the generated output omits it.
 
-No Tencent SDK client, credential, cloud bucket, public site, or reference source
-file was mutated during this milestone. Production COS client wiring and a
-non-production-prefix exercise remain release gates. Byte and pixel limits bound
-normal processing, but hard wall-clock termination still requires moving Sharp
-into a killable worker; the stricter release-checklist gate remains open.
+The timeout test sets a 1 ms budget, observes
+`ASSET_PROCESSING_TIMEOUT`, and proves no provider write occurs after the Worker
+is terminated. No Tencent SDK client, credential, cloud bucket, public site, or
+reference source file was mutated during this milestone. Production COS client
+wiring and a non-production-prefix exercise remain release gates.

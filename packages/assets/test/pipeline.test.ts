@@ -163,4 +163,27 @@ describe('asset policy', () => {
       }),
     ).rejects.toMatchObject({ code: 'ASSET_PIXEL_LIMIT' });
   });
+
+  it('terminates processing that exceeds its execution budget', async () => {
+    const provider = new RecordingProvider();
+    const scope = createArticleAssetScope(
+      createWorkspaceId('personal-blog'),
+      createDocumentId('post-one'),
+      'media/posts',
+    );
+    const pipeline = new AssetPipeline(provider, {
+      maxProcessingMilliseconds: 1,
+      maxWorkerHeapMegabytes: 64,
+      maxVipsCacheMegabytes: 8,
+    });
+    await expect(
+      pipeline.ingest({
+        scope,
+        filename: 'pixel.png',
+        claimedMediaType: 'image/png',
+        bytes: png,
+      }),
+    ).rejects.toMatchObject({ code: 'ASSET_PROCESSING_TIMEOUT' });
+    expect(provider.input).toBeUndefined();
+  });
 });
