@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
+import { AssetPolicyError } from '@blog-studio/assets';
 import {
   RevisionConflictError,
   SqliteDraftRepository,
@@ -66,10 +67,15 @@ export async function createStudioServer(
           },
         };
   const app = Fastify({
-    bodyLimit: 2 * 1024 * 1024,
+    bodyLimit: 13 * 1024 * 1024,
     logger,
     trustProxy: true,
   });
+  app.addContentTypeParser(
+    /^image\/(?:png|jpeg|webp)(?:;.*)?$/,
+    { parseAs: 'buffer' },
+    (_request, body, done) => done(null, body),
+  );
   await app.register(cookie, { secret: options.cookieSecret });
 
   const workspaces = await WorkspaceService.load({
@@ -187,18 +193,33 @@ export async function createStudioServer(
     const message = error instanceof Error ? error.message : 'Unknown error';
     const validationError =
       error !== null && typeof error === 'object' && 'validation' in error;
+    const declaredStatus =
+      error !== null &&
+      typeof error === 'object' &&
+      'statusCode' in error &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+        ? error.statusCode
+        : undefined;
     const status =
       error instanceof RevisionConflictError
         ? 409
-        : message === 'Draft source revision conflict'
-          ? 409
-          : message.startsWith('Invalid Hexo document date:')
-            ? 422
-            : validationError
-              ? 400
-              : /^(Unknown|Unsupported)/.test(message)
-                ? 404
-                : 500;
+        : error instanceof AssetPolicyError
+          ? error.code === 'ASSET_TOO_LARGE'
+            ? 413
+            : 422
+          : message === 'Draft source revision conflict'
+            ? 409
+            : message.startsWith('Invalid Hexo document date:')
+              ? 422
+              : validationError
+                ? 400
+                : declaredStatus !== undefined
+                  ? declaredStatus
+                  : /^(Unknown|Unsupported)/.test(message)
+                    ? 404
+                    : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({

@@ -24,7 +24,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Document discovery, front matter round-trip, and stable document IDs.
 - [x] Draft snapshot persistence with optimistic revisions.
 - [x] Responsive editor shell with visual and source modes.
-- [ ] Immediate local image preview and background upload state.
+- [x] Immediate local image preview and background upload state.
 - [x] Real Hexo preview lifecycle and proxy.
 - [ ] Browser tests covering create, edit, autosave, reload, and preview.
 
@@ -32,9 +32,9 @@ only after its acceptance checklist and real-environment verification pass.
 
 **Outcome:** one browser action publishes and verifies the reference blog.
 
-- [ ] Filesystem and Tencent COS asset adapters.
-- [ ] image validation, metadata stripping, resizing, and WebP policy.
-- [ ] article-scoped immutable asset keys.
+- [x] Filesystem and Tencent COS asset adapters.
+- [x] image validation, metadata stripping, resizing, and WebP policy.
+- [x] article-scoped immutable asset keys.
 - [ ] Build manifest and local filesystem publisher.
 - [ ] Tencent COS diff publisher without per-file remote HEAD fan-out.
 - [ ] Tencent CDN cache adapter.

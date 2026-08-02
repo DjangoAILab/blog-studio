@@ -258,3 +258,14 @@ renderer, but correctness is more important and incremental builds amortize it.
 Apache-2.0 matches the DjangoAILab organization precedent, encourages adapter
 adoption, and includes an explicit patent grant. A hosted-service moat is not a
 v0.1 requirement.
+
+### ADR-006: Immutable article-scoped assets and read-only legacy paths
+
+**Status:** Accepted.
+
+New uploads use `<managed-prefix>/<document-id>/<sha256>-<name>.webp`. The
+document ID gives authors a stable natural grouping while the full content hash
+makes retries idempotent and cache-safe. Existing resource paths are resolved
+for editing and preview but live under separately configured protected prefixes;
+Blog Studio cannot overwrite or delete them. Migration is additive instead of a
+flag-day URL rewrite.

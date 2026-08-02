@@ -1,5 +1,5 @@
 import { readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, extname, join, relative, sep } from 'node:path';
+import { basename, dirname, extname, join, relative, sep } from 'node:path';
 
 import { resolveWorkspacePath, runCommand } from '@blog-studio/adapter-command';
 import {
@@ -297,6 +297,37 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       join(root, permalink).split(sep).join('/'),
       config.url,
     ).toString();
+  }
+
+  public async resolveAssetSourcePath(
+    workspaceRoot: string,
+    ref: DocumentRef,
+    sourceUrl: string,
+  ): Promise<string | undefined> {
+    if (
+      !sourceUrl ||
+      sourceUrl.startsWith('#') ||
+      /^(?:data|blob|https?):/i.test(sourceUrl) ||
+      sourceUrl.includes('\\')
+    )
+      return undefined;
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(sourceUrl.split(/[?#]/, 1)[0] ?? '');
+    } catch {
+      return undefined;
+    }
+    const config = await this.#configuration(workspaceRoot);
+    const candidate = decoded.startsWith('/')
+      ? join(config.source_dir ?? 'source', decoded.slice(1))
+      : join(dirname(ref.path), decoded);
+    try {
+      const root = await resolveWorkspacePath(workspaceRoot, '.');
+      const path = await resolveWorkspacePath(workspaceRoot, candidate);
+      return portablePath(relative(root, path));
+    } catch {
+      return undefined;
+    }
   }
 
   public async build(input: BuildInput): Promise<BuildResult> {

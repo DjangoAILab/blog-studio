@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import {
   csrfFromCookie,
   StudioApi,
@@ -10,6 +10,13 @@ import {
 type SaveState =
   'clean' | 'changed' | 'saving' | 'saved' | 'error' | 'conflict';
 type PreviewState = 'idle' | 'building' | 'ready' | 'error';
+interface AssetUpload {
+  readonly id: string;
+  readonly file: File;
+  readonly previewUrl: string;
+  readonly state: 'uploading' | 'ready' | 'error';
+  readonly error?: string;
+}
 const VisualEditor = lazy(async () => {
   const module = await import('../features/editor/visual-editor.js');
   return { default: module.VisualEditor };
@@ -101,6 +108,55 @@ export function StudioApp() {
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewError, setPreviewError] = useState('');
   const [panel, setPanel] = useState<'library' | 'write' | 'preview'>('write');
+  const [uploads, setUploads] = useState<readonly AssetUpload[]>([]);
+  const assetInput = useRef<HTMLInputElement>(null);
+
+  function uploadAsset(file: File): void {
+    if (!workspace || !selected || !file.type.startsWith('image/')) return;
+    const id = crypto.randomUUID();
+    const previewUrl = URL.createObjectURL(file);
+    setUploads((items) => [
+      ...items,
+      { id, file, previewUrl, state: 'uploading' },
+    ]);
+    void api
+      .uploadAsset({
+        workspaceId: workspace.id,
+        documentId: selected.ref.documentId,
+        collection: selected.ref.collectionId,
+        file,
+      })
+      .then(({ asset }) => {
+        URL.revokeObjectURL(previewUrl);
+        setUploads((items) =>
+          items.map((item) =>
+            item.id === id
+              ? { ...item, previewUrl: asset.publicUrl, state: 'ready' }
+              : item,
+          ),
+        );
+        const alt = file.name.replace(/\.[^.]+$/, '') || 'image';
+        setBody(
+          (value) =>
+            `${value.replace(/\s*$/, '')}\n\n![${alt}](${asset.publicUrl})\n`,
+        );
+        setSaveState('changed');
+      })
+      .catch((reason: unknown) => {
+        setUploads((items) =>
+          items.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  state: 'error',
+                  error:
+                    reason instanceof Error ? reason.message : '图片上传失败',
+                }
+              : item,
+          ),
+        );
+      });
+  }
 
   async function loadWorkspaces(): Promise<void> {
     try {
@@ -131,6 +187,12 @@ export function StudioApp() {
     setPreviewUrl('');
     setPreviewState('idle');
     setPreviewError('');
+    setUploads((items) => {
+      for (const item of items)
+        if (item.previewUrl.startsWith('blob:'))
+          URL.revokeObjectURL(item.previewUrl);
+      return [];
+    });
     void api
       .document(
         workspace.id,
@@ -341,21 +403,94 @@ export function StudioApp() {
             }}
             placeholder="无标题文章"
           />
-          <div className="mode-switch" role="group" aria-label="编辑模式">
+          <div className="editor-actions">
+            <div className="mode-switch" role="group" aria-label="编辑模式">
+              <button
+                className={mode === 'visual' ? 'active' : ''}
+                onClick={() => setMode('visual')}
+              >
+                所见即所得
+              </button>
+              <button
+                className={mode === 'source' ? 'active' : ''}
+                onClick={() => setMode('source')}
+              >
+                Markdown 源码
+              </button>
+            </div>
             <button
-              className={mode === 'visual' ? 'active' : ''}
-              onClick={() => setMode('visual')}
+              className="asset-button"
+              onClick={() => assetInput.current?.click()}
             >
-              所见即所得
+              插入图片 ＋
             </button>
-            <button
-              className={mode === 'source' ? 'active' : ''}
-              onClick={() => setMode('source')}
-            >
-              Markdown 源码
-            </button>
+            <input
+              ref={assetInput}
+              hidden
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) uploadAsset(file);
+                event.target.value = '';
+              }}
+            />
           </div>
-          <section className="editor-paper">
+          {uploads.length ? (
+            <div className="asset-uploads" aria-live="polite">
+              {uploads.slice(-3).map((upload) => (
+                <div
+                  className={`asset-upload asset-${upload.state}`}
+                  key={upload.id}
+                >
+                  <img alt="" src={upload.previewUrl} />
+                  <span>
+                    <b>{upload.file.name}</b>
+                    <small>
+                      {upload.state === 'uploading'
+                        ? '处理中并上传…'
+                        : upload.state === 'ready'
+                          ? '已插入文章'
+                          : upload.error}
+                    </small>
+                  </span>
+                  {upload.state === 'error' ? (
+                    <button
+                      onClick={() => {
+                        setUploads((items) =>
+                          items.filter((item) => item.id !== upload.id),
+                        );
+                        URL.revokeObjectURL(upload.previewUrl);
+                        uploadAsset(upload.file);
+                      }}
+                    >
+                      重试
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <section
+            className="editor-paper"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              const file = [...event.dataTransfer.files].find((item) =>
+                item.type.startsWith('image/'),
+              );
+              if (file) uploadAsset(file);
+            }}
+            onPaste={(event) => {
+              const file = [...event.clipboardData.files].find((item) =>
+                item.type.startsWith('image/'),
+              );
+              if (file) {
+                event.preventDefault();
+                uploadAsset(file);
+              }
+            }}
+          >
             {(!document || loadedDocumentId !== selected?.ref.documentId) && (
               <div className="editor-loading">正在读取文章…</div>
             )}
@@ -368,6 +503,9 @@ export function StudioApp() {
                 <VisualEditor
                   key={`${selected?.ref.documentId}-${mode}`}
                   markdown={body}
+                  resolveImageSource={(source) =>
+                    `/api/workspaces/${workspace?.id}/documents/${selected?.ref.documentId}/legacy-asset?collection=${selected?.ref.collectionId}&source=${encodeURIComponent(source)}`
+                  }
                   onChange={(value) => {
                     setBody(value);
                     setSaveState('changed');

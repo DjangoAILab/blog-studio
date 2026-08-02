@@ -42,6 +42,10 @@ semantically checked:
 - a title edit reaches `刚刚保存`, and restoring it reaches the same state;
 - a valid document builds in an isolated workspace and renders its real Hexo
   theme in the preview pane;
+- historical document images resolve through the authenticated adapter without
+  changing their Markdown URLs;
+- generated-theme resources that are absent from output fall back to read-only
+  source assets without escaping the preview capability;
 - an invalid historical date displays an explicit preview error instead of an
   empty or stale frame.
 
@@ -58,8 +62,4 @@ document or existing public URL was changed.
 ## Remaining gates
 
 - Automate the browser journey with Playwright and accessibility assertions.
-- Resolve existing article images inside the visual editor through the asset
-  pipeline. The real generated preview resolves bundled resources, but the
-  reference theme also exposes a root-relative header image that is absent from
-  the generated output; the same pipeline must handle that explicit failure.
 - Measure LAN latency and cold-container behavior on the target server.

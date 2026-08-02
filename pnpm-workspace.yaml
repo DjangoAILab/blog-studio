@@ -8,3 +8,5 @@ allowBuilds:
   # Vitest/Vite use esbuild and its install script only selects/downloads the
   # platform-specific binary. Keep every other dependency script denied.
   esbuild: true
+  # Sharp's install script selects its verified platform binary/libvips package.
+  sharp: true

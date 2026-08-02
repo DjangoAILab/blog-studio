@@ -3,6 +3,7 @@ import { relative } from 'node:path';
 
 import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
+import { AssetPipeline } from '@blog-studio/assets';
 import {
   assertKnownAdapters,
   parseBlogStudioConfigYaml,
@@ -10,14 +11,19 @@ import {
   type BlogStudioConfig,
 } from '@blog-studio/config';
 import type {
+  AssetProvider,
   DocumentRef,
   DocumentSummary,
   GeneratorAdapter,
 } from '@blog-studio/core';
+import { FilesystemAssetProvider } from '@blog-studio/storage-filesystem';
 
 export interface WorkspaceHandle {
   readonly config: BlogStudioConfig;
   readonly generator: GeneratorAdapter;
+  readonly assetProvider: AssetProvider;
+  readonly assetRootPrefix: string;
+  readonly assets: AssetPipeline;
 }
 
 const builtInRegistry: AdapterRegistry = {
@@ -35,6 +41,60 @@ function createGenerator(config: BlogStudioConfig): GeneratorAdapter {
   throw new Error(
     `Generator ${config.generator.adapter} requires an administrator-provided factory`,
   );
+}
+
+function stringOption(
+  config: BlogStudioConfig,
+  key: string,
+  fallback: string,
+): string {
+  const value = config.assets.options[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || value.trim().length === 0)
+    throw new Error(`assets.options.${key} must be a non-empty string`);
+  return value;
+}
+
+function stringArrayOption(
+  config: BlogStudioConfig,
+  key: string,
+): readonly string[] {
+  const value = config.assets.options[key];
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string'))
+    throw new Error(`assets.options.${key} must be an array of strings`);
+  return value as readonly string[];
+}
+
+async function createAssets(config: BlogStudioConfig): Promise<{
+  readonly provider: AssetProvider;
+  readonly rootPrefix: string;
+  readonly pipeline: AssetPipeline;
+}> {
+  if (config.assets.adapter !== 'filesystem')
+    throw new Error(
+      `Asset adapter ${config.assets.adapter} requires an administrator-provided client factory`,
+    );
+  const rootDirectory = await resolveWorkspacePath(
+    config.workspace.root,
+    stringOption(config, 'rootDirectory', 'source'),
+  );
+  const rootPrefix = stringOption(config, 'managedPrefix', 'media/posts');
+  const provider = new FilesystemAssetProvider({
+    rootDirectory,
+    publicBaseUrl: stringOption(
+      config,
+      'publicBaseUrl',
+      config.verification?.baseUrl ?? 'http://localhost/',
+    ),
+    managedPrefix: rootPrefix,
+    protectedPrefixes: stringArrayOption(config, 'protectedPrefixes'),
+  });
+  return {
+    provider,
+    rootPrefix,
+    pipeline: new AssetPipeline(provider),
+  };
 }
 
 export class WorkspaceService {
@@ -68,9 +128,13 @@ export class WorkspaceService {
       if (service.#workspaces.has(config.workspace.id)) {
         throw new Error(`Duplicate workspace ID: ${config.workspace.id}`);
       }
+      const assets = await createAssets(config);
       service.#workspaces.set(config.workspace.id, {
         config,
         generator: createGenerator(config),
+        assetProvider: assets.provider,
+        assetRootPrefix: assets.rootPrefix,
+        assets: assets.pipeline,
       });
     }
     return service;

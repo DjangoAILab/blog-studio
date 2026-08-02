@@ -114,6 +114,27 @@ export class StudioApi {
       { method: 'POST' },
     );
   }
+
+  public uploadAsset(input: {
+    readonly workspaceId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly file: File;
+  }) {
+    return this.#request<{
+      asset: { readonly id: string; readonly publicUrl: string };
+    }>(
+      `/api/workspaces/${input.workspaceId}/documents/${input.documentId}/assets?collection=${input.collection}`,
+      {
+        method: 'POST',
+        body: input.file,
+        headers: {
+          'content-type': input.file.type,
+          'x-blog-studio-filename': encodeURIComponent(input.file.name),
+        },
+      },
+    );
+  }
 }
 
 export function csrfFromCookie(): string {

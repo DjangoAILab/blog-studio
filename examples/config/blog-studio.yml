@@ -5,7 +5,7 @@ workspace:
   root: /workspaces/example-blog
 
 generator:
-  adapter: generic-command
+  adapter: command
   options:
     build:
       command: npm
@@ -20,8 +20,10 @@ repository:
 assets:
   adapter: filesystem
   options:
-    directory: public/media/posts
-    publicBaseUrl: https://blog.example.com/media/posts
+    rootDirectory: public
+    managedPrefix: media/posts
+    protectedPrefixes: [static]
+    publicBaseUrl: https://blog.example.com/
 
 publish:
   adapter: filesystem
@@ -29,7 +31,7 @@ publish:
     directory: /srv/www/blog
 
 cache:
-  adapter: noop
+  adapter: none
 
 content:
   collections:

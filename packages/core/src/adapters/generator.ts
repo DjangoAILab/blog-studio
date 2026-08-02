@@ -57,5 +57,11 @@ export interface GeneratorAdapter extends AdapterDescriptor {
     input: WriteDocumentInput,
   ): Promise<WriteDocumentResult>;
   resolvePublicUrl(workspaceRoot: string, ref: DocumentRef): Promise<string>;
+  /** Resolve a document-authored/root-relative asset to a workspace-relative source path. */
+  resolveAssetSourcePath?(
+    workspaceRoot: string,
+    ref: DocumentRef,
+    sourceUrl: string,
+  ): Promise<string | undefined>;
   build(input: BuildInput): Promise<BuildResult>;
 }

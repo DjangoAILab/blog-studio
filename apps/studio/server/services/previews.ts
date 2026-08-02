@@ -24,6 +24,8 @@ export interface PreviewSession {
   readonly id: string;
   readonly workspaceId: string;
   readonly workspaceDirectory: string;
+  readonly sourceDirectory: string;
+  readonly ref: DocumentRef;
   readonly outputDirectory: string;
   readonly manifest: readonly ManifestEntry[];
   readonly contentPath: string;
@@ -137,6 +139,8 @@ export class PreviewService {
         id: randomUUID(),
         workspaceId: input.workspaceId,
         workspaceDirectory: temporaryRoot,
+        sourceDirectory: isolatedWorkspace,
+        ref: input.ref,
         outputDirectory: build.outputDirectory,
         manifest: build.manifest,
         contentPath: new URL(publicUrl).pathname,

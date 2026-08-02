@@ -1,4 +1,11 @@
-import { cp, mkdtemp, readFile, stat } from 'node:fs/promises';
+import {
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,6 +91,40 @@ describe('HexoGeneratorAdapter', () => {
     await expect(adapter.resolvePublicUrl(root, summary.ref)).resolves.toBe(
       'https://example.com/2026/08/02/%E4%BD%A0%E5%A5%BD-%E4%B8%96%E7%95%8C/',
     );
+  });
+
+  it('resolves root-relative and document-relative legacy asset sources safely', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    const [summary] = await adapter.listDocuments(root, 'posts');
+    if (!summary) throw new Error('fixture post missing');
+    await mkdir(join(root, 'source', 'static', 'assets'), { recursive: true });
+    await writeFile(
+      join(root, 'source', 'static', 'assets', 'legacy.png'),
+      'png',
+    );
+
+    await expect(
+      adapter.resolveAssetSourcePath(
+        root,
+        summary.ref,
+        '../static/assets/legacy.png',
+      ),
+    ).resolves.toBe('source/static/assets/legacy.png');
+    await expect(
+      adapter.resolveAssetSourcePath(
+        root,
+        summary.ref,
+        '/static/assets/legacy.png',
+      ),
+    ).resolves.toBe('source/static/assets/legacy.png');
+    await expect(
+      adapter.resolveAssetSourcePath(
+        root,
+        summary.ref,
+        '../../../../etc/passwd',
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects malformed dates instead of inventing a public URL', async () => {
