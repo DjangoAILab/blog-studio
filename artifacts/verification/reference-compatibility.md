@@ -76,9 +76,10 @@ calendar dates. The exact historical article now previews at its existing
 
 ## Remaining staging gates
 
-- Read the account's exact COS bucket, region, target prefix, CDN product, and
-  cache rules from the authenticated Tencent console. The macOS session was
-  locked during this audit, so this remains pending rather than inferred.
+- The authenticated Tencent console audit confirmed bucket
+  `webstatic-1252276051`, region `ap-shanghai`, managed prefix
+  `blog.wj2015.com/`, classic CDN, the existing origin rewrite, and current
+  cache rules. Details are recorded in `staging-release.md`.
 - Publish to an isolated COS prefix/origin with mounted secret files.
 - Run upload, network, cache, restart, retry, and rollback fault injections.
 - Exercise the implemented baseline-adoption flow against staging, then adopt

@@ -1,0 +1,29 @@
+name: Feature proposal
+description: Propose a user problem and a generic product capability.
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the painful journey and who experiences it, without prescribing a solution first.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What observable result would make the problem solved?
+    validations:
+      required: true
+  - type: textarea
+    id: portability
+    attributes:
+      label: Adapter and portability impact
+      description: Explain which generic contract is affected and how provider-specific behavior stays isolated.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety, migration, and rollback
+      description: Identify compatibility risks, failure boundaries, and verification evidence.

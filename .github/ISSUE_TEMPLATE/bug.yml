@@ -1,0 +1,43 @@
+name: Bug report
+description: Report a reproducible defect without exposing site data or secrets.
+title: '[Bug]: '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, cookies, private content, or unredacted provider logs.
+  - type: input
+    id: version
+    attributes:
+      label: Blog Studio version
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, container/runtime, generator, repository, asset, publisher, and cache adapters.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps, expected result, and actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Logs, screenshots, or a minimal public repository.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, cookies, private content, and sensitive account data.
+          required: true
+        - label: I searched existing issues and documentation.
+          required: true
