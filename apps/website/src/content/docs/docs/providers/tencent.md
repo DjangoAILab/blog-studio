@@ -32,6 +32,37 @@ For a reference such as `env: TENCENT_SECRET_ID`, Studio first reads
 `TENCENT_SECRET_ID`; when it is absent, it reads the file named by
 `TENCENT_SECRET_ID_FILE`. The browser receives neither value nor file path.
 
+Use a dedicated programmatic CAM sub-user. Do not reuse a root-account key or
+an existing CI key whose policy has not been audited. The repository includes a
+copy-and-edit
+[`cam-staging-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-staging-policy.example.json).
+Replace its account, bucket, region, host, and run prefix before attaching it.
+
+The staging policy intentionally grants no bucket configuration, bucket
+creation, account bucket listing, or production-prefix object permission. Its
+COS object operations match the SDK calls Studio actually makes:
+
+- `GetBucket` for paginated inventory, constrained by `cos:prefix`;
+- `GetObject`, `PutObject`, and `DeleteObject` for verification, promotion,
+  retained rollback state, and rollback;
+- `PurgeUrlsCache`, `PurgePathCache`, and `DescribePurgeTasks` for classic CDN.
+
+Tencent's current CAM capability table classifies those three CDN APIs as
+operation-level actions whose resource must be `*`. A policy cannot further
+restrict them to one URL path. Compensating controls are therefore mandatory:
+
+1. use a sub-user that has only the listed actions;
+2. keep `verification.baseUrl` fixed to the one expected host and staging path;
+3. deploy the secret only to the Studio container through read-only Docker
+   secret files;
+4. rotate or delete the staging key before granting production-prefix COS
+   access;
+5. optionally restrict the CAM policy by source IP only when the server has a
+   verified stable egress address.
+
+The example is a policy template, not proof that Tencent accepted the policy.
+Validate it in CAM and run the staging gates before enabling production.
+
 ## COS publishing model
 
 The publisher plans from the last retained release manifest instead of issuing a
@@ -96,6 +127,17 @@ replaceable cache adapter—not as a required migration for the first release.
 7. Adopt the existing deployment as a verified baseline without rewriting its
    public objects.
 8. Promote one controlled real change only after every earlier gate passes.
+
+Use separate privilege phases:
+
+1. **staging:** read/write/delete only a unique hidden staging target and its
+   state prefix, plus the three CDN actions above;
+2. **adoption:** read the production target and write only Blog Studio's state
+   prefix; do not overwrite or delete public objects;
+3. **production:** grant target write/delete only after adoption, staging
+   release, CDN marker verification, and rollback evidence all pass.
+
+Never combine these phases into an unaudited broad key just to shorten setup.
 
 The public blog must not depend on the internal Studio host after promotion.
 

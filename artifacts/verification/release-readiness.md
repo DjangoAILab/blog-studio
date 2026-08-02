@@ -17,6 +17,15 @@ moderate `uuid@9.0.1` finding remains transitively required by the current
 Tencent SDK; its latest checked release still carries that dependency, so it is
 recorded rather than misreported as zero findings.
 
+The final documentation revision
+`71f8cc4ca9abb8a73d6818f29e5ad945b0a28e42` passed both required jobs in
+[CI run 30734364831](https://github.com/DjangoAILab/blog-studio/actions/runs/30734364831).
+GitHub's branch protection API then confirmed that `main` requires strict
+`quality` and `security` checks, applies the rule to administrators, requires
+linear history and resolved review conversations, and rejects force-pushes and
+branch deletion. This evidence update is intentionally delivered through a
+pull request to exercise the protected-branch path.
+
 ## Real-environment gates completed
 
 - reference Hexo build and 93-document compatibility;
@@ -40,3 +49,18 @@ simulated as production success:
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part
 of v0.1.
+
+## Credential boundary for the next gate
+
+The next credential must be a dedicated staging-only CAM sub-user. COS access
+is restricted to the hidden target
+`blog.wj2015.com/__blog-studio-staging/v0.1/**` and the matching retained state
+prefix. It receives no permission for current production objects. Tencent's
+current CAM catalog marks `PurgeUrlsCache`, `PurgePathCache`, and
+`DescribePurgeTasks` as operation-level CDN permissions whose resource is `*`,
+so isolation at an individual URL path cannot be expressed in CAM. Studio
+compensates by deriving every purge target from its fixed verification base URL,
+and the credential has no other CDN action.
+
+Production adoption and production publishing remain separate later privilege
+phases; neither permission is bundled into the staging key.
