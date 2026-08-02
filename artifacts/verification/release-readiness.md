@@ -2,11 +2,12 @@
 
 ## Automated gates
 
-CI run [30734218656](https://github.com/DjangoAILab/blog-studio/actions/runs/30734218656)
+CI run [30736852169](https://github.com/DjangoAILab/blog-studio/actions/runs/30736852169)
 passed formatting, lint, type checking, unit/integration tests, production
 builds, the complete Playwright authoring journey, production dependency
-audit, repository scan, image build, and final image scan on final feature
-revision `1f879e9ced55f73f1e103666291dcc4a22befc66`.
+audit, deterministic release-artifact smoke tests, repository scan, production
+image build, the documented generic Quick Start, and final image scan on
+protected `main` revision `92d4cacd44d4ac84c6ff1fcdafac8338480f66c8`.
 
 The browser journey proves native draft creation, autosave acknowledgement,
 browser reload recovery, real generator preview, and explicit discard. The
@@ -17,10 +18,8 @@ moderate `uuid@9.0.1` finding remains transitively required by the current
 Tencent SDK; its latest checked release still carries that dependency, so it is
 recorded rather than misreported as zero findings.
 
-The final documentation revision
-`71f8cc4ca9abb8a73d6818f29e5ad945b0a28e42` passed both required jobs in
-[CI run 30734364831](https://github.com/DjangoAILab/blog-studio/actions/runs/30734364831).
-GitHub's branch protection API then confirmed that `main` requires strict
+GitHub's branch protection API was rechecked after the current deployment and
+confirmed that `main` requires strict
 `quality` and `security` checks, applies the rule to administrators, requires
 linear history and resolved review conversations, and rejects force-pushes and
 branch deletion. This evidence update is intentionally delivered through a
@@ -31,6 +30,8 @@ pull request to exercise the protected-branch path.
 - reference Hexo build and 93-document compatibility;
 - 12 public HTML URLs and 12 legacy asset hashes sampled without URL changes;
 - deployed Docker/Traefik runtime, HTTPS, auth boundary, and health checks;
+- protected `main` is deployed with an exact OCI revision label, a fresh
+  checksum-verified pre-upgrade backup, and a successful real Hexo preview;
 - draft cold restart, public-blog independence, API/autosave latency;
 - online backup and isolated restore within the 15-minute RTO.
 - dependency-free, documentation-only generic command Quick Start through

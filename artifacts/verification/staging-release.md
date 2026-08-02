@@ -49,23 +49,32 @@ the legacy uploader does not submit a purge.
 
 ## Isolated staging target
 
-The approved non-production shape is:
+The final non-production shape is a hidden subtree below the existing public
+host. It replaces the earlier proposed top-level `blog-studio-staging/site`
+shape so that the same production rewrite and CDN route can be tested without
+changing any legacy URL:
 
-| Item           | Value                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------- |
-| Target prefix  | `blog-studio-staging/site`                                                            |
-| State prefix   | `blog-studio-staging/state`                                                           |
-| Direct origin  | `https://webstatic-1252276051.cos.ap-shanghai.myqcloud.com/blog-studio-staging/site/` |
-| Cache provider | none until a separate staging CDN domain exists                                       |
+| Item                | Value                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| COS target prefix   | `blog.wj2015.com/__blog-studio-staging/v0.1`                                                             |
+| Retained state      | `blog-studio-state/blog.wj2015.com/__blog-studio-staging/v0.1`                                           |
+| Public verification | `https://blog.wj2015.com/__blog-studio-staging/v0.1/`                                                    |
+| Direct origin       | `https://webstatic-1252276051.cos.ap-shanghai.myqcloud.com/blog.wj2015.com/__blog-studio-staging/v0.1/`  |
+| Cache provider      | Tencent classic CDN; every purge and verification URL is derived from the fixed public verification base |
+| Baseline adoption   | disabled                                                                                                 |
 
 The synthetic article and media must be clearly marked as staging and must not
-be copied into `blog.wj2015.com/`. Before and after the run, deterministic
-production samples and the production prefix inventory will be compared.
+be copied outside this hidden subtree. Before and after the run, deterministic
+production samples and the legacy production prefix inventory will be compared.
 
 ## Remaining mutation gates
 
-- Provide or create a least-privilege credential restricted to the two staging
-  prefixes first; store it only as mounted secret files.
+- Provide or create a dedicated staging CAM sub-user restricted to the COS
+  target and state prefixes first; store its key only as mounted secret files.
+- Because Tencent classic CDN purge actions are operation-level permissions
+  with resource `*`, grant only the required purge/status actions to that
+  staging identity and keep Studio's fixed public verification base as the
+  compensating path boundary.
 - Publish, verify the marker and exact synthetic article/media bytes, then run
   retry, network, cache-verifier, restart, and rollback fault cases.
 - Compare the resulting build with the complete production prefix inventory.

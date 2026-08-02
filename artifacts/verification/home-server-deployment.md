@@ -4,7 +4,7 @@
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `1f879e9ced55f73f1e103666291dcc4a22befc66`
+- verified revision: `92d4cacd44d4ac84c6ff1fcdafac8338480f66c8`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -28,6 +28,26 @@ legacy resource was changed during deployment verification.
 After the final deployment, the local health endpoint, external HTTPS health,
 public blog, and sampled legacy resource all returned `200`; the container
 reported `healthy` with the exact verified revision in its OCI label.
+
+The server was subsequently fast-forwarded from the original feature revision
+to the protected `main` revision above. Before the upgrade, a fresh online
+backup (`blog-studio-backup-20260802T065717Z.tar.gz`, 615,910,194 bytes, mode
+`0600`) passed its sibling SHA-256 check. The new image was built and labelled
+with the full expected revision before `.env` was changed; the previous image
+was retained for application rollback. Recreating only the Studio service with
+both the base and Traefik Compose files restored a healthy container on the
+`home-server_default` network, still running as UID 1000 with no matching error
+lines in the post-deploy log.
+
+Post-upgrade external verification returned `200` for the editor, health
+endpoint, public blog, and legacy `/static/reading.jpeg`; the unauthenticated
+workspace API returned `401`. A real token-backed session and workspace listing
+both returned `200`. A fresh preview from the 93-document reference Hexo
+workspace generated 1,971 files in 10 seconds, served its generated page with
+`200`, stopped cleanly, and left zero tracked workspace changes. One initial
+public-root request took 29.9 seconds, but five immediate bounded repetitions
+completed in 0.078-0.171 seconds; this is recorded as a transient observation,
+not treated as provider-release latency evidence.
 
 Before any Tencent credential is introduced, the deployed publisher was moved
 from the production target to the isolated target
@@ -82,6 +102,7 @@ acknowledged draft survives a real container restart.
 
 - online backup completed in 16 seconds;
 - archive: `blog-studio-backup-20260802T043354Z.tar.gz`, 615,900,923 bytes;
+- the pre-upgrade online backup above also passed checksum verification;
 - an isolated restore completed in 8 seconds and passed archive checksum,
   SQLite integrity, configuration, and all 93 post checks;
 - daily backup is installed at 03:30;
