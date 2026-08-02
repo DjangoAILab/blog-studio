@@ -4,6 +4,7 @@ import {
   StudioApi,
   type DocumentPayload,
   type DocumentSummary,
+  type OrphanAssetPlan,
   type ReleaseDetails,
   type ReleaseStatus,
   type WorkspaceSummary,
@@ -141,6 +142,11 @@ export function StudioApp() {
   const [createTitle, setCreateTitle] = useState('');
   const [createSlug, setCreateSlug] = useState('');
   const [createError, setCreateError] = useState('');
+  const [orphanPlan, setOrphanPlan] = useState<OrphanAssetPlan>();
+  const [orphanState, setOrphanState] = useState<
+    'idle' | 'loading' | 'ready' | 'deleting' | 'deleted' | 'error'
+  >('idle');
+  const [orphanError, setOrphanError] = useState('');
   const assetInput = useRef<HTMLInputElement>(null);
 
   function uploadAsset(file: File): void {
@@ -225,6 +231,9 @@ export function StudioApp() {
     setPreviewUrl('');
     setPreviewState('idle');
     setPreviewError('');
+    setOrphanPlan(undefined);
+    setOrphanState('idle');
+    setOrphanError('');
     setUploads((items) => {
       for (const item of items)
         if (item.previewUrl.startsWith('blob:'))
@@ -692,6 +701,39 @@ export function StudioApp() {
             >
               插入图片 ＋
             </button>
+            <button
+              className="asset-maintenance-button"
+              disabled={
+                !workspace ||
+                !selected ||
+                !['clean', 'saved'].includes(saveState) ||
+                ['loading', 'deleting'].includes(orphanState)
+              }
+              onClick={() => {
+                if (!workspace || !selected) return;
+                setOrphanState('loading');
+                setOrphanError('');
+                void api
+                  .orphanAssets({
+                    workspaceId: workspace.id,
+                    documentId: selected.ref.documentId,
+                    collection: selected.ref.collectionId,
+                  })
+                  .then(({ plan }) => {
+                    setOrphanPlan(plan);
+                    setOrphanState('ready');
+                  })
+                  .catch((reason: unknown) => {
+                    setOrphanPlan(undefined);
+                    setOrphanState('error');
+                    setOrphanError(
+                      reason instanceof Error ? reason.message : '资源检查失败',
+                    );
+                  });
+              }}
+            >
+              {orphanState === 'loading' ? '正在检查…' : '检查未引用资源'}
+            </button>
             {version > 0 && workspace && selected ? (
               <button
                 className="discard-button"
@@ -777,6 +819,82 @@ export function StudioApp() {
                   ) : null}
                 </div>
               ))}
+            </div>
+          ) : null}
+          {orphanState !== 'idle' ? (
+            <div className="orphan-assets" aria-live="polite">
+              {orphanState === 'error' ? (
+                <p role="alert">{orphanError}</p>
+              ) : orphanState === 'deleted' ? (
+                <p>未引用资源已删除；旧资源目录没有被扫描或修改。</p>
+              ) : orphanPlan ? (
+                <>
+                  <div>
+                    <b>删除预览</b>
+                    <span>
+                      {orphanPlan.assets.length
+                        ? `${orphanPlan.assets.length} 个文章级资源未被当前草稿引用`
+                        : '没有发现未引用的文章级资源'}
+                    </span>
+                  </div>
+                  {orphanPlan.assets.length ? (
+                    <ul>
+                      {orphanPlan.assets.map((asset) => (
+                        <li key={asset.id}>
+                          <span>{asset.key.split('/').at(-1)}</span>
+                          <small>
+                            {(asset.byteLength / 1024).toFixed(1)} KiB
+                          </small>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {orphanPlan.assets.length ? (
+                    <button
+                      className="danger-button"
+                      disabled={
+                        orphanState === 'deleting' ||
+                        !['clean', 'saved'].includes(saveState)
+                      }
+                      onClick={() => {
+                        if (!workspace || !selected) return;
+                        if (
+                          !window.confirm(
+                            `永久删除预览中的 ${orphanPlan.assets.length} 个未引用文章资源？此操作不会触及配置的旧资源目录。`,
+                          )
+                        )
+                          return;
+                        setOrphanState('deleting');
+                        setOrphanError('');
+                        void api
+                          .deleteOrphanAssets({
+                            workspaceId: workspace.id,
+                            documentId: selected.ref.documentId,
+                            collection: selected.ref.collectionId,
+                            confirmation: orphanPlan.confirmation,
+                          })
+                          .then(() => {
+                            setOrphanPlan(undefined);
+                            setOrphanState('deleted');
+                          })
+                          .catch((reason: unknown) => {
+                            setOrphanPlan(undefined);
+                            setOrphanState('error');
+                            setOrphanError(
+                              reason instanceof Error
+                                ? `${reason.message}。请重新检查后再删除。`
+                                : '删除计划已变化，请重新检查',
+                            );
+                          });
+                      }}
+                    >
+                      {orphanState === 'deleting'
+                        ? '正在删除…'
+                        : `确认删除 ${orphanPlan.assets.length} 个资源`}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           ) : null}
           <section

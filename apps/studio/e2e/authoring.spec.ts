@@ -25,6 +25,9 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: 'Markdown 源码' }).click();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(/刷新后仍然存在/);
 
+  await page.getByRole('button', { name: '检查未引用资源' }).click();
+  await expect(page.getByText('没有发现未引用的文章级资源')).toBeVisible();
+
   await page.getByRole('button', { name: '预览全文' }).click();
   await expect(page.getByTitle('文章真实预览')).toBeVisible({
     timeout: 10_000,

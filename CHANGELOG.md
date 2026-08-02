@@ -12,11 +12,17 @@ All notable changes to Blog Studio are documented here. The format follows
   contracts.
 - Browser Markdown writing with durable drafts, source fallback, article-scoped
   assets, and real generator previews.
+- Generator-native draft creation, verified post promotion, explicit draft
+  discard, and a complete browser regression journey.
+- Preview-and-confirm cleanup for unreferenced article assets, with stale-plan
+  conflicts and protected legacy prefixes.
 - Observable manifest-based releases, public marker verification, cancellation,
   recovery, and rollback.
 - Tencent COS publishing plus classic CDN and EdgeOne cache adapters.
 - Explicit, non-rewriting adoption of populated COS deployment baselines.
 - Hardened Docker/Compose packaging, Traefik integration, backup and restore
   scripts, landing page, and documentation site.
+- Killable, memory-bounded image processing with byte, pixel, cache, and
+  wall-clock limits.
 
 [Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.1.0...HEAD

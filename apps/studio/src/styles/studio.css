@@ -438,6 +438,18 @@ body::before {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+.asset-maintenance-button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+}
+.asset-maintenance-button:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
 .asset-uploads {
   display: grid;
   gap: 0.45rem;
@@ -488,6 +500,52 @@ body::before {
   font-size: 0.68rem;
   font-weight: 700;
   cursor: pointer;
+}
+.orphan-assets {
+  display: grid;
+  gap: 0.7rem;
+  margin: -0.4rem 0 1.3rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  background: #f3eee4;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.orphan-assets > div {
+  display: grid;
+  gap: 0.2rem;
+}
+.orphan-assets b,
+.orphan-assets p {
+  color: var(--ink);
+  margin: 0;
+}
+.orphan-assets ul {
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.orphan-assets li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.orphan-assets li span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.danger-button {
+  justify-self: start;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.5rem 0.7rem;
 }
 .editor-paper {
   max-width: 820px;

@@ -1,5 +1,5 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 
 import { resolveWorkspacePath } from '@blog-studio/adapter-command';
@@ -8,6 +8,8 @@ import {
   createContentHash,
   createDocumentId,
   createWorkspaceId,
+  type AssetRecord,
+  type AssetScope,
   type FrontMatterValue,
 } from '@blog-studio/core';
 import {
@@ -99,6 +101,76 @@ function defaultSlug(title: string, now: Date): string {
     .slice(0, 64);
   if (fromTitle) return fromTitle;
   return `draft-${now.toISOString().replace(/\D/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+}
+
+interface OrphanAssetPlan {
+  readonly confirmation: string;
+  readonly sourceRevision: string;
+  readonly draftVersion: number;
+  readonly assets: readonly AssetRecord[];
+  readonly scope: AssetScope;
+}
+
+async function createOrphanAssetPlan(
+  dependencies: ApiDependencies,
+  input: {
+    readonly workspaceId: string;
+    readonly documentId: string;
+    readonly collection: string;
+  },
+): Promise<OrphanAssetPlan> {
+  const workspace = dependencies.workspaces.get(input.workspaceId);
+  const { ref } = await dependencies.workspaces.findDocument(
+    input.workspaceId,
+    input.collection,
+    input.documentId,
+  );
+  const source = await workspace.generator.readDocument(
+    workspace.config.workspace.root,
+    ref,
+  );
+  const draft = dependencies.drafts.get(ref.workspaceId, ref.documentId);
+  const scope = createArticleAssetScope(
+    createWorkspaceId(input.workspaceId),
+    createDocumentId(input.documentId),
+    workspace.assetRootPrefix,
+  );
+  const referenceText = JSON.stringify({
+    frontMatter: draft?.frontMatter ?? source.frontMatter,
+    body: draft?.body ?? source.body,
+  });
+  const assets = (await workspace.assetProvider.list(scope))
+    .filter(
+      (asset) =>
+        !referenceText.includes(asset.publicUrl) &&
+        !referenceText.includes(asset.key) &&
+        !referenceText.includes(`/${asset.key}`),
+    )
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const confirmation = createContentHash(
+    `sha256:${createHash('sha256')
+      .update(
+        JSON.stringify({
+          workspaceId: input.workspaceId,
+          documentId: input.documentId,
+          collection: input.collection,
+          sourceRevision: source.revision,
+          draftVersion: draft?.version ?? 0,
+          assets: assets.map((asset) => ({
+            id: asset.id,
+            contentHash: asset.contentHash,
+          })),
+        }),
+      )
+      .digest('hex')}`,
+  );
+  return {
+    confirmation,
+    sourceRevision: source.revision,
+    draftVersion: draft?.version ?? 0,
+    assets,
+    scope,
+  };
 }
 
 function rewritePreviewText(
@@ -222,6 +294,77 @@ export function registerApiRoutes(
     (request) => ({
       releases: dependencies.releases.list(request.params.workspaceId),
     }),
+  );
+
+  app.get<{
+    Params: { workspaceId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/workspaces/:workspaceId/documents/:documentId/assets/orphans',
+    { schema: { params: documentParams, querystring: collectionQuery } },
+    async (request) => {
+      const plan = await createOrphanAssetPlan(dependencies, {
+        ...request.params,
+        collection: request.query.collection,
+      });
+      return {
+        plan: {
+          confirmation: plan.confirmation,
+          sourceRevision: plan.sourceRevision,
+          draftVersion: plan.draftVersion,
+          assets: plan.assets,
+        },
+      };
+    },
+  );
+
+  app.delete<{
+    Params: { workspaceId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { confirmation: string };
+  }>(
+    '/api/workspaces/:workspaceId/documents/:documentId/assets/orphans',
+    {
+      schema: {
+        params: documentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['confirmation'],
+          properties: {
+            confirmation: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspace = dependencies.workspaces.get(request.params.workspaceId);
+      const plan = await createOrphanAssetPlan(dependencies, {
+        ...request.params,
+        collection: request.query.collection,
+      });
+      if (request.body.confirmation !== plan.confirmation)
+        return reply.code(409).send({
+          type: 'about:blank',
+          title: 'Asset deletion plan changed; preview it again',
+          status: 409,
+          code: 'ASSET_PLAN_CONFLICT',
+        });
+      for (const asset of plan.assets)
+        await workspace.assetProvider.delete({
+          scope: plan.scope,
+          assetId: asset.id,
+          expectedContentHash: asset.contentHash,
+        });
+      return {
+        deleted: plan.assets.map((asset) => asset.id),
+        count: plan.assets.length,
+      };
+    },
   );
 
   app.get<{

@@ -502,6 +502,121 @@ describe('Studio workspace API', () => {
     );
   });
 
+  it('previews orphan assets and rejects a stale deletion confirmation', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const documents = await app.inject({
+      url: '/api/workspaces/test-blog/documents?collection=posts',
+      headers: { cookie: session.cookie },
+    });
+    const documentId = documents.json<{
+      documents: Array<{ ref: { documentId: string } }>;
+    }>().documents[0]?.ref.documentId;
+    if (!documentId) throw new Error('fixture document missing');
+    const upload = async (red: number) => {
+      const image = await sharp({
+        create: {
+          width: 8,
+          height: 8,
+          channels: 4,
+          background: { r: red, g: 80, b: 35, alpha: 1 },
+        },
+      })
+        .png()
+        .toBuffer();
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/workspaces/test-blog/documents/${documentId}/assets?collection=posts`,
+        headers: {
+          ...headers,
+          'x-blog-studio-filename': encodeURIComponent(`image-${red}.png`),
+          'content-type': 'image/png',
+        },
+        payload: image,
+      });
+      expect(response.statusCode, response.body).toBe(201);
+      return response.json<{
+        asset: { key: string; publicUrl: string };
+      }>().asset;
+    };
+    const referenced = await upload(180);
+    const orphan = await upload(220);
+    const sourceResponse = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    const source = sourceResponse.json<{
+      source: { revision: string; frontMatter: Record<string, unknown> };
+    }>().source;
+    const draftUrl = `/api/workspaces/test-blog/documents/${documentId}/draft?collection=posts`;
+    const saveDraft = async (expectedVersion: number) =>
+      await app.inject({
+        method: 'PUT',
+        url: draftUrl,
+        headers,
+        payload: {
+          expectedVersion,
+          sourceRevision: source.revision,
+          frontMatter: source.frontMatter,
+          body: `![kept](${referenced.publicUrl})\n`,
+        },
+      });
+    expect((await saveDraft(0)).statusCode).toBe(200);
+
+    const orphanUrl = `/api/workspaces/test-blog/documents/${documentId}/assets/orphans?collection=posts`;
+    const firstPlan = await app.inject({
+      url: orphanUrl,
+      headers: { cookie: session.cookie },
+    });
+    expect(firstPlan.statusCode, firstPlan.body).toBe(200);
+    const firstPlanPayload = firstPlan.json<{
+      plan: {
+        confirmation: string;
+        assets: Array<{ key: string }>;
+      };
+    }>().plan;
+    expect(firstPlanPayload.assets.map((asset) => asset.key)).toEqual([
+      orphan.key,
+    ]);
+
+    expect((await saveDraft(1)).statusCode).toBe(200);
+    const stale = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation: firstPlanPayload.confirmation },
+    });
+    expect(stale.statusCode, stale.body).toBe(409);
+    expect(stale.json()).toMatchObject({ code: 'ASSET_PLAN_CONFLICT' });
+
+    const currentPlan = await app.inject({
+      url: orphanUrl,
+      headers: { cookie: session.cookie },
+    });
+    const confirmation = currentPlan.json<{
+      plan: { confirmation: string };
+    }>().plan.confirmation;
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toMatchObject({ count: 1 });
+    await expect(
+      readFile(join(workspace, 'source', referenced.key)),
+    ).resolves.toBeDefined();
+    await expect(
+      readFile(join(workspace, 'source', orphan.key)),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('publishes a verified release and exposes its durable timeline', async () => {
     const { app, publishTarget, workspace } = await fixture();
     const session = await login(app);

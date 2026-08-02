@@ -78,6 +78,19 @@ export interface DocumentPayload {
   };
 }
 
+export interface OrphanAssetPlan {
+  readonly confirmation: string;
+  readonly sourceRevision: string;
+  readonly draftVersion: number;
+  readonly assets: readonly {
+    readonly id: string;
+    readonly key: string;
+    readonly publicUrl: string;
+    readonly byteLength: number;
+    readonly contentHash: string;
+  }[];
+}
+
 export class StudioApi {
   public constructor(private csrfToken: string) {}
 
@@ -272,6 +285,31 @@ export class StudioApi {
           'content-type': input.file.type,
           'x-blog-studio-filename': encodeURIComponent(input.file.name),
         },
+      },
+    );
+  }
+
+  public orphanAssets(input: {
+    readonly workspaceId: string;
+    readonly documentId: string;
+    readonly collection: string;
+  }) {
+    return this.#request<{ plan: OrphanAssetPlan }>(
+      `/api/workspaces/${input.workspaceId}/documents/${input.documentId}/assets/orphans?collection=${input.collection}`,
+    );
+  }
+
+  public deleteOrphanAssets(input: {
+    readonly workspaceId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly confirmation: string;
+  }) {
+    return this.#request<{ deleted: readonly string[]; count: number }>(
+      `/api/workspaces/${input.workspaceId}/documents/${input.documentId}/assets/orphans?collection=${input.collection}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: input.confirmation }),
       },
     );
   }

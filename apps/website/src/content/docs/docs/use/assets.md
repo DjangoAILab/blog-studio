@@ -26,8 +26,10 @@ an existing cache URL.
 
 The server independently checks declared MIME type and decoded content, removes
 metadata, bounds dimensions, and produces deterministic formats according to
-the configured policy. The editor inserts Markdown only after the provider
-returns the durable public URL.
+the configured policy. Encoding runs in a memory-bounded Worker with a hard
+deadline; a timed-out Worker is terminated before the provider can be called.
+The editor inserts Markdown only after the provider returns the durable public
+URL.
 
 ## Legacy resources
 
@@ -35,5 +37,16 @@ Existing resource paths are not migrated automatically. Configure them as
 protected prefixes—for example `static`—so Studio cannot overwrite or delete
 them. New article-scoped resources and old paths may coexist indefinitely.
 
-Orphan deletion is not part of the v0.1 browser journey. Do not infer that a
-missing Markdown reference authorizes destructive provider cleanup.
+## Remove unreferenced managed assets
+
+Choose **Check unreferenced assets** only after the current draft is saved.
+Studio lists article-scoped assets and compares their exact public URL/key with
+the acknowledged front matter and Markdown. It shows the proposed deletions,
+sizes, and count without deleting anything.
+
+Deletion requires a second browser confirmation plus a server-issued digest of
+the source revision, draft version, asset IDs, and content hashes. If any of
+those inputs changes, the server returns a conflict and requires a new preview.
+Provider deletion also verifies the expected content hash. The scan is confined
+to the current document's managed prefix, so configured legacy/protected
+prefixes are never candidates.
