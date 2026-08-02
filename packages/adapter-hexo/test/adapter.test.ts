@@ -82,6 +82,71 @@ describe('HexoGeneratorAdapter', () => {
     expect(written).toContain('<aside data-kind="raw">');
   });
 
+  it('creates portable native drafts exclusively and promotes by revision', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    const created = await adapter.createDocument(root, {
+      collectionId: 'drafts',
+      title: '新的文章',
+      slug: 'new-article',
+      createdAt: '2026-08-02T12:00:00.000Z',
+    });
+
+    expect(created.source.ref.path).toBe('source/_drafts/new-article.md');
+    expect(created.source.frontMatter).toMatchObject({
+      title: '新的文章',
+      date: '2026-08-02T12:00:00.000Z',
+    });
+    await expect(
+      adapter.createDocument(root, {
+        collectionId: 'drafts',
+        title: '重复',
+        slug: 'new-article',
+        createdAt: '2026-08-02T12:00:00.000Z',
+      }),
+    ).rejects.toThrow('already exists');
+
+    const promoted = await adapter.promoteDocument(root, {
+      ref: created.source.ref,
+      targetCollectionId: 'posts',
+      expectedRevision: created.source.revision,
+    });
+    expect(promoted.ref.path).toBe('source/_posts/new-article.md');
+    await expect(stat(join(root, promoted.ref.path))).resolves.toMatchObject(
+      {},
+    );
+    await expect(stat(join(root, created.source.ref.path))).rejects.toThrow();
+  });
+
+  it('rejects unsafe draft slugs and stale promotion revisions', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    await expect(
+      adapter.createDocument(root, {
+        collectionId: 'drafts',
+        title: 'Unsafe',
+        slug: '../unsafe',
+        createdAt: '2026-08-02T12:00:00.000Z',
+      }),
+    ).rejects.toThrow('portable');
+    const created = await adapter.createDocument(root, {
+      collectionId: 'drafts',
+      title: 'Safe',
+      slug: 'safe',
+      createdAt: '2026-08-02T12:00:00.000Z',
+    });
+    await expect(
+      adapter.promoteDocument(root, {
+        ref: created.source.ref,
+        targetCollectionId: 'posts',
+        expectedRevision: created.source.revision.replace(
+          /.$/,
+          '0',
+        ) as typeof created.source.revision,
+      }),
+    ).rejects.toThrow('revision conflict');
+  });
+
   it('resolves the configured Hexo permalink without changing old paths', async () => {
     const root = await copySite();
     const adapter = createAdapter();

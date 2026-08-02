@@ -36,6 +36,28 @@ export interface WriteDocumentResult {
   readonly changed: boolean;
 }
 
+export interface CreateDocumentInput {
+  readonly collectionId: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly createdAt: string;
+}
+
+export interface CreateDocumentResult {
+  readonly source: DocumentSource;
+}
+
+export interface PromoteDocumentInput {
+  readonly ref: DocumentRef;
+  readonly targetCollectionId: string;
+  readonly expectedRevision: ContentHash;
+}
+
+export interface PromoteDocumentResult {
+  readonly ref: DocumentRef;
+  readonly revision: ContentHash;
+}
+
 export interface DocumentSummary {
   readonly ref: DocumentRef;
   readonly title: string;

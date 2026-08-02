@@ -1,4 +1,4 @@
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 
 import { resolveWorkspacePath, runCommand } from '@blog-studio/adapter-command';
@@ -9,12 +9,16 @@ import {
   type AdapterDiagnostic,
   type BuildInput,
   type BuildResult,
+  type CreateDocumentInput,
+  type CreateDocumentResult,
   type DetectionResult,
   type DocumentRef,
   type DocumentSource,
   type DocumentSummary,
   type FrontMatterValue,
   type GeneratorAdapter,
+  type PromoteDocumentInput,
+  type PromoteDocumentResult,
   type SiteModel,
   type WriteDocumentInput,
   type WriteDocumentResult,
@@ -294,6 +298,81 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
 
     await writeFile(path, next, 'utf8');
     return { revision: hashContent(next), changed: true };
+  }
+
+  public async createDocument(
+    workspaceRoot: string,
+    input: CreateDocumentInput,
+  ): Promise<CreateDocumentResult> {
+    if (input.collectionId !== 'drafts')
+      throw new Error('Hexo creates new documents in the drafts collection');
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(input.slug))
+      throw new Error('Hexo draft slug must be portable lowercase kebab-case');
+    if (!input.title.trim()) throw new Error('Hexo draft title is required');
+    if (Number.isNaN(Date.parse(input.createdAt)))
+      throw new Error('Hexo draft creation date is invalid');
+
+    const directory = await this.#collectionDirectory(workspaceRoot, 'drafts');
+    const path = join(directory, `${input.slug}.md`);
+    const raw = serializeMarkdown(
+      { title: input.title.trim(), date: input.createdAt },
+      '',
+    );
+    try {
+      await writeFile(path, raw, { encoding: 'utf8', flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST')
+        throw new Error(`Hexo draft slug already exists: ${input.slug}`);
+      throw error;
+    }
+    const root = await resolveWorkspacePath(workspaceRoot, '.');
+    const ref: DocumentRef = {
+      workspaceId: this.#workspaceId,
+      collectionId: 'drafts',
+      documentId: safeId(portablePath(relative(root, path))),
+      path: portablePath(relative(root, path)),
+    };
+    return { source: await this.readDocument(workspaceRoot, ref) };
+  }
+
+  public async promoteDocument(
+    workspaceRoot: string,
+    input: PromoteDocumentInput,
+  ): Promise<PromoteDocumentResult> {
+    if (
+      input.ref.collectionId !== 'drafts' ||
+      input.targetCollectionId !== 'posts'
+    )
+      throw new Error('Hexo only promotes drafts into posts');
+    const source = await this.readDocument(workspaceRoot, input.ref);
+    if (source.revision !== input.expectedRevision)
+      throw new Error('Document revision conflict');
+    const destinationDirectory = await this.#collectionDirectory(
+      workspaceRoot,
+      'posts',
+    );
+    const destination = join(destinationDirectory, basename(input.ref.path));
+    try {
+      await stat(destination);
+      throw new Error(`Hexo post already exists: ${basename(destination)}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await rename(
+      await resolveWorkspacePath(workspaceRoot, input.ref.path),
+      destination,
+    );
+    const root = await resolveWorkspacePath(workspaceRoot, '.');
+    const path = portablePath(relative(root, destination));
+    return {
+      ref: {
+        ...input.ref,
+        collectionId: 'posts',
+        documentId: safeId(path),
+        path,
+      },
+      revision: source.revision,
+    };
   }
 
   public async resolvePublicUrl(

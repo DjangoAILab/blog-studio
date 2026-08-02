@@ -1,8 +1,12 @@
 import type {
   ContentCollection,
+  CreateDocumentInput,
+  CreateDocumentResult,
   DocumentRef,
   DocumentSource,
   DocumentSummary,
+  PromoteDocumentInput,
+  PromoteDocumentResult,
   WriteDocumentInput,
   WriteDocumentResult,
 } from '../domain/documents.js';
@@ -56,6 +60,14 @@ export interface GeneratorAdapter extends AdapterDescriptor {
     workspaceRoot: string,
     input: WriteDocumentInput,
   ): Promise<WriteDocumentResult>;
+  createDocument?(
+    workspaceRoot: string,
+    input: CreateDocumentInput,
+  ): Promise<CreateDocumentResult>;
+  promoteDocument?(
+    workspaceRoot: string,
+    input: PromoteDocumentInput,
+  ): Promise<PromoteDocumentResult>;
   resolvePublicUrl(workspaceRoot: string, ref: DocumentRef): Promise<string>;
   /** Resolve a document-authored/root-relative asset to a workspace-relative source path. */
   resolveAssetSourcePath?(
