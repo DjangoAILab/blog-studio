@@ -110,6 +110,22 @@ Tencent product, observes documented batch limits, records request IDs, and
 polls task status. API acceptance is still followed by public marker
 verification.
 
+Large sites should not spend one URL-purge quota item for every generated page
+and mutable asset when the publish target already has an isolated URL root.
+Configure that boundary explicitly:
+
+```yaml
+cache:
+  adapter: tencent-cdn
+  options:
+    directoryPurgeRoot: https://blog.example.com/__blog-studio-staging/v0.1/
+```
+
+Studio then validates every affected target against the same origin and path
+boundary before submitting one directory purge. A target outside the boundary
+fails closed. Omit this option for shared or legacy URL trees that require
+exact-target invalidation.
+
 Upgrading from classic CDN to EdgeOne may improve newer edge capabilities and
 consolidate configuration, but it also changes provider APIs, cache semantics,
 diagnostics, and operational rollback. Blog Studio therefore treats it as a

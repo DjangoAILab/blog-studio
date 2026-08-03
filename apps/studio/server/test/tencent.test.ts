@@ -3,7 +3,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { parseBlogStudioConfigYaml } from '@blog-studio/config';
+import {
+  parseBlogStudioConfigYaml,
+  type BlogStudioConfig,
+} from '@blog-studio/config';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -303,6 +306,56 @@ verification:
     expect(sdkFactories.cos).toHaveBeenCalledWith({
       secretId: 'server-secret-id',
       secretKey: 'server-secret-key',
+    });
+  });
+
+  it('passes an explicitly scoped directory purge root to Tencent CDN', async () => {
+    const cdn = {
+      PurgeUrlsCache: vi.fn().mockResolvedValue({}),
+      PurgePathCache: vi
+        .fn()
+        .mockResolvedValue({ TaskId: 'path-task', RequestId: 'path-request' }),
+      DescribePurgeTasks: vi.fn().mockResolvedValue({
+        PurgeLogs: [{ TaskId: 'path-task', Status: 'done' }],
+      }),
+    };
+    const cdnConfig = {
+      ...config,
+      cache: {
+        ...config.cache!,
+        adapter: 'tencent-cdn',
+        options: {
+          directoryPurgeRoot: 'https://staging.example.com/releases/v0.1/',
+        },
+      },
+    } satisfies BlogStudioConfig;
+    const factories = createTencentProviderFactories(
+      {
+        TEST_TENCENT_SECRET_ID: 'server-secret-id',
+        TEST_TENCENT_SECRET_KEY: 'server-secret-key',
+      },
+      {
+        cos: () => cosSdk(),
+        cdn: () => cdn,
+        teo: () => ({}) as never,
+      },
+    );
+    const provider = factories.cacheFactories['tencent-cdn']!({
+      config: cdnConfig,
+      generator: {} as never,
+      assetProvider: {} as never,
+      assetRootPrefix: 'assets',
+      assets: {} as never,
+    });
+    await provider?.invalidate({
+      urls: ['https://staging.example.com/releases/v0.1/index.html'],
+      directories: [],
+    });
+    expect(cdn.PurgeUrlsCache).not.toHaveBeenCalled();
+    expect(cdn.PurgePathCache).toHaveBeenCalledWith({
+      Paths: ['https://staging.example.com/releases/v0.1/'],
+      FlushType: 'flush',
+      UrlEncode: true,
     });
   });
 

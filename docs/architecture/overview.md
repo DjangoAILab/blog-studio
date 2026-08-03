@@ -190,6 +190,10 @@ publish:
     keyPrefix: blog.example.com
 cache:
   adapter: tencent-cdn
+  options:
+    # Optional for an isolated publish prefix. All targets are checked before
+    # they are collapsed into a single directory purge.
+    directoryPurgeRoot: https://blog.example.com/staging/
 verification:
   baseUrl: https://blog.example.com
 ```

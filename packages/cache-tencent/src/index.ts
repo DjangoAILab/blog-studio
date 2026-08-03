@@ -32,6 +32,7 @@ export interface TencentCacheProviderOptions {
   readonly client: TencentCacheClient;
   readonly mode: TencentCacheMode;
   readonly zoneId?: string;
+  readonly directoryPurgeRoot?: string;
   readonly edgeOneBatchSize?: number;
   readonly maxPollAttempts?: number;
   readonly delay?: (attempt: number) => Promise<void>;
@@ -68,6 +69,7 @@ export class TencentCacheProvider implements CacheProvider {
   readonly #client: TencentCacheClient;
   readonly #mode: TencentCacheMode;
   readonly #zoneId: string | undefined;
+  readonly #directoryPurgeRoot: string | undefined;
   readonly #edgeOneBatchSize: number;
   readonly #maxPollAttempts: number;
   readonly #delay: (attempt: number) => Promise<void>;
@@ -76,6 +78,9 @@ export class TencentCacheProvider implements CacheProvider {
     this.#client = options.client;
     this.#mode = options.mode;
     this.#zoneId = options.zoneId;
+    this.#directoryPurgeRoot = options.directoryPurgeRoot
+      ? new URL(options.directoryPurgeRoot).toString()
+      : undefined;
     this.#edgeOneBatchSize = options.edgeOneBatchSize ?? 100;
     this.#maxPollAttempts = options.maxPollAttempts ?? 20;
     this.#delay =
@@ -90,6 +95,20 @@ export class TencentCacheProvider implements CacheProvider {
       options.mode === 'cdn' ? 'Tencent CDN' : 'Tencent EdgeOne';
     if (options.mode === 'edgeone' && !options.zoneId)
       throw new Error('EdgeOne cache invalidation requires zoneId');
+    if (this.#directoryPurgeRoot) {
+      const root = new URL(this.#directoryPurgeRoot);
+      if (
+        !['http:', 'https:'].includes(root.protocol) ||
+        root.username ||
+        root.password ||
+        root.search ||
+        root.hash ||
+        !root.pathname.endsWith('/')
+      )
+        throw new Error(
+          'Tencent directory purge root must be an HTTP(S) directory URL',
+        );
+    }
     if (this.#edgeOneBatchSize < 1 || this.#edgeOneBatchSize > 1000)
       throw new Error('EdgeOne batch size must be between 1 and 1000');
     if (this.#maxPollAttempts < 1 || this.#maxPollAttempts > 100)
@@ -114,19 +133,43 @@ export class TencentCacheProvider implements CacheProvider {
   public async invalidate(input: CacheInvalidation): Promise<CacheResult> {
     validateTargets(input.urls);
     validateTargets(input.directories);
+    const accepted = input.urls.length + input.directories.length;
     const urlBatchSize = this.#mode === 'cdn' ? 1000 : this.#edgeOneBatchSize;
     const directoryBatchSize =
       this.#mode === 'cdn' ? 500 : this.#edgeOneBatchSize;
-    const requests = [
-      ...batches(input.urls, urlBatchSize).map((targets) => ({
-        kind: 'url' as const,
-        targets,
-      })),
-      ...batches(input.directories, directoryBatchSize).map((targets) => ({
-        kind: 'directory' as const,
-        targets,
-      })),
-    ];
+    const directoryPurgeRoot = this.#directoryPurgeRoot;
+    const requests = directoryPurgeRoot
+      ? (() => {
+          const root = new URL(directoryPurgeRoot);
+          for (const target of [...input.urls, ...input.directories]) {
+            const url = new URL(target);
+            if (
+              url.origin !== root.origin ||
+              !url.pathname.startsWith(root.pathname)
+            )
+              throw new Error(
+                `Cache target is outside configured directory purge root: ${target}`,
+              );
+          }
+          return accepted === 0
+            ? []
+            : [
+                {
+                  kind: 'directory' as const,
+                  targets: [directoryPurgeRoot],
+                },
+              ];
+        })()
+      : [
+          ...batches(input.urls, urlBatchSize).map((targets) => ({
+            kind: 'url' as const,
+            targets,
+          })),
+          ...batches(input.directories, directoryBatchSize).map((targets) => ({
+            kind: 'directory' as const,
+            targets,
+          })),
+        ];
     const requestIds: string[] = [];
     for (const request of requests) {
       const result = await this.#client.submit({
@@ -141,7 +184,7 @@ export class TencentCacheProvider implements CacheProvider {
     }
     return {
       requestIds,
-      accepted: input.urls.length + input.directories.length,
+      accepted,
     };
   }
 }

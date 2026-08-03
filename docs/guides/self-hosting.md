@@ -86,6 +86,22 @@ docker compose \
 The override mounts both files read-only and sets only their file-location
 variables in the container environment. Do not commit either file.
 
+For a publish target isolated beneath one URL directory, configure Tencent CDN
+to collapse each release's affected URLs into one directory purge:
+
+```yaml
+cache:
+  adapter: tencent-cdn
+  options:
+    directoryPurgeRoot: https://blog.example.com/__blog-studio-staging/v0.1/
+```
+
+The provider rejects a release if any invalidation target falls outside this
+root. Use the option only when the matching COS target is equally isolated;
+omit it to keep exact URL and generated-directory invalidation. The explicit
+root avoids consuming one URL-purge quota item per generated page or mutable
+asset on large sites.
+
 ## Traefik
 
 The supplied override joins an existing external Traefik Docker network and
