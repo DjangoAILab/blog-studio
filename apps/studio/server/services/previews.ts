@@ -76,19 +76,40 @@ export class PreviewService {
     const isolatedWorkspace = sandbox.workspaceRoot;
     const temporaryRoot = dirname(isolatedWorkspace);
     try {
+      let previewRef = input.ref;
+      let previewRevision = input.sourceRevision;
       if (input.draft) {
         if (input.draft.sourceRevision !== input.sourceRevision)
           throw new Error('Draft source revision conflict');
-        await workspace.generator.writeDocument(isolatedWorkspace, {
-          ref: input.ref,
-          expectedRevision: input.sourceRevision,
-          frontMatter: input.draft.frontMatter,
-          body: input.draft.body,
-        });
+        const written = await workspace.generator.writeDocument(
+          isolatedWorkspace,
+          {
+            ref: input.ref,
+            expectedRevision: input.sourceRevision,
+            frontMatter: input.draft.frontMatter,
+            body: input.draft.body,
+          },
+        );
+        previewRevision = written.revision;
+      }
+      if (input.ref.collectionId === 'drafts') {
+        if (!workspace.generator.promoteDocument)
+          throw new Error(
+            `Generator ${workspace.generator.id} does not support draft preview promotion`,
+          );
+        const promoted = await workspace.generator.promoteDocument(
+          isolatedWorkspace,
+          {
+            ref: input.ref,
+            targetCollectionId: 'posts',
+            expectedRevision: previewRevision,
+          },
+        );
+        previewRef = promoted.ref;
       }
       const publicUrl = await workspace.generator.resolvePublicUrl(
         isolatedWorkspace,
-        input.ref,
+        previewRef,
       );
       const build = await workspace.generator.build({
         workspaceRoot: isolatedWorkspace,
@@ -99,7 +120,7 @@ export class PreviewService {
         workspaceId: input.workspaceId,
         workspaceDirectory: temporaryRoot,
         sourceDirectory: isolatedWorkspace,
-        ref: input.ref,
+        ref: previewRef,
         outputDirectory: build.outputDirectory,
         manifest: build.manifest,
         contentPath: new URL(publicUrl).pathname,
