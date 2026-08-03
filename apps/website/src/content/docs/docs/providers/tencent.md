@@ -41,12 +41,20 @@ For an existing production deployment, use the separate
 [`cam-production-adoption-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-production-adoption-policy.example.json)
 first; it can inventory production and write retained state plus the exact
 release marker, but it cannot overwrite or delete ordinary public objects.
+After the adopted diff is approved, generate a new policy with
+[`tencent-production-writer-policy.mjs`](https://github.com/DjangoAILab/blog-studio/blob/main/scripts/tencent-production-writer-policy.mjs)
+and attach it to a separate writer identity. The checked-in
+[`cam-production-writer-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-production-writer-policy.example.json)
+is illustrative; generate from the deployed configuration instead of editing
+its protected resources by hand.
 
 Keep `/` literal in COS resource ARNs, but encode every slash as `%2F` in the
 `cos:prefix` condition values. Tencent matches that condition against the
 URL-encoded `prefix` request parameter; a visually plausible condition with
 literal slashes can therefore deny the intended `GetBucket` inventory. The
-checked-in policy smoke test locks this distinction down.
+checked-in policy smoke test locks this distinction down. Tencent documents the
+encoding requirement in its
+[`cos:prefix` condition examples](https://cloud.tencent.com/document/product/436/71307).
 
 The staging policy intentionally grants no bucket configuration, bucket
 creation, account bucket listing, or production-prefix object permission. Its
@@ -59,7 +67,9 @@ COS object operations match the SDK calls Studio actually makes:
 
 Tencent's current CAM capability table classifies those three CDN APIs as
 operation-level actions whose resource must be `*`. A policy cannot further
-restrict them to one URL path. Compensating controls are therefore mandatory:
+restrict them to one URL path. The current
+[`PurgeUrlsCache` CAM entry](https://cloud.tencent.com/document/product/598/98110)
+confirms that boundary. Compensating controls are therefore mandatory:
 
 1. use a sub-user that has only the listed actions;
 2. keep `verification.baseUrl` fixed to the one expected host and staging path;
@@ -122,6 +132,46 @@ because adoption only invalidates the exact marker. After inspecting the first
 read-only diff, replace this policy with a separately reviewed production policy
 that grants content writes only if promotion is approved. Do not expand the
 adoption identity in place.
+
+## Generating a production writer policy
+
+The generator derives region, bucket, target/state prefixes, and every
+`publish.options.protectedPrefixes` value from the deployed YAML. It adds the
+minimum public/state object permissions needed by the COS publisher and an
+explicit write/delete deny for both each protected object and its descendants.
+Tencent CAM evaluates a matching explicit deny before an allow, providing a
+second boundary behind the release planner and publisher, consistent with its
+documented [policy evaluation order](https://cloud.tencent.com/document/product/598/10605)
+and [COS object resource syntax](https://cloud.tencent.com/document/product/436/18023).
+
+```sh
+policy_directory=$(mktemp -d)
+chmod 700 "$policy_directory"
+node scripts/tencent-production-writer-policy.mjs \
+  --config /absolute/path/to/blog-studio.production.yml \
+  --app-id 1250000000 \
+  --output "$policy_directory/production-writer-policy.json"
+corepack pnpm policy:smoke
+```
+
+The generated policy intentionally:
+
+- allows list/read/write/delete only for the configured public target and
+  retained-state prefix;
+- keeps protected content readable while denying its overwrite and deletion;
+- grants URL purge and purge-task observation but not directory purge;
+- grants no bucket configuration, bucket creation, account bucket listing,
+  EdgeOne, or wildcard COS action.
+
+Create an API-only sub-user with no console login or groups, attach only this
+policy, and read the active policy JSON back before installing its key. Do not
+attempt a destructive permission probe against a real protected object. Prove
+state-prefix put/get/delete with a unique temporary key and rely on policy
+read-back plus the repository evaluator for the protected explicit-deny gate.
+
+The complete authorization, activation, publish, stop, and rollback procedure
+is in the
+[`production phase B checklist`](https://github.com/DjangoAILab/blog-studio/blob/main/docs/checklists/production-phase-b.md).
 
 ## CDN and EdgeOne cache model
 

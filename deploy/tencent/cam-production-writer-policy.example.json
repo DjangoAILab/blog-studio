@@ -1,0 +1,51 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": ["cos:GetBucket"],
+      "resource": ["qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/*"],
+      "condition": {
+        "string_like": {
+          "cos:prefix": [
+            "blog.example.com%2F*",
+            "blog-studio-state%2Fblog.example.com%2F*"
+          ]
+        }
+      }
+    },
+    {
+      "effect": "allow",
+      "action": ["cos:GetObject"],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/*",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog-studio-state/blog.example.com/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": ["cos:PutObject", "cos:DeleteObject"],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/*",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog-studio-state/blog.example.com/*"
+      ]
+    },
+    {
+      "effect": "deny",
+      "action": ["cos:PutObject", "cos:DeleteObject"],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/legacy-object.html",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/legacy-object.html/*",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/legacy/path-to-preserve",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/legacy/path-to-preserve/*",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/static",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/static/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": ["cdn:PurgeUrlsCache", "cdn:DescribePurgeTasks"],
+      "resource": ["*"]
+    }
+  ]
+}
