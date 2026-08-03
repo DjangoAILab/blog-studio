@@ -25,6 +25,11 @@ linear history and resolved review conversations, and rejects force-pushes and
 branch deletion. This evidence update is intentionally delivered through a
 pull request to exercise the protected-branch path.
 
+The protected-baseline correction subsequently passed required `quality` and
+`security` checks in run
+[30796876548](https://github.com/DjangoAILab/blog-studio/actions/runs/30796876548)
+and merged as `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`.
+
 ## Real-environment gates completed
 
 - reference Hexo build and 93-document compatibility;
@@ -52,6 +57,14 @@ pull request to exercise the protected-branch path.
   and unchanged public-content inventory;
 - a first production diff generated read-only against the adopted baseline,
   exposing 355 changes and 10 deletions without applying or refreshing them.
+- protected-baseline reconciliation that retains all ten legacy URL objects
+  and the drifting static object, with filesystem and COS regression tests;
+- a deployed second read-only production plan with 0 additions, 354 reviewed
+  managed changes, 0 deletions, and the same 1,973-object content manifest;
+- a 354-object public semantic audit: 344 reduce exactly to reviewed
+  deterministic metadata/order/link transformations, while eight stale
+  canonical article shells plus `archive.html` and `content.json` were
+  inspected separately; no provider mutation occurred.
 
 ## Measured release performance
 
@@ -72,17 +85,18 @@ production domain to EdgeOne is not bundled into v0.1.
 
 ## Open production gates
 
-The production baseline is now adopted with a dedicated adoption-only
-credential, and the first complete normal-release plan has been inspected
-without provider mutation. It contains 355 changes and 10 deletions, including
-nine dated article paths and one immutable legacy asset. Consequently these
-actions remain gated:
+The production baseline is adopted with a dedicated adoption-only credential.
+The deployed protected-baseline correction reduces the normal content plan to
+354 reviewed managed changes with zero additions and zero deletions. All ten
+legacy URL objects and the drifting immutable asset remain in the effective
+manifest at their adopted hashes. Consequently these actions remain gated:
 
-1. reconcile every dated-path difference so the approved plan preserves legacy
-   URLs, and review the immutable asset change;
-2. create a separate production writer identity only after that diff is
-   accepted; do not expand the adoption identity;
-3. run one controlled no-URL-change release and rollback exercise;
+1. obtain explicit production phase B authorization for ordinary content
+   writes; the read-only review is not publish authorization;
+2. create a separate production writer identity after that authorization; do
+   not expand the adoption identity;
+3. run one controlled zero-addition, zero-deletion release and rollback
+   exercise while continuously checking the legacy URLs and baseline samples;
 4. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
    every required gate is green.
 
