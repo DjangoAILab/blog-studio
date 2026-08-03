@@ -48,12 +48,21 @@ asynchronous `202` records in 0.103 and 0.200 seconds. The authoring interface i
 therefore not held open for provider completion; it follows the durable release
 timeline while the background job awaits COS and CDN.
 
-The changed-content result does not meet the original `< 90 s` completion gate.
-Tencent's
+On 2026-08-03 the product owner explicitly accepted provider-aware v0.1 gates
+based on this real staging evidence:
+
+| Release boundary                   |  Measured | Accepted gate |
+| ---------------------------------- | --------: | ------------: |
+| Asynchronous release request       |   0.200 s |         < 1 s |
+| Byte-identical no-op completion    |   4.774 s |        < 15 s |
+| Studio-controlled changed work     |     ~35 s |        < 90 s |
+| Awaited provider-backed completion | 193.427 s |       < 5 min |
+
+All four revised gates pass. Completion continues to mean that Blog Studio has
+awaited and validated the provider task; the user interface does not report a
+release as complete while cache invalidation is still pending. Tencent's
 [published classic CDN guidance](https://cloud.tencent.com/document/product/228/3946)
-allows approximately five minutes for global URL refresh to take effect, so the
-measured result is provider-normal but still a failed product target. The
-release remains asynchronous and visible to the author, but v0.1 readiness must
-either improve and remeasure invalidation or explicitly revise the gate to a
-provider-aware bound; application work is not reported as completed while the
-awaited cache task is still pending.
+allows approximately five minutes for global URL refresh to take effect. The
+provider-aware split therefore makes the source of latency observable without
+weakening completion semantics. Migrating the production domain to EdgeOne is
+not part of v0.1.
