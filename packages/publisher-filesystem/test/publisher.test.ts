@@ -194,4 +194,37 @@ describe('FilesystemPublisher', () => {
       'old page',
     );
   });
+
+  it('never overwrites generated content inside a protected baseline', async () => {
+    const item = await fixture();
+    await mkdir(join(item.build, 'legacy'), { recursive: true });
+    await writeFile(join(item.build, 'legacy', 'old.bin'), 'generated drift');
+    const current = createReleaseManifest({
+      ...item.current,
+      entries: [
+        ...item.current.entries,
+        entry('legacy/old.bin', 'generated drift', 'immutable'),
+      ],
+    });
+    const publisher = new FilesystemPublisher({
+      targetDirectory: item.target,
+      stateDirectory: item.state,
+      protectedPrefixes: ['legacy'],
+    });
+    const plan = await publisher.plan({
+      release: release(),
+      outputDirectory: item.build,
+      manifest: current,
+      previousManifest: item.previous,
+    });
+
+    expect(plan.changes.map((value) => value.path)).not.toContain(
+      'legacy/old.bin',
+    );
+    await publisher.apply(plan, 'assets', () => {});
+    await publisher.apply(plan, 'pages', () => {});
+    expect(await readFile(join(item.target, 'legacy', 'old.bin'), 'utf8')).toBe(
+      'legacy',
+    );
+  });
 });
