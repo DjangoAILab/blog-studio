@@ -39,6 +39,13 @@ repository:
 The generator command comes from the trusted adapter and workspace. It is not
 editable from the browser.
 
+Hexo themes and plugins must produce reproducible bytes for an unchanged
+workspace. Avoid helpers that append `Date.now()` or random values to every
+page; use a content-derived asset version instead. Studio assigns the same
+release timestamp to sandbox and canonical document writes, so Hexo sites that
+use `updated_option: mtime` do not generate a second change merely because a
+verified draft was committed after publishing.
+
 ## Resource migration policy
 
 Do not move old resources merely to match the new article-scoped convention.

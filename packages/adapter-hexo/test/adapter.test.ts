@@ -98,12 +98,16 @@ describe('HexoGeneratorAdapter', () => {
       expectedRevision: source.revision,
       frontMatter: { ...source.frontMatter, title: '修改后的标题' },
       body: source.body,
+      modifiedAt: '2026-08-02T15:30:00.000Z',
     });
     expect(changed.changed).toBe(true);
     const written = await readFile(join(root, summary.ref.path), 'utf8');
     expect(written).toContain('custom_plugin_option:');
     expect(written).toContain('{% note info %}');
     expect(written).toContain('<aside data-kind="raw">');
+    await expect(stat(join(root, summary.ref.path))).resolves.toMatchObject({
+      mtime: new Date('2026-08-02T15:30:00.000Z'),
+    });
   });
 
   it('creates portable native drafts exclusively and promotes by revision', async () => {

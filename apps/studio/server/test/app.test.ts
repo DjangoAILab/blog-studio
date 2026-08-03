@@ -1,4 +1,11 @@
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -209,6 +216,7 @@ interface ReleaseDetails {
   readonly release: {
     readonly id: string;
     readonly status: string;
+    readonly createdAt: string;
     readonly stages: Array<{ readonly status: string }>;
   };
   readonly events: Array<{ readonly stage: string }>;
@@ -842,6 +850,7 @@ describe('Studio workspace API', () => {
       },
     });
     const releaseId = started.json<ReleaseDetails>().release.id;
+    const releaseCreatedAt = started.json<ReleaseDetails>().release.createdAt;
     expect((await app.inject(previewUrl)).statusCode).toBe(404);
     expect(
       (await waitForRelease(app, session.cookie, releaseId)).release.status,
@@ -852,6 +861,11 @@ describe('Studio workspace API', () => {
         'utf8',
       ),
     ).resolves.toContain('Native draft body');
+    await expect(
+      stat(join(workspace, 'source', '_posts', 'native-release.md')).then(
+        (details) => details.mtime.toISOString(),
+      ),
+    ).resolves.toBe(releaseCreatedAt);
     await expect(
       readFile(
         join(workspace, 'source', '_drafts', 'native-release.md'),

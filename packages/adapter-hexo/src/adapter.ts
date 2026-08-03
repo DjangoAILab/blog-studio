@@ -1,4 +1,4 @@
-import { readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { readFile, rename, stat, utimes, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative, sep } from 'node:path';
 
 import { resolveWorkspacePath, runCommand } from '@blog-studio/adapter-command';
@@ -290,6 +290,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
     workspaceRoot: string,
     input: WriteDocumentInput,
   ): Promise<WriteDocumentResult> {
+    const modifiedAt = input.modifiedAt ? new Date(input.modifiedAt) : null;
+    if (modifiedAt && Number.isNaN(modifiedAt.valueOf()))
+      throw new Error('Document modification date is invalid');
     const path = await resolveWorkspacePath(workspaceRoot, input.ref.path);
     const current = await readFile(path, 'utf8');
     if (hashContent(current) !== input.expectedRevision) {
@@ -305,6 +308,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       return { revision: input.expectedRevision, changed: false };
 
     await writeFile(path, next, 'utf8');
+    if (modifiedAt) await utimes(path, modifiedAt, modifiedAt);
     return { revision: hashContent(next), changed: true };
   }
 
