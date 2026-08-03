@@ -47,6 +47,11 @@ pull request to exercise the protected-branch path.
   exact rollback, previous-marker verification through origin and CDN, and
   explicit draft cleanup;
 - exact production samples before and after staging remained byte-identical.
+- a dedicated API-only production adoption identity with no ordinary content
+  writes, complete 1,973-object baseline adoption, marker/state consistency,
+  and unchanged public-content inventory;
+- a first production diff generated read-only against the adopted baseline,
+  exposing 355 changes and 10 deletions without applying or refreshing them.
 
 ## Measured release performance
 
@@ -67,13 +72,17 @@ production domain to EdgeOne is not bundled into v0.1.
 
 ## Open production gates
 
-The staging identity is intentionally incapable of production-prefix access.
-No production publishing credential has been created or mounted. Consequently
-these actions remain blocked pending a separate explicit authorization:
+The production baseline is now adopted with a dedicated adoption-only
+credential, and the first complete normal-release plan has been inspected
+without provider mutation. It contains 355 changes and 10 deletions, including
+nine dated article paths and one immutable legacy asset. Consequently these
+actions remain gated:
 
-1. read and adopt the existing COS deployment baseline;
-2. inspect and approve the first complete production diff;
-3. run a controlled production no-URL-change release and rollback exercise;
+1. reconcile every dated-path difference so the approved plan preserves legacy
+   URLs, and review the immutable asset change;
+2. create a separate production writer identity only after that diff is
+   accepted; do not expand the adoption identity;
+3. run one controlled no-URL-change release and rollback exercise;
 4. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
    every required gate is green.
 
@@ -94,9 +103,15 @@ The completed staging credential remains restricted to
 prefix; authenticated probes confirmed that current production objects are
 denied. It must not be expanded or silently reused for production.
 
-A future production identity must be separately authorized, dedicated to Blog
-Studio, and limited to the existing `blog.wj2015.com/**` target plus its exact
-retained-state prefix and the minimum cache actions. Read-only inventory and
-baseline adoption precede the first write. The legacy GitHub Actions writer
-must be deliberately retired or converted to a non-automatic fallback in the
-same controlled handoff so two systems cannot publish concurrently.
+Production adoption uses the dedicated API-only CAM sub-user
+`blog-studio-production-v01` and custom policy
+`BlogStudioProductionAdoptV01`. It can read the existing
+`blog.wj2015.com/**` target, but its only public write/delete resource is the
+exact Blog Studio marker. It may write retained state under the configured
+state prefix and request exact-URL cache refresh. It cannot apply the normal
+content plan above and must not be expanded in place.
+
+Any normal writer must be a separately authorized identity limited to the same
+managed target and minimum cache actions. The legacy GitHub Actions writer is
+already non-automatic, so two systems cannot publish concurrently without an
+explicit manual action.

@@ -8,8 +8,8 @@
       "condition": {
         "string_like": {
           "cos:prefix": [
-            "blog.example.com/__blog-studio-staging/run-001/*",
-            "blog-studio-state/blog.example.com/__blog-studio-staging/run-001/*"
+            "blog.example.com%2F__blog-studio-staging%2Frun-001%2F*",
+            "blog-studio-state%2Fblog.example.com%2F__blog-studio-staging%2Frun-001%2F*"
           ]
         }
       }

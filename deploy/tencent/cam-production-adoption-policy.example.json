@@ -7,7 +7,10 @@
       "resource": ["qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/*"],
       "condition": {
         "string_like": {
-          "cos:prefix": ["blog.example.com/*"]
+          "cos:prefix": [
+            "blog.example.com%2F*",
+            "blog-studio-state%2Fblog.example.com%2F*"
+          ]
         }
       }
     },
