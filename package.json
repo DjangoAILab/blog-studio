@@ -11,9 +11,10 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "check": "corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
+    "check": "corepack pnpm policy:smoke && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
     "container:smoke": "bash scripts/container-smoke.sh",
     "operations:smoke": "bash scripts/operations-smoke.sh",
+    "policy:smoke": "node scripts/tencent-cam-policy-smoke.mjs",
     "quick-start:smoke": "bash scripts/quick-start-smoke.sh",
     "release:smoke": "bash scripts/release-artifacts-smoke.sh",
     "format": "prettier --write .",

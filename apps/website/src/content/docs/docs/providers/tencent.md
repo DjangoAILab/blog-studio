@@ -6,9 +6,9 @@ description: Provider contracts, deployment shape, and the staging gates require
 :::caution[Integration status]
 The COS publisher/storage and Tencent CDN/EdgeOne clients are wired into the
 production Studio registry and covered by unit and fault-injection tests. The
-reference-account end-to-end release is still gated on isolated staging. Do not
-point a configuration at an existing bucket root until that staging task is
-explicitly promoted.
+reference account has passed isolated staging and read-only production baseline
+adoption. Ordinary production content writes remain a separate, explicitly
+gated privilege phase.
 :::
 
 ## Runtime credentials
@@ -41,6 +41,12 @@ For an existing production deployment, use the separate
 [`cam-production-adoption-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-production-adoption-policy.example.json)
 first; it can inventory production and write retained state plus the exact
 release marker, but it cannot overwrite or delete ordinary public objects.
+
+Keep `/` literal in COS resource ARNs, but encode every slash as `%2F` in the
+`cos:prefix` condition values. Tencent matches that condition against the
+URL-encoded `prefix` request parameter; a visually plausible condition with
+literal slashes can therefore deny the intended `GetBucket` inventory. The
+checked-in policy smoke test locks this distinction down.
 
 The staging policy intentionally grants no bucket configuration, bucket
 creation, account bucket listing, or production-prefix object permission. Its
