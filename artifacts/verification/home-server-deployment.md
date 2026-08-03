@@ -1,10 +1,10 @@
-# Home-server deployment verification — 2026-08-02
+# Home-server deployment verification — 2026-08-03
 
 ## Scope
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `c60e84dd0b402721ca7a5cab83c900ced64f3889`
+- verified revision: `c3fca472c9e1073dfc0748e859ab0dc1234a0ebc`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -103,13 +103,16 @@ acknowledged draft survives a real container restart.
 
 - online backup completed in 16 seconds;
 - archive: `blog-studio-backup-20260802T043354Z.tar.gz`, 615,900,923 bytes;
+- the restart-recovery upgrade backup
+  `blog-studio-backup-20260803T043352Z.tar.gz` is 618,622,507 bytes, mode
+  `0600`, and passed its sibling SHA-256 check;
 - the pre-upgrade online backup above also passed checksum verification;
 - an isolated restore completed in 8 seconds and passed archive checksum,
   SQLite integrity, configuration, and all 93 post checks;
 - daily backup is installed at 03:30;
 - retention deletes only named Blog Studio archive/checksum files older than
   30 days inside the dedicated backup directory;
-- current stored backup total is 615,905,128 bytes; a same-size daily upper
+- current stored backup total is 3,700,936,319 bytes; a same-size daily upper
   bound is about 18.5 GB before compression ratios change.
 
 ## Build-context hardening
@@ -142,6 +145,14 @@ remained exact after the upgrade and real staging releases.
 The final feature deployment sent 173.73 KiB of context, reused the OpenSSL
 layer, built in 40 seconds, and reached both local and external health before
 acceptance.
+
+The restart-recovery revision sent 94.95 kB of source context, built image
+`blog-studio:home-c3fca47`, and exposed the exact full revision label before
+deployment. Recreating only Studio with the base, Traefik, and Tencent Compose
+files returned a healthy UID/GID `1000:1000` container. The editor and external
+health returned `200`, unauthenticated workspace access returned `401`, and the
+three production hashes remained exact before and after the real partial-write
+restart rollback.
 
 ## Managed-asset cleanup proof
 

@@ -40,7 +40,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Tencent CDN and EdgeOne cache adapter contract.
 - [x] Release state machine, durable logs, cancellation, and rollback.
 - [x] Public URL release-marker verification.
-- [ ] Cold-restart release recovery against real provider state.
+- [x] Cold-restart release recovery against real provider state.
 - [x] End-to-end publish against a non-production prefix.
 - [ ] Controlled production deployment without changing existing URLs.
 

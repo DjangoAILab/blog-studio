@@ -2,12 +2,12 @@
 
 ## Automated gates
 
-CI run [30783478267](https://github.com/DjangoAILab/blog-studio/actions/runs/30783478267)
+CI run [30784753095](https://github.com/DjangoAILab/blog-studio/actions/runs/30784753095)
 passed formatting, lint, type checking, unit/integration tests, production
 builds, the complete Playwright authoring journey, production dependency
 audit, deterministic release-artifact smoke tests, repository scan, production
 image build, the documented generic Quick Start, and final image scan on
-protected `main` revision `c60e84dd0b402721ca7a5cab83c900ced64f3889`.
+protected `main` revision `c3fca472c9e1073dfc0748e859ab0dc1234a0ebc`.
 
 The browser journey proves native draft creation, autosave acknowledgement,
 browser reload recovery, real generator preview, and explicit discard. The
@@ -43,6 +43,9 @@ pull request to exercise the protected-branch path.
 - a real Tencent COS and classic CDN staging publish, provider-failure
   rollback, public marker verification, deterministic rebuild, and immediate
   no-op release with zero object uploads and zero cache tasks;
+- a forced restart after seven changed pages reached COS, followed by automatic
+  exact rollback, previous-marker verification through origin and CDN, and
+  explicit draft cleanup;
 - exact production samples before and after staging remained byte-identical.
 
 ## Measured release performance
