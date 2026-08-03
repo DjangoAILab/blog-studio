@@ -1,4 +1,5 @@
 title: Synthetic Blog
+timezone: Asia/Shanghai
 url: https://example.com
 root: /
 permalink: :year/:month/:day/:title/

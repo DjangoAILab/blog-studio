@@ -22,6 +22,12 @@ workspace draft and encode a Hexo-specific exception in the service. Adding a
 new preview-only adapter method was rejected for v0.1 because the existing
 promotion capability already expresses the required operation.
 
+The Hexo child process also receives the site's configured `timezone` as `TZ`.
+Hexo's date processor otherwise derives a different calendar day when an ISO
+date is built in a UTC container for a non-UTC site, making the adapter's
+resolved permalink disagree with the generated path. The environment remains
+allowlisted and shell-free; no other host variables are inherited.
+
 If a generator accepts native drafts but cannot promote them, preview fails
 before build with a direct capability error. Sandbox cleanup continues through
 the existing error path. A regression test uses the Hexo application fixture:
