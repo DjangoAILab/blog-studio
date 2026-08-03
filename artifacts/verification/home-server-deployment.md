@@ -4,7 +4,7 @@
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `92d4cacd44d4ac84c6ff1fcdafac8338480f66c8`
+- verified revision: `c60e84dd0b402721ca7a5cab83c900ced64f3889`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -22,7 +22,8 @@ legacy resource was changed during deployment verification.
 - only the existing Traefik network is attached;
 - the authentication token and cookie secret were generated on the server,
   mounted from files with mode `0600`, and never printed;
-- publishing remains fail-closed because Tencent credentials are not present;
+- publishing initially remained fail-closed without Tencent credentials; the
+  later staging-only identity is documented in `staging-release.md`;
 - the deployed image exposes its exact Git revision through an OCI label.
 
 After the final deployment, the local health endpoint, external HTTPS health,
@@ -128,6 +129,15 @@ source copy with an explicit allowlist (`apps/`, `packages/`, root package
 metadata, and operational `scripts/`). A local production build transferred
 549.48 kB and its container smoke passed non-root, read-only-root, health,
 authentication, durable-draft, graceful-shutdown, and cold-restart checks.
+
+The merged correction was then built on home-server with 14.49 kB of changed
+context transferred by the existing BuildKit content store. Image
+`blog-studio:home-c60e84d` exposed the exact full revision label and replaced
+only the Studio service with all three required Compose files (base, Traefik,
+and Tencent). Container-local and external health returned `200`, the editor
+returned `200`, unauthenticated workspace access returned `401`, and the
+container remained UID/GID `1000:1000`. The three production baseline hashes
+remained exact after the upgrade and real staging releases.
 
 The final feature deployment sent 173.73 KiB of context, reused the OpenSSL
 layer, built in 40 seconds, and reached both local and external health before
