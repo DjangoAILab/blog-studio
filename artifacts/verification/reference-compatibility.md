@@ -82,7 +82,8 @@ calendar dates. The exact historical article now previews at its existing
   cache rules. Details are recorded in `staging-release.md`.
 - The isolated Tencent staging publish, provider-failure rollback, public
   marker verification, and immediate no-op journey are complete with mounted
-  secret files. Cold-restart recovery against real provider state remains open.
+  secret files. A forced restart after partial COS page upload restored the
+  previous bytes and marker from durable provider rollback state.
 - Adopt production only after the complete COS inventory matches the reference
   build and a new production authorization is granted. Adoption writes state
   and a marker but does not rewrite public bytes.

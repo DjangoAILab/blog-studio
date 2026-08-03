@@ -43,6 +43,11 @@ verification around a 157.8-second classic CDN directory-refresh task. The
 immediately following byte-identical release completed as a no-op in 4.774
 seconds with no object uploads and no cache task.
 
+Two real release requests used by forced-restart fault injection returned their
+asynchronous `202` records in 0.103 and 0.200 seconds. The authoring interface is
+therefore not held open for provider completion; it follows the durable release
+timeline while the background job awaits COS and CDN.
+
 The changed-content result does not meet the original `< 90 s` completion gate.
 Tencent's
 [published classic CDN guidance](https://cloud.tencent.com/document/product/228/3946)

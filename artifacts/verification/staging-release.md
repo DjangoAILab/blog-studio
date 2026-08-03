@@ -150,6 +150,38 @@ finished in 4.774 seconds after preflight, build, and planning, emitted
 `Generated content is unchanged; release is a no-op`, uploaded no objects, and
 submitted no CDN task.
 
+## Forced-restart recovery
+
+A first forced-restart probe exposed a real boundary race. Release
+`release-7b64d281-e2a5-478f-b4e2-0a20044596a8` returned `202` in 0.103 seconds
+and was killed immediately after its durable status entered
+`uploading-assets`, before the COS rollback manifest existed. No target object
+had been written, but startup attempted strict rollback and recorded a missing
+key failure. The staging article still exposed only the preceding marker and
+all production samples retained their hashes.
+
+The publisher contract now has an optional, explicit interrupted-recovery
+operation. The COS and filesystem implementations report `not-started` only
+when their missing durable rollback state proves that provider mutation could
+not have begun; prepared releases perform the same strict exact-byte rollback
+used by manual recovery. Missing state remains an error for manual rollback.
+Service and both publisher paths have regression tests on protected `main`
+revision `c3fca472c9e1073dfc0748e859ab0dc1234a0ebc`.
+
+The provider-backed re-run used release
+`release-e08b96a0-0433-48c2-8480-8f01b4f9c06b`. The start request returned in
+0.200 seconds. After seven of eight changed pages had been uploaded, including
+the article, homepage, feed, and release marker, the container received
+`SIGKILL` during `uploading-pages`. Startup found the durable rollback state,
+restored the previous manifest and bytes, and marked the release `rolled-back`
+with `Interrupted release was rolled back after service restart`.
+
+Both direct COS and CDN article requests contained the preceding deterministic
+marker and excluded the interrupted marker. The acknowledged test draft was
+then explicitly discarded, Studio returned healthy, and the production hashes
+below remained exact. This closes cold-restart recovery against real provider
+state without touching the production prefix.
+
 After these runs, production samples were still byte-identical to the original
 baseline:
 
