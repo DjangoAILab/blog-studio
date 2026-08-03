@@ -30,6 +30,14 @@ The protected-baseline correction subsequently passed required `quality` and
 [30796876548](https://github.com/DjangoAILab/blog-studio/actions/runs/30796876548)
 and merged as `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`.
 
+The container smoke portability correction then passed both required checks in
+run [30800593199](https://github.com/DjangoAILab/blog-studio/actions/runs/30800593199)
+and merged through pull request
+[#26](https://github.com/DjangoAILab/blog-studio/pull/26) as protected `main`
+revision `0aa4c727fe3199e6aadfe889db0f6c3ddda7d3e1`. The exact image built from that
+revision passed the full smoke on the Docker-only home server, so the documented
+production verification no longer relies on a host Node installation.
+
 ## Real-environment gates completed
 
 - reference Hexo build and 93-document compatibility;
@@ -37,6 +45,9 @@ and merged as `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`.
 - deployed Docker/Traefik runtime, HTTPS, auth boundary, and health checks;
 - protected `main` is deployed with an exact OCI revision label, a fresh
   checksum-verified pre-upgrade backup, and a successful real Hexo preview;
+- current protected `main` revision `0aa4c727fe3199e6aadfe889db0f6c3ddda7d3e1`
+  is deployed with the hardened runtime controls and all prior rollback images
+  retained;
 - draft cold restart, public-blog independence, API/autosave latency;
 - online backup and isolated restore within the 15-minute RTO.
 - dependency-free, documentation-only generic command Quick Start through
@@ -61,6 +72,10 @@ and merged as `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`.
   and the drifting static object, with filesystem and COS regression tests;
 - a deployed second read-only production plan with 0 additions, 354 reviewed
   managed changes, 0 deletions, and the same 1,973-object content manifest;
+- a repeat of that plan from the current deployed image, using read-only state
+  and a deliberately unusable provider client, again produced 0 additions, 354
+  content changes, 0 deletions, and 11 protected objects; the raw plan's one
+  additional 189-byte change is solely the synthetic next-release marker;
 - a 354-object public semantic audit: 344 reduce exactly to reviewed
   deterministic metadata/order/link transformations, while eight stale
   canonical article shells plus `archive.html` and `content.json` were
