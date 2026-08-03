@@ -112,7 +112,10 @@ manifest at their adopted hashes. Consequently these actions remain gated:
    not expand the adoption identity;
 3. run one controlled zero-addition, zero-deletion release and rollback
    exercise while continuously checking the legacy URLs and baseline samples;
-4. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
+4. establish an owner-controlled GPG or SSH signing identity and confirm GitHub
+   verifies it; the current workstation and public GitHub account expose no
+   configured signing key, and none was created implicitly;
+5. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
    every required gate is green.
 
 The configured application fails closed at these provider boundaries. Tencent
