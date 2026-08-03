@@ -4,7 +4,7 @@
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`
+- verified revision: `0aa4c727fe3199e6aadfe889db0f6c3ddda7d3e1`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -177,6 +177,64 @@ retained their exact pre-upgrade hashes; all ten protected legacy URLs returned
 `200`. A deployed read-only build and plan retained eleven protected baseline
 objects and produced 0 additions, 354 changes, and 0 deletions without a
 publisher, cache, or release mutation.
+
+## Current protected-main deployment
+
+Pull request [#26](https://github.com/DjangoAILab/blog-studio/pull/26)
+removed the container smoke test's final dependency on a host-installed Node
+runtime. All JSON assertions now execute with the Node binary inside the image
+under test. Required `quality` and `security` checks passed in CI run
+[30800593199](https://github.com/DjangoAILab/blog-studio/actions/runs/30800593199),
+and the change merged as
+`0aa4c727fe3199e6aadfe889db0f6c3ddda7d3e1`.
+
+Before that revision was deployed, online backup
+`blog-studio-backup-20260803T091053Z.tar.gz` was created at 618,753,100 bytes
+with mode `0600`. Its mode-`0600` checksum sidecar records SHA-256
+`9845c8c4c4b01c1b65872b6fb2e92ff477cc5580716e888d9c562673b9906c73`,
+and a fresh check from the backup directory passed. The prior `.env` was saved
+as `blog-studio-env-pre-0aa4c72.env` with mode `0600`; images for revisions
+`68cd1ef`, `acd51e9`, and `0aa4c72` remain available as explicit rollback
+inputs.
+
+The final server build transferred 21.40 kB of context, passed the lockfile
+supply-chain policy, and produced image
+`sha256:59b13c5f9e029378f1a2c1de3933eff8ee1aa5a208c964eaa7f2892e5e5350a1`.
+Its OCI revision label is the exact full merge revision above. The complete
+native container smoke then passed on the Docker-only server: non-root and
+read-only-root enforcement, health, authentication, durable draft, graceful
+shutdown, and cold restart.
+
+Only Studio was recreated, using the base, Traefik, and Tencent Compose files;
+Traefik and the public blog were not restarted. The final container is healthy
+as `1000:1000`, with a read-only root filesystem, all Linux capabilities
+dropped, and `no-new-privileges` enabled. The editor and external health
+returned `200`, unauthenticated workspace access returned `401`, authenticated
+access returned `200`, and the reference workspace remained Git-clean.
+
+The public root, archives, Gitalk asset, and production marker retained these
+exact SHA-256 values after deployment:
+
+| Object                       | SHA-256                                                            |
+| ---------------------------- | ------------------------------------------------------------------ |
+| `/`                          | `99f4ee56f26e666204122c4dd0ef0666a0ef95dbe428c7ba607e31aea8ce5673` |
+| `/archives/`                 | `6afb911b5afaf94d502d9cf61ffad8aaabcaee1fb910f7d72503d7ae2814ade8` |
+| `/static/libs/gitalk.min.js` | `a78e96a97c973437d180a8c6a46786d702cc87ec69808cbde17d1e04122beff7` |
+| release marker               | `165490b5433553e147056550f36e5164c7009613970022e3702aa3b86c8fab51` |
+
+All nine protected dated article URLs and protected `test.html` returned `200`
+before and after the deployment.
+
+Finally, a script inside the deployed container opened Studio's SQLite state
+read-only, built the real Hexo workspace, reconciled the protected baseline,
+and called only the pure COS plan operation with a deliberately unusable
+client. The build completed in 4.467 seconds and produced 1,963 generated
+objects. Against the 1,973-object adopted content baseline it retained eleven
+protected objects and planned zero additions, 354 content changes totalling
+13,281,808 bytes, and zero deletions. Including a synthetic new release marker
+made the raw plan 355 changes and 13,281,997 bytes; that 189-byte marker is not
+content drift. Publisher apply/finalize, Tencent provider calls, cache work,
+and public release mutation were impossible in this check and were not run.
 
 ## Managed-asset cleanup proof
 
