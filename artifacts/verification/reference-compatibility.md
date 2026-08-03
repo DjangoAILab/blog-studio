@@ -74,16 +74,17 @@ now reproduces Hexo's three-digit-day normalization while rejecting impossible
 calendar dates. The exact historical article now previews at its existing
 `/2022/07/14/.../` path, and unit coverage preserves the behavior.
 
-## Remaining staging gates
+## Remaining production gates
 
 - The authenticated Tencent console audit confirmed bucket
   `webstatic-1252276051`, region `ap-shanghai`, managed prefix
   `blog.wj2015.com/`, classic CDN, the existing origin rewrite, and current
   cache rules. Details are recorded in `staging-release.md`.
-- Publish to an isolated COS prefix/origin with mounted secret files.
-- Run upload, network, cache, restart, retry, and rollback fault injections.
-- Exercise the implemented baseline-adoption flow against staging, then adopt
-  production only after the complete COS inventory matches the reference
-  build. Adoption writes state and a marker but does not rewrite public bytes.
+- The isolated Tencent staging publish, provider-failure rollback, public
+  marker verification, and immediate no-op journey are complete with mounted
+  secret files. Cold-restart recovery against real provider state remains open.
+- Adopt production only after the complete COS inventory matches the reference
+  build and a new production authorization is granted. Adoption writes state
+  and a marker but does not rewrite public bytes.
 - Compare complete production URL/output inventories and then perform one
   controlled change with the legacy command retained for rollback.

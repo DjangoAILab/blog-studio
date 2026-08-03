@@ -1,13 +1,13 @@
-# Release readiness — 2026-08-02
+# Release readiness — 2026-08-03
 
 ## Automated gates
 
-CI run [30736852169](https://github.com/DjangoAILab/blog-studio/actions/runs/30736852169)
+CI run [30783478267](https://github.com/DjangoAILab/blog-studio/actions/runs/30783478267)
 passed formatting, lint, type checking, unit/integration tests, production
 builds, the complete Playwright authoring journey, production dependency
 audit, deterministic release-artifact smoke tests, repository scan, production
 image build, the documented generic Quick Start, and final image scan on
-protected `main` revision `92d4cacd44d4ac84c6ff1fcdafac8338480f66c8`.
+protected `main` revision `c60e84dd0b402721ca7a5cab83c900ced64f3889`.
 
 The browser journey proves native draft creation, autosave acknowledgement,
 browser reload recovery, real generator preview, and explicit discard. The
@@ -38,34 +38,62 @@ pull request to exercise the protected-branch path.
   authenticated edit, durable autosave, and real preview.
 - deterministic release-artifact generation and verification, including a
   corrected multi-platform OCI dry-run with provenance and SBOM attestations.
+- a dedicated staging CAM identity whose COS permissions are confined to the
+  staging site and state prefixes, with out-of-scope access denied;
+- a real Tencent COS and classic CDN staging publish, provider-failure
+  rollback, public marker verification, deterministic rebuild, and immediate
+  no-op release with zero object uploads and zero cache tasks;
+- exact production samples before and after staging remained byte-identical.
 
-## Open external gate
+## Measured release performance
 
-No least-privilege Tencent SecretId/SecretKey is present locally or on the home
-server. Consequently these actions remain intentionally blocked and were not
-simulated as production success:
+The final deterministic changed-content staging release completed in 193.427
+seconds. The application-controlled work before cache completion took roughly
+35 seconds; the contained classic CDN directory refresh took roughly 157.8
+seconds. The immediately following no-op release completed in 4.774 seconds
+without uploads or cache work.
+
+This is valid provider-backed release evidence, but it does **not** satisfy the
+checklist's 90-second changed-article completion target. The target remains
+open rather than redefining completion to exclude awaited provider work. A
+release decision must either improve and remeasure classic CDN invalidation or
+explicitly revise the product requirement with the slower verified bound as a
+known limitation. Migrating the production domain to EdgeOne is not bundled
+into v0.1.
+
+## Open production gates
+
+The staging identity is intentionally incapable of production-prefix access.
+No production publishing credential has been created or mounted. Consequently
+these actions remain blocked pending a separate explicit authorization:
 
 1. read and adopt the existing COS deployment baseline;
-2. publish to a non-production prefix and verify the marker through CDN;
+2. inspect and approve the first complete production diff;
 3. run a controlled production no-URL-change release and rollback exercise;
-4. measure the real provider-backed changed-article release;
-5. create the signed `v0.1.0` release after all required evidence is green.
+4. resolve or explicitly revise the failed 90-second performance gate;
+5. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
+   every required gate is green.
 
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part
 of v0.1.
 
-## Credential boundary for the next gate
+The reference blog's deterministic-output compatibility change is isolated in
+`wangerzi/blog` pull request #62. It remains unmerged because its current
+`master` push workflow is a legacy production writer. Merging it before a
+controlled handoff would mutate the production prefix outside Blog Studio's
+adoption and rollback boundary.
 
-The next credential must be a dedicated staging-only CAM sub-user. COS access
-is restricted to the hidden target
-`blog.wj2015.com/__blog-studio-staging/v0.1/**` and the matching retained state
-prefix. It receives no permission for current production objects. Tencent's
-current CAM catalog marks `PurgeUrlsCache`, `PurgePathCache`, and
-`DescribePurgeTasks` as operation-level CDN permissions whose resource is `*`,
-so isolation at an individual URL path cannot be expressed in CAM. Studio
-compensates by deriving every purge target from its fixed verification base URL,
-and the credential has no other CDN action.
+## Credential boundary for production
 
-Production adoption and production publishing remain separate later privilege
-phases; neither permission is bundled into the staging key.
+The completed staging credential remains restricted to
+`blog.wj2015.com/__blog-studio-staging/v0.1/**` and its matching retained-state
+prefix; authenticated probes confirmed that current production objects are
+denied. It must not be expanded or silently reused for production.
+
+A future production identity must be separately authorized, dedicated to Blog
+Studio, and limited to the existing `blog.wj2015.com/**` target plus its exact
+retained-state prefix and the minimum cache actions. Read-only inventory and
+baseline adoption precede the first write. The legacy GitHub Actions writer
+must be deliberately retired or converted to a non-automatic fallback in the
+same controlled handoff so two systems cannot publish concurrently.

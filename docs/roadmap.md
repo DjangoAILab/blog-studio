@@ -41,7 +41,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Release state machine, durable logs, cancellation, and rollback.
 - [x] Public URL release-marker verification.
 - [ ] Cold-restart release recovery against real provider state.
-- [ ] End-to-end publish against a non-production prefix.
+- [x] End-to-end publish against a non-production prefix.
 - [ ] Controlled production deployment without changing existing URLs.
 
 ## Phase 3 — Product delivery
