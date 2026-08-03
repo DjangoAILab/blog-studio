@@ -56,7 +56,24 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   const fakeHexo = join(workspace, 'node_modules', '.bin', 'hexo');
   await writeFile(
     fakeHexo,
-    "#!/usr/bin/env node\nconst{mkdir,readFile,writeFile}=await import('node:fs/promises');const body=await readFile('source/_posts/hello.md','utf8');await mkdir('public/2026/08/02/hello',{recursive:true});await mkdir('public/css',{recursive:true});await writeFile('public/index.html','preview');await writeFile('public/css/site.css','body{background:url(../../static/reading.jpeg)}');await writeFile('public/2026/08/02/hello/index.html','<link href=\"/css/site.css\"><img src=\"../../../../static/reading.jpeg\">'+body);\n",
+    [
+      '#!/usr/bin/env node',
+      "const{mkdir,readdir,readFile,writeFile}=await import('node:fs/promises');",
+      "await mkdir('public/css',{recursive:true});",
+      "await writeFile('public/index.html','preview');",
+      "await writeFile('public/css/site.css','body{background:url(../../static/reading.jpeg)}');",
+      "for(const name of await readdir('source/_posts')){",
+      "if(!name.endsWith('.md'))continue;",
+      "const body=await readFile('source/_posts/'+name,'utf8');",
+      'const date=body.match(/date:\\s*[\\"\']?(\\d{4})-(\\d{2})-(\\d{2})/);',
+      "if(!date)throw new Error('missing fixture date: '+name);",
+      'const slug=name.slice(0,-3);',
+      "const directory='public/'+date[1]+'/'+date[2]+'/'+date[3]+'/'+slug;",
+      'await mkdir(directory,{recursive:true});',
+      'await writeFile(directory+\'/index.html\',\'<link href="/css/site.css"><img src="../../../../static/reading.jpeg">\'+body);',
+      '}',
+      '',
+    ].join('\n'),
   );
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
@@ -790,6 +807,31 @@ describe('Studio workspace API', () => {
       },
     });
     expect(saved.json()).toMatchObject({ draft: { version: 2 } });
+
+    const previewStarted = await app.inject({
+      method: 'POST',
+      url: `/api/workspaces/test-blog/documents/${documentId}/preview?collection=drafts`,
+      headers,
+    });
+    expect(previewStarted.statusCode).toBe(200);
+    const previewUrl = previewStarted.json<{ preview: { url: string } }>()
+      .preview.url;
+    const preview = await app.inject({ url: previewUrl, headers });
+    expect(preview.statusCode).toBe(200);
+    expect(preview.body).toContain('Native draft body');
+    await expect(
+      readFile(
+        join(workspace, 'source', '_drafts', 'native-release.md'),
+        'utf8',
+      ),
+    ).resolves.toContain('Native release');
+    await expect(
+      readFile(
+        join(workspace, 'source', '_posts', 'native-release.md'),
+        'utf8',
+      ),
+    ).rejects.toThrow();
+
     const started = await app.inject({
       method: 'POST',
       url: '/api/workspaces/test-blog/releases',
