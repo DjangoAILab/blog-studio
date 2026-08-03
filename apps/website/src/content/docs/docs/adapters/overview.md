@@ -46,5 +46,11 @@ are preferable for article media. A publisher must distinguish assets from pages
 retain the last verified manifest, and restore exact previous bytes. Cache
 invalidation is followed by independent public verification.
 
+Publishers should implement `recoverInterrupted` when they persist rollback
+state before their first target mutation. On restart, it may report
+`not-started` only when a missing durable state proves the target was untouched;
+otherwise it must perform and report an exact rollback. Manual `rollback`
+remains strict so missing or corrupt state cannot be mistaken for success.
+
 The generated [adapter API reference](/docs/reference/adapter-api/) is extracted
 from the current TypeScript interfaces during every docs build.

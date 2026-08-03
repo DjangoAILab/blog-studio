@@ -299,4 +299,16 @@ export class FilesystemPublisher implements Publisher {
     else await unlink(activeManifest).catch(() => undefined);
     return { restoredReleaseId: release.id, restoredFiles };
   }
+
+  public async recoverInterrupted(release: ReleaseRecord) {
+    const statePath = resolve(
+      this.#releaseStateDirectory(release.id),
+      'rollback.json',
+    );
+    if (!(await exists(statePath))) return { outcome: 'not-started' as const };
+    return {
+      outcome: 'rolled-back' as const,
+      rollback: await this.rollback(release),
+    };
+  }
 }

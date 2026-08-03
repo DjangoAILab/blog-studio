@@ -142,6 +142,27 @@ async function fixture() {
 }
 
 describe('TencentCosPublisher', () => {
+  it('reports an interrupted release as not started before rollback state exists', async () => {
+    const publisher = new TencentCosPublisher({
+      client: new FakeClient(),
+      bucket: 'example-123456',
+      region: 'ap-shanghai',
+      targetPrefix: 'site',
+      statePrefix: '_blog-studio',
+      retryDelay: async () => {},
+    });
+
+    await expect(
+      publisher.recoverInterrupted({
+        ...release(),
+        status: 'rolling-back',
+      }),
+    ).resolves.toEqual({ outcome: 'not-started' });
+    await expect(
+      publisher.rollback({ ...release(), status: 'rolling-back' }),
+    ).rejects.toThrow(/missing/i);
+  });
+
   it('plans from manifests without remote HEAD fan-out and rolls back exactly', async () => {
     const item = await fixture();
     const client = new FakeClient();
@@ -174,7 +195,12 @@ describe('TencentCosPublisher', () => {
     expect(client.objects.has('site/assets/app.bin')).toBe(true);
     expect(client.maxActive).toBeLessThanOrEqual(2);
 
-    await publisher.rollback({ ...release(), status: 'rolling-back' });
+    await expect(
+      publisher.recoverInterrupted({
+        ...release(),
+        status: 'rolling-back',
+      }),
+    ).resolves.toMatchObject({ outcome: 'rolled-back' });
     expect(Buffer.from(client.objects.get('site/index.html')!).toString()).toBe(
       'old page',
     );

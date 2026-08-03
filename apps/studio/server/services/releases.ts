@@ -617,13 +617,28 @@ export class ReleaseService {
           persist(next, current.status);
           current = next;
         }
-        await this.#publisher(workspace).rollback(current);
+        const publisher = this.#publisher(workspace);
+        const recovered = publisher.recoverInterrupted
+          ? await publisher.recoverInterrupted(current)
+          : {
+              outcome: 'rolled-back' as const,
+              rollback: await publisher.rollback(current),
+            };
         const next = transitionRelease(
           current,
-          'rolled-back',
+          recovered.outcome === 'rolled-back' ? 'rolled-back' : 'failed',
           this.#now().toISOString(),
         );
         persist(next, current.status);
+        this.options.repository.appendEvent(release.id, {
+          at: this.#now().toISOString(),
+          stage: 'rolling-back',
+          level: 'warning',
+          message:
+            recovered.outcome === 'rolled-back'
+              ? 'Interrupted release was rolled back after service restart'
+              : 'Release was safely stopped before provider mutation was prepared',
+        });
       } catch (error) {
         const failed = transitionRelease(
           current,
