@@ -5,9 +5,9 @@ It keeps Markdown, Git, the existing static-site generator, and the existing
 hosting stack while making the complete writing-to-production journey usable
 from one browser tab.
 
-> Status: v0.1 release candidate. Local/Filesystem and reference Hexo journeys
-> are verified; the final Tencent provider exercise and `v0.1.0` tag remain
-> release gates.
+> Status: v0.1.0 release commit. Local/Filesystem, reference Hexo, and the
+> controlled Tencent COS/classic CDN publish-and-rollback journey are verified.
+> Existing public URLs and protected legacy resources remain unchanged.
 
 ## Product promise
 

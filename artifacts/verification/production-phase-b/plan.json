@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-08-03T12:07:37.059Z",
+  "workspaceId": "wj2015-blog",
+  "targetId": "production-v0.1",
+  "previousReleaseId": "release-085314a6-85f5-48aa-8837-3a14eec58b2a",
+  "buildMilliseconds": 5550,
+  "generatedObjects": 1963,
+  "previousObjects": 1974,
+  "protectedObjectsPreserved": 11,
+  "effectiveObjects": 1974,
+  "additions": 0,
+  "changesIncludingSyntheticMarker": 355,
+  "contentChanges": 354,
+  "deletions": 0,
+  "changedBytesIncludingSyntheticMarker": 13282001,
+  "contentChangedBytes": 13281808
+}

@@ -1,0 +1,8 @@
+{
+  "allowed": false,
+  "status": 200,
+  "code": "AuthFailure.UnauthorizedOperation",
+  "message": "You are not authorized to perform this operation. Check your CAM policies, and ensure that you are using the correct access keys. [[request id:669df89e-dc6b-491f-8986-a9dd0f08aedf]you are not authorized to perform operation (cam:ListUsers)\nresource (*) has no permission\n]",
+  "totalNum": null,
+  "requestId": "669df89e-dc6b-491f-8986-a9dd0f08aedf"
+}

@@ -1,0 +1,43 @@
+{
+  "targetList": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTVjYV9hMzRhZmJk",
+    "objectCount": 1
+  },
+  "stateList": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTU5OV9hMmEyMTQ3",
+    "objectCount": 1
+  },
+  "outsideListDenied": {
+    "denied": true,
+    "code": "AccessDenied",
+    "statusCode": 403,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTViYV9hMjk2NDdm"
+  },
+  "protectedRead": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTViNV9hNDA1YmVj",
+    "bytes": 768512,
+    "sha256": "a78e96a97c973437d180a8c6a46786d702cc87ec69808cbde17d1e04122beff7"
+  },
+  "statePut": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTVkMl9hMmVmYzM2"
+  },
+  "stateGet": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTJfMTlhZTA4MDlfMTVjNF9hMzIxNjQ3",
+    "bytes": 44,
+    "sha256": "ef7038c4fd5c356342abcbba313bf8f155087a8eef0a6e690d65bfc60e096cc7"
+  },
+  "stateDelete": {
+    "statusCode": 204,
+    "requestId": "NmE3MDdlYTNfMTlhZTA4MDlfMTVjM19hM2RlZGEw"
+  },
+  "cleanupConfirmed": {
+    "statusCode": 200,
+    "requestId": "NmE3MDdlYTNfMTlhZTA4MDlfMTVhZV9hNDRjY2Nl",
+    "absent": true
+  }
+}
