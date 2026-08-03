@@ -29,6 +29,8 @@ export interface WriteDocumentInput {
   readonly expectedRevision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
   readonly body: string;
+  /** Stable source timestamp for generators whose output depends on file metadata. */
+  readonly modifiedAt?: string;
 }
 
 export interface WriteDocumentResult {

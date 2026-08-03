@@ -15,6 +15,9 @@ without copying article bodies, front matter, or filenames into this repository.
 - Ten sampled URLs used the configured `https://blog.wj2015.com` origin.
 - Aggregate SHA-256 before and after discovery was identical:
   `8a8c666f768b17cf45ed7bf2674ff0ca0c8fb3b27571396529401d46311f34e7`.
+- Release writes carry one stable source modification timestamp into both the
+  isolated build and the post-verification canonical commit. This preserves
+  Hexo `updated_option: mtime` semantics without forcing a follow-up rebuild.
 
 ## Reproduction policy
 

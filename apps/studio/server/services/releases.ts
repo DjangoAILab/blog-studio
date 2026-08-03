@@ -401,6 +401,7 @@ export class ReleaseService {
           expectedRevision: draft.snapshot.sourceRevision,
           frontMatter: draft.snapshot.frontMatter,
           body: draft.snapshot.body,
+          modifiedAt: release.createdAt,
         });
         if (draft.ref.collectionId === 'drafts') {
           if (!workspace.generator.promoteDocument)
