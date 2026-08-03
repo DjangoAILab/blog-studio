@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-03T12:14:24.192Z",
+  "workspaceId": "wj2015-blog",
+  "targetId": "production-v0.1",
+  "configSha256": "5523e1ac408bdaeb9c2e9c7c3ecf212700c25b2032e5b8c2d78b3fc673129e27",
+  "baselineAdoption": "complete",
+  "activeReleaseCount": 0,
+  "latestSucceeded": {
+    "id": "release-085314a6-85f5-48aa-8837-3a14eec58b2a",
+    "status": "succeeded",
+    "manifestReleaseId": "release-085314a6-85f5-48aa-8837-3a14eec58b2a",
+    "manifestEntryCount": 1974
+  },
+  "inventory": {
+    "target": {
+      "count": 1974,
+      "bytes": 321079140,
+      "sha256": "137c238f24bef83f4a01293df0114f17b95d78ae69395776c406e1c7f9939f1d"
+    },
+    "contentWithoutMarker": {
+      "count": 1973,
+      "bytes": 321078919,
+      "sha256": "23f272eb2073de8272593cd51a5fd79dc653dbc3296b902a37ee182fb3458c8b"
+    },
+    "retainedState": {
+      "count": 360,
+      "bytes": 16605495,
+      "sha256": "d09d2f6666643077d489e5da0571bf3f657a6547e0fa178574e8a264a5660f90"
+    }
+  },
+  "protectedPrefixCount": 11,
+  "publicResources": [
+    {
+      "path": "/",
+      "status": 200,
+      "bytes": 36641,
+      "sha256": "99f4ee56f26e666204122c4dd0ef0666a0ef95dbe428c7ba607e31aea8ce5673"
+    },
+    {
+      "path": "/archives/",
+      "status": 200,
+      "bytes": 36702,
+      "sha256": "6afb911b5afaf94d502d9cf61ffad8aaabcaee1fb910f7d72503d7ae2814ade8"
+    },
+    {
+      "path": "/static/libs/gitalk.min.js",
+      "status": 200,
+      "bytes": 768512,
+      "sha256": "a78e96a97c973437d180a8c6a46786d702cc87ec69808cbde17d1e04122beff7"
+    },
+    {
+      "path": "/blog-studio-release.json",
+      "status": 200,
+      "bytes": 221,
+      "sha256": "165490b5433553e147056550f36e5164c7009613970022e3702aa3b86c8fab51",
+      "marker": {
+        "version": 1,
+        "releaseId": "release-085314a6-85f5-48aa-8837-3a14eec58b2a",
+        "verificationToken": "6ac73522-abf9-455a-a317-a4eb15edacb9",
+        "manifestHash": "sha256:5d45c3c996fb0d27bfb9286090cc31b39696181bad8c39940c76d592df1bbd4e"
+      }
+    },
+    {
+      "path": "/content.json",
+      "status": 200,
+      "bytes": 934735,
+      "sha256": "3e769c945d335ddf7b9fff84066687d1ba4d16d8716c14d93f22f224b8e291c7"
+    },
+    {
+      "path": "/atom.xml",
+      "status": 200,
+      "bytes": 469625,
+      "sha256": "c6b4ba0ddfd8004002a0aabe3e37486db8a27515a7ed1917f3c793115fd33201"
+    },
+    {
+      "path": "/2018/03/19/linux快速安装ffmpeg，以及使用php-ffmpeg库踩的一些坑/",
+      "status": 200,
+      "bytes": 37467,
+      "sha256": "a22454e6542e3bf1f07805987af8218543f78f5aaefadda08fc8fcb9aedc97b9"
+    },
+    {
+      "path": "/2018/03/20/layuiadmin踩坑实录/",
+      "status": 200,
+      "bytes": 46838,
+      "sha256": "e31703c3878e3701e54211d9ca25af7b82281ed6620107daa567a4af303584a3"
+    },
+    {
+      "path": "/2019/09/02/javascript基本类型总结/",
+      "status": 200,
+      "bytes": 58188,
+      "sha256": "22e687217a3f0cdc425b2604fc1103db6a23f3deab3a6f23381eed6225656943"
+    },
+    {
+      "path": "/2020/03/07/step和iges模型转换为适用web的glb格式/",
+      "status": 200,
+      "bytes": 62104,
+      "sha256": "35741944b36161a2ee22154080f8d4e6a209df4a8e7c21e1521bf7534173e96f"
+    },
+    {
+      "path": "/2021/02/06/我的2020年记-大浪潮下的小小打工人/",
+      "status": 200,
+      "bytes": 72048,
+      "sha256": "ca709b8947ab46807d52258f7714bc9a1e6c781681ad45ec4b60423b6392e59e"
+    },
+    {
+      "path": "/2023/05/15/Ubuntu22.04安装使用绿联千兆网口/",
+      "status": 200,
+      "bytes": 61240,
+      "sha256": "fe690d63686508f13694247875691e77dbc74573a984445836346d3b5453b138"
+    },
+    {
+      "path": "/2023/08/15/致郁的欲及再谈电子阳痿/",
+      "status": 200,
+      "bytes": 37663,
+      "sha256": "3beceb2d80c09949dfb36a694dd1b39796d72d255e79899317d855974289516d"
+    },
+    {
+      "path": "/2024/08/01/建立大模型的感性认知/",
+      "status": 200,
+      "bytes": 101673,
+      "sha256": "071fe98d63ac0865ceac2797daf5312df14f2a7f7904974ae06461dc7565f2ce"
+    },
+    {
+      "path": "/2025/02/13/如何修复一把剑/",
+      "status": 200,
+      "bytes": 37138,
+      "sha256": "bff462692c2d69c04985c88e09727dee1e6146f130fa0f1ef921985e8288d0ae"
+    },
+    {
+      "path": "/test.html",
+      "status": 200,
+      "bytes": 12,
+      "sha256": "7509e5bda0c762d2bac7f90d758b5b2263fa01ccbc542ab5e3df163be08e6ca9"
+    }
+  ]
+}

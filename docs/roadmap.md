@@ -42,7 +42,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Public URL release-marker verification.
 - [x] Cold-restart release recovery against real provider state.
 - [x] End-to-end publish against a non-production prefix.
-- [ ] Controlled production deployment without changing existing URLs.
+- [x] Controlled production deployment without changing existing URLs.
 
 ## Phase 3 — Product delivery
 

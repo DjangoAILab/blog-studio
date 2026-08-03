@@ -74,7 +74,7 @@ now reproduces Hexo's three-digit-day normalization while rejecting impossible
 calendar dates. The exact historical article now previews at its existing
 `/2022/07/14/.../` path, and unit coverage preserves the behavior.
 
-## Remaining production gates
+## Subsequent production gates
 
 - The authenticated Tencent console audit confirmed bucket
   `webstatic-1252276051`, region `ap-shanghai`, managed prefix
@@ -84,8 +84,10 @@ calendar dates. The exact historical article now previews at its existing
   marker verification, and immediate no-op journey are complete with mounted
   secret files. A forced restart after partial COS page upload restored the
   previous bytes and marker from durable provider rollback state.
-- Adopt production only after the complete COS inventory matches the reference
-  build and a new production authorization is granted. Adoption writes state
-  and a marker but does not rewrite public bytes.
-- Compare complete production URL/output inventories and then perform one
-  controlled change with the legacy command retained for rollback.
+- Production adoption later recorded the complete 1,973-object content
+  inventory without rewriting public content. The adopted marker and retained
+  state established the rollback baseline.
+- Production phase B then completed one controlled zero-addition,
+  zero-deletion publish and one explicit rollback. The final COS inventory,
+  public marker, sixteen public samples, and eleven protected legacy paths
+  matched this baseline exactly; see `production-phase-b.md`.

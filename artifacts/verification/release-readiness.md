@@ -38,6 +38,18 @@ revision `0aa4c727fe3199e6aadfe889db0f6c3ddda7d3e1`. The exact image built from 
 revision passed the full smoke on the Docker-only home server, so the documented
 production verification no longer relies on a host Node installation.
 
+Production phase B's exact-URL classic CDN correction passed both required
+checks in run
+[30811297432](https://github.com/DjangoAILab/blog-studio/actions/runs/30811297432)
+and merged through pull request
+[#29](https://github.com/DjangoAILab/blog-studio/pull/29). The protected-prefix
+service propagation correction then passed both required checks in run
+[30811979371](https://github.com/DjangoAILab/blog-studio/actions/runs/30811979371)
+and merged through pull request
+[#30](https://github.com/DjangoAILab/blog-studio/pull/30) as protected `main`
+revision `8d2332913085aadc32963a517657636fad8704f1`. That exact revision completed the
+controlled production publish and rollback below.
+
 ## Real-environment gates completed
 
 - reference Hexo build and 93-document compatibility;
@@ -98,25 +110,38 @@ gates pass. This does not redefine completion: Blog Studio still awaits and
 validates the Tencent task before marking a release complete. Migrating the
 production domain to EdgeOne is not bundled into v0.1.
 
-## Open production gates
+## Production phase B completed
 
-The production baseline is adopted with a dedicated adoption-only credential.
-The deployed protected-baseline correction reduces the normal content plan to
-354 reviewed managed changes with zero additions and zero deletions. All ten
-legacy URL objects and the drifting immutable asset remain in the effective
-manifest at their adopted hashes. Consequently these actions remain gated:
+The product owner authorized production phase B and the final zero-addition,
+zero-deletion plan. A separate API-only production writer was created from the
+generated least-privilege policy; the adoption identity was not expanded. The
+writer passed scoped target/state operations, protected-object read, cleanup,
+outside-prefix denial, and CAM-management denial probes.
 
-1. obtain explicit production phase B authorization for ordinary content
-   writes; the read-only review is not publish authorization;
-2. create a separate production writer identity after that authorization; do
-   not expand the adoption identity;
-3. run one controlled zero-addition, zero-deletion release and rollback
-   exercise while continuously checking the legacy URLs and baseline samples;
-4. establish an owner-controlled GPG or SSH signing identity and confirm GitHub
-   verifies it; the current workstation and public GitHub account expose no
-   configured signing key, and none was created implicitly;
-5. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
-   every required gate is green.
+One controlled release reached `succeeded` only after Tencent cache-task and
+public-marker verification. One explicit rollback then restored the adopted
+marker, manifest, complete target inventory, and all sixteen continuously
+sampled public resources. The public site remained available through 691
+complete sample sweeps, all eleven protected legacy paths retained their
+adopted bytes, and no release remains active. Full counts, durations, provider
+request IDs, hashes, and raw timelines are recorded in
+[`production-phase-b.md`](production-phase-b.md).
+
+The owner's existing `id_ed25519` public key is registered as a GitHub SSH
+signing key and a disposable signature was verified before release work. The
+writer credential is the only operating production credential and has a first
+scheduled rotation date of 2026-11-01. The adoption-only CAM user and policy
+remain unchanged for audit history. Disabling its superseded API key is the
+only remaining credential-disposition gate: the Tencent console session expired
+before the asynchronous disable request completed, and a subsequent read-only
+COS probe proved that the key was still active. The release must not claim this
+gate until console read-back and a rejected credential probe both agree.
+
+All product and controlled-publish gates required before the signed `v0.1.0`
+tag are green. After the credential-disposition gate above closes, the release
+workflow will build the multi-platform image, attach its immutable digest,
+generate deterministic checksums/source/notes/upgrade artifacts, and publish
+the GitHub release from that verified tag.
 
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part
