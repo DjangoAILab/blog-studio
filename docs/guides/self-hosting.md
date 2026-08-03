@@ -97,10 +97,13 @@ cache:
 ```
 
 The provider rejects a release if any invalidation target falls outside this
-root. Use the option only when the matching COS target is equally isolated;
-omit it to keep exact URL and generated-directory invalidation. The explicit
-root avoids consuming one URL-purge quota item per generated page or mutable
-asset on large sites.
+root. Use the option only when the matching COS target is equally isolated and
+the credential is allowed to call `PurgePathCache`. Omit it for the
+least-privilege default: both concrete object URLs and generated pretty-path
+cache keys are submitted through `PurgeUrlsCache`, so production credentials
+do not need directory-purge permission. The explicit root avoids consuming one
+URL-purge quota item per generated page or mutable asset on large isolated
+sites.
 
 ## Traefik
 

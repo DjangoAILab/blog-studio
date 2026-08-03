@@ -29,7 +29,7 @@ class FakeClient implements TencentCacheClient {
 }
 
 describe('TencentCacheProvider', () => {
-  it('uses official CDN URL/directory batch limits and awaits completion', async () => {
+  it('uses exact CDN URL purges for page and directory cache keys', async () => {
     const client = new FakeClient();
     const provider = new TencentCacheProvider({
       client,
@@ -47,16 +47,15 @@ describe('TencentCacheProvider', () => {
       ),
     });
     expect(client.submissions.map((item) => item.targets.length)).toEqual([
-      1000, 1, 500, 1,
+      1000, 502,
     ]);
-    expect(client.submissions.map((item) => item.kind)).toEqual([
-      'url',
-      'url',
-      'directory',
-      'directory',
+    expect(client.submissions.map((item) => item.kind)).toEqual(['url', 'url']);
+    expect(client.submissions.map((item) => item.method)).toEqual([
+      'delete',
+      'delete',
     ]);
     expect(result).toMatchObject({ accepted: 1502 });
-    expect(result.requestIds).toHaveLength(4);
+    expect(result.requestIds).toHaveLength(2);
   });
 
   it('collapses covered targets to an explicitly scoped directory purge', async () => {

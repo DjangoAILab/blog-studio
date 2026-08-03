@@ -194,8 +194,8 @@ publish:
 cache:
   adapter: tencent-cdn
   options:
-    # Optional for an isolated publish prefix. All targets are checked before
-    # they are collapsed into a single directory purge.
+    # Optional for an isolated publish prefix with PurgePathCache permission.
+    # Without it, object URLs and pretty-path keys use exact URL purges only.
     directoryPurgeRoot: https://blog.example.com/staging/
 verification:
   baseUrl: https://blog.example.com
