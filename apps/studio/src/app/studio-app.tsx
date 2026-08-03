@@ -20,10 +20,11 @@ interface AssetUpload {
   readonly state: 'uploading' | 'ready' | 'error';
   readonly error?: string;
 }
-const visualEditorModule = import('../features/editor/visual-editor.js').then(
-  (module) => ({ default: module.VisualEditor }),
+const VisualEditor = lazy(() =>
+  import('../features/editor/visual-editor.js').then((module) => ({
+    default: module.VisualEditor,
+  })),
 );
-const VisualEditor = lazy(() => visualEditorModule);
 
 const terminalReleaseStatuses = new Set<ReleaseStatus>([
   'succeeded',
