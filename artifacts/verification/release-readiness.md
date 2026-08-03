@@ -56,13 +56,14 @@ seconds. The application-controlled work before cache completion took roughly
 seconds. The immediately following no-op release completed in 4.774 seconds
 without uploads or cache work.
 
-This is valid provider-backed release evidence, but it does **not** satisfy the
-checklist's 90-second changed-article completion target. The target remains
-open rather than redefining completion to exclude awaited provider work. A
-release decision must either improve and remeasure classic CDN invalidation or
-explicitly revise the product requirement with the slower verified bound as a
-known limitation. Migrating the production domain to EdgeOne is not bundled
-into v0.1.
+On 2026-08-03 the product owner explicitly accepted four provider-aware v0.1
+gates: request acknowledgement `< 1 s`, no-op completion `< 15 s`,
+Studio-controlled changed-release work `< 90 s`, and awaited provider-backed
+completion `< 5 min`. The measured maxima above are 0.200 seconds, 4.774
+seconds, roughly 35 seconds, and 193.427 seconds respectively, so all four
+gates pass. This does not redefine completion: Blog Studio still awaits and
+validates the Tencent task before marking a release complete. Migrating the
+production domain to EdgeOne is not bundled into v0.1.
 
 ## Open production gates
 
@@ -73,19 +74,18 @@ these actions remain blocked pending a separate explicit authorization:
 1. read and adopt the existing COS deployment baseline;
 2. inspect and approve the first complete production diff;
 3. run a controlled production no-URL-change release and rollback exercise;
-4. resolve or explicitly revise the failed 90-second performance gate;
-5. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
+4. create the signed `v0.1.0` release, checksums, and final upgrade bundle after
    every required gate is green.
 
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part
 of v0.1.
 
-The reference blog's deterministic-output compatibility change is isolated in
-`wangerzi/blog` pull request #62. It remains unmerged because its current
-`master` push workflow is a legacy production writer. Merging it before a
-controlled handoff would mutate the production prefix outside Blog Studio's
-adoption and rollback boundary.
+The legacy automatic writer was frozen by `wangerzi/blog` pull request #63:
+pull requests still build, while COS upload now requires an explicit manual
+dispatch. The deterministic-output compatibility change then passed its tests
+and merged through pull request #62. Both pull-request runs skipped the COS
+upload step, and neither merge produced a push-triggered production upload.
 
 ## Credential boundary for production
 
