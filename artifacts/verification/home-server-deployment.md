@@ -4,7 +4,7 @@
 
 - host: `wang@home-server`
 - service directory: `/home/wang/services/blog-studio`
-- verified revision: `c3fca472c9e1073dfc0748e859ab0dc1234a0ebc`
+- verified revision: `68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`
 - public editor: `https://blog-editor.internal.wj2015.com`
 - reverse proxy: existing Traefik `websecure` entrypoint and shared network
 - reference workspace: a separate clone of `wangerzi/blog`
@@ -153,6 +153,30 @@ files returned a healthy UID/GID `1000:1000` container. The editor and external
 health returned `200`, unauthenticated workspace access returned `401`, and the
 three production hashes remained exact before and after the real partial-write
 restart rollback.
+
+## Protected-baseline production preparation
+
+Before deploying the protected-baseline correction, online backup
+`blog-studio-backup-20260803T082409Z.tar.gz` was created at 618,752,836 bytes,
+mode `0600`, and passed its sibling SHA-256 check. The prior `.env`, production
+configuration, and image `blog-studio:home-c3fca47` were retained as exact
+rollback inputs.
+
+The server checkout fast-forwarded to protected `main` revision
+`68cd1ef2b88bd3d4d59e3aa1b4b058ae7f07cc3e`. Its image build transferred
+91.95 kB of context, passed package supply-chain policy checks, and exposed the
+full revision label before runtime configuration changed. The production
+configuration added only the `static` boundary, nine exact legacy article
+aliases, and `test.html` to `publish.options.protectedPrefixes`.
+
+Recreating only Studio with the base, Traefik, and Tencent Compose files
+returned a healthy `1000:1000` container. Local and external health returned
+`200`, the editor returned `200`, and unauthenticated workspace access returned
+`401`. The public root, archives, static Gitalk asset, and production marker
+retained their exact pre-upgrade hashes; all ten protected legacy URLs returned
+`200`. A deployed read-only build and plan retained eleven protected baseline
+objects and produced 0 additions, 354 changes, and 0 deletions without a
+publisher, cache, or release mutation.
 
 ## Managed-asset cleanup proof
 
