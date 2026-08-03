@@ -120,6 +120,15 @@ Moving the VCS label after the security-update and copy layers was verified by
 a second build with only a different VCS reference: it completed in under one
 second and reported all expensive runtime layers as cached.
 
+A later pre-upgrade backup exposed a second context boundary: the documented
+default `backups/` directory was not ignored, so one server build transferred
+618.74 MB before the service was recreated. The image was rejected for
+deployment. The corrected build both ignores `backups/` and replaces the broad
+source copy with an explicit allowlist (`apps/`, `packages/`, root package
+metadata, and operational `scripts/`). A local production build transferred
+549.48 kB and its container smoke passed non-root, read-only-root, health,
+authentication, durable-draft, graceful-shutdown, and cold-restart checks.
+
 The final feature deployment sent 173.73 KiB of context, reused the OpenSSL
 layer, built in 40 seconds, and reached both local and external health before
 acceptance.
