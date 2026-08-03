@@ -4,7 +4,10 @@ ENV CI=true
 WORKDIR /source
 RUN corepack enable && corepack prepare pnpm@11.18.0 --activate
 
-COPY . .
+COPY .npmrc package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/ ./apps/
+COPY packages/ ./packages/
+COPY scripts/ ./scripts/
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store && \
     pnpm install --frozen-lockfile && \

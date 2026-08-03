@@ -5,6 +5,7 @@
 **/dist
 **/node_modules
 artifacts
+backups
 deploy/**/.env
 deploy/**/secrets
 node_modules
