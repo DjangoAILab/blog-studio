@@ -40,6 +40,13 @@ export interface RollbackResult {
   readonly restoredFiles: number;
 }
 
+export type InterruptedRecoveryResult =
+  | { readonly outcome: 'not-started' }
+  | {
+      readonly outcome: 'rolled-back';
+      readonly rollback: RollbackResult;
+    };
+
 export interface BaselineAdoptionInput {
   readonly release: ReleaseRecord;
   readonly verificationToken: string;
@@ -61,6 +68,9 @@ export interface Publisher extends AdapterDescriptor {
   ): Promise<PublishBatchResult>;
   finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
+  recoverInterrupted?(
+    release: ReleaseRecord,
+  ): Promise<InterruptedRecoveryResult>;
   adoptBaseline?(
     input: BaselineAdoptionInput,
     events: PublishEventSink,

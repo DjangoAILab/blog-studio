@@ -103,6 +103,24 @@ async function fixture() {
 }
 
 describe('FilesystemPublisher', () => {
+  it('reports an interrupted release as not started before rollback state exists', async () => {
+    const item = await fixture();
+    const publisher = new FilesystemPublisher({
+      targetDirectory: item.target,
+      stateDirectory: item.state,
+    });
+
+    await expect(
+      publisher.recoverInterrupted({
+        ...release(),
+        status: 'rolling-back',
+      }),
+    ).resolves.toEqual({ outcome: 'not-started' });
+    await expect(
+      publisher.rollback({ ...release(), status: 'rolling-back' }),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('publishes in phases and restores the exact previous release', async () => {
     const item = await fixture();
     const publisher = new FilesystemPublisher({
@@ -139,7 +157,12 @@ describe('FilesystemPublisher', () => {
     const finalized = await publisher.finalize(plan);
     expect(finalized).toMatchObject({ uploaded: 2, deleted: 1 });
 
-    await publisher.rollback({ ...release(), status: 'rolling-back' });
+    await expect(
+      publisher.recoverInterrupted({
+        ...release(),
+        status: 'rolling-back',
+      }),
+    ).resolves.toMatchObject({ outcome: 'rolled-back' });
     expect(await readFile(join(item.target, 'index.html'), 'utf8')).toBe(
       'old page',
     );

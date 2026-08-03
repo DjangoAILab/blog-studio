@@ -96,6 +96,9 @@ export interface Publisher extends AdapterDescriptor {
   ): Promise<PublishBatchResult>;
   finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
+  recoverInterrupted?(
+    release: ReleaseRecord,
+  ): Promise<InterruptedRecoveryResult>;
   adoptBaseline?(
     input: BaselineAdoptionInput,
     events: PublishEventSink,

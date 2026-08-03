@@ -110,6 +110,9 @@ export interface Publisher {
   ): Promise<PublishBatchResult>;
   finalize(plan: PublishPlan): Promise<PublishResult>;
   rollback(release: ReleaseRecord): Promise<RollbackResult>;
+  recoverInterrupted?(
+    release: ReleaseRecord,
+  ): Promise<InterruptedRecoveryResult>;
 }
 
 export interface CacheProvider {

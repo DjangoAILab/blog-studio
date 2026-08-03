@@ -603,4 +603,17 @@ export class TencentCosPublisher implements Publisher {
     }
     return { restoredReleaseId: release.id, restoredFiles };
   }
+
+  public async recoverInterrupted(release: ReleaseRecord) {
+    try {
+      await this.#get(this.#releaseKey(release.id, 'rollback.json'));
+    } catch (error) {
+      if (isNotFound(error)) return { outcome: 'not-started' as const };
+      throw error;
+    }
+    return {
+      outcome: 'rolled-back' as const,
+      rollback: await this.rollback(release),
+    };
+  }
 }
