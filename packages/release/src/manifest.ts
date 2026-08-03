@@ -118,6 +118,56 @@ function isProtected(path: string, prefixes: readonly string[]): boolean {
   );
 }
 
+export function reconcileProtectedEntries(
+  entries: readonly ManifestEntry[],
+  previousManifest: ReleaseManifest | undefined,
+  protectedPrefixes: readonly string[],
+): {
+  readonly entries: readonly ManifestEntry[];
+  readonly preserved: readonly ManifestEntry[];
+} {
+  const current = canonicalEntries(entries);
+  const currentByPath = new Map(current.map((entry) => [entry.path, entry]));
+  const previousByPath = new Map(
+    previousManifest?.entries.map((entry) => [entry.path, entry]) ?? [],
+  );
+  const effective: ManifestEntry[] = [];
+  const preserved: ManifestEntry[] = [];
+
+  for (const entry of current) {
+    if (!isProtected(entry.path, protectedPrefixes)) {
+      effective.push(entry);
+      continue;
+    }
+
+    const previous = previousByPath.get(entry.path);
+    if (!previous)
+      throw new Error(
+        `Protected object ${entry.path} requires an imported baseline manifest`,
+      );
+    if (sameEntry(entry, previous)) effective.push(entry);
+    else {
+      effective.push(previous);
+      preserved.push(previous);
+    }
+  }
+
+  for (const previous of previousByPath.values()) {
+    if (
+      isProtected(previous.path, protectedPrefixes) &&
+      !currentByPath.has(previous.path)
+    ) {
+      effective.push(previous);
+      preserved.push(previous);
+    }
+  }
+
+  return {
+    entries: canonicalEntries(effective),
+    preserved: canonicalEntries(preserved),
+  };
+}
+
 export function manifestsHaveSameContent(
   current: readonly ManifestEntry[],
   previous: ReleaseManifest,
@@ -141,15 +191,31 @@ export function createPublishPlan(
   previousManifest: ReleaseManifest | undefined,
   protectedPrefixes: readonly string[],
 ): PublishPlan {
+  const reconciliation = reconcileProtectedEntries(
+    manifest.entries,
+    previousManifest,
+    protectedPrefixes,
+  );
+  if (
+    reconciliation.preserved.length > 0 &&
+    manifest.entries.some((entry) => entry.path === markerPath)
+  )
+    throw new Error(
+      'Protected objects must be reconciled before the release marker is generated',
+    );
+  const effectiveManifest = createReleaseManifest({
+    ...manifest,
+    entries: reconciliation.entries,
+  });
   const previousByPath = new Map(
     previousManifest?.entries.map((entry) => [entry.path, entry]) ?? [],
   );
   const currentByPath = new Map(
-    manifest.entries.map((entry) => [entry.path, entry]),
+    effectiveManifest.entries.map((entry) => [entry.path, entry]),
   );
   const additions: ManifestEntry[] = [];
   const changes: ManifestEntry[] = [];
-  for (const entry of manifest.entries) {
+  for (const entry of effectiveManifest.entries) {
     const previous = previousByPath.get(entry.path);
     if (!previous) additions.push(entry);
     else if (!sameEntry(entry, previous)) changes.push(entry);
@@ -167,7 +233,7 @@ export function createPublishPlan(
     releaseId: manifest.releaseId,
     targetId: manifest.targetId,
     sourceDirectory,
-    manifest,
+    manifest: effectiveManifest,
     ...(previousManifest ? { previousManifest } : {}),
     additions: additions.sort(order),
     changes: changes.sort(order),

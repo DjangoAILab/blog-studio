@@ -40,6 +40,36 @@ class FakeGenerator implements GeneratorAdapter {
   public readonly capabilities = { preview: true, drafts: true, mdx: false };
   public buildError?: Error;
   public buildCalls = 0;
+  public manifest: BuildResult['manifest'] = [
+    {
+      path: 'assets/app.webp',
+      contentHash: createContentHash(`sha256:${'a'.repeat(64)}`),
+      byteLength: 10,
+      mediaType: 'image/webp',
+      cacheClass: 'immutable',
+    },
+    {
+      path: 'index.html',
+      contentHash: createContentHash(`sha256:${'b'.repeat(64)}`),
+      byteLength: 20,
+      mediaType: 'text/html',
+      cacheClass: 'page',
+    },
+    {
+      path: 'atom.xml',
+      contentHash: createContentHash(`sha256:${'d'.repeat(64)}`),
+      byteLength: 30,
+      mediaType: 'application/atom+xml',
+      cacheClass: 'metadata',
+    },
+    {
+      path: 'sitemap.xml',
+      contentHash: createContentHash(`sha256:${'e'.repeat(64)}`),
+      byteLength: 40,
+      mediaType: 'application/xml',
+      cacheClass: 'metadata',
+    },
+  ];
 
   public detect(): Promise<DetectionResult> {
     return Promise.resolve({ detected: true, confidence: 1, diagnostics: [] });
@@ -70,36 +100,7 @@ class FakeGenerator implements GeneratorAdapter {
       outputDirectory,
       durationMs: 10,
       diagnostics: [],
-      manifest: [
-        {
-          path: 'assets/app.webp',
-          contentHash: createContentHash(`sha256:${'a'.repeat(64)}`),
-          byteLength: 10,
-          mediaType: 'image/webp',
-          cacheClass: 'immutable',
-        },
-        {
-          path: 'index.html',
-          contentHash: createContentHash(`sha256:${'b'.repeat(64)}`),
-          byteLength: 20,
-          mediaType: 'text/html',
-          cacheClass: 'page',
-        },
-        {
-          path: 'atom.xml',
-          contentHash: createContentHash(`sha256:${'d'.repeat(64)}`),
-          byteLength: 30,
-          mediaType: 'application/atom+xml',
-          cacheClass: 'metadata',
-        },
-        {
-          path: 'sitemap.xml',
-          contentHash: createContentHash(`sha256:${'e'.repeat(64)}`),
-          byteLength: 40,
-          mediaType: 'application/xml',
-          cacheClass: 'metadata',
-        },
-      ],
+      manifest: this.manifest,
     });
   }
 }
@@ -113,9 +114,11 @@ class FakePublisher implements Publisher {
   public onApply?: (phase: 'assets' | 'pages') => void;
   public planResult?: PublishPlan;
   public adoptResult?: BaselineAdoptionResult;
+  public readonly inputs: PublishInput[] = [];
 
   public plan(input: PublishInput): Promise<PublishPlan> {
     this.calls.push('plan');
+    this.inputs.push(input);
     return Promise.resolve(
       this.planResult ?? {
         releaseId: input.release.id,
@@ -272,6 +275,104 @@ describe('ReleaseOrchestrator', () => {
     }).run({ release: release(), workspaceRoot: '/workspace' });
     expect(result.release.status).toBe('failed');
     expect(publisher.calls).toEqual([]);
+  });
+
+  it('reconciles protected baseline objects before hashing the marker', async () => {
+    const generator = new FakeGenerator();
+    generator.manifest = [
+      {
+        path: 'index.html',
+        contentHash: createContentHash(`sha256:${'b'.repeat(64)}`),
+        byteLength: 20,
+        mediaType: 'text/html',
+        cacheClass: 'page',
+      },
+      {
+        path: 'static/legacy.js',
+        contentHash: createContentHash(`sha256:${'c'.repeat(64)}`),
+        byteLength: 30,
+        mediaType: 'text/javascript',
+        cacheClass: 'immutable',
+      },
+    ];
+    const previous = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-previous'),
+      targetId: 'production',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      verificationToken: 'previous-token',
+      entries: [
+        {
+          path: 'index.html',
+          contentHash: createContentHash(`sha256:${'a'.repeat(64)}`),
+          byteLength: 20,
+          mediaType: 'text/html',
+          cacheClass: 'page',
+        },
+        {
+          path: 'legacy/old.html',
+          contentHash: createContentHash(`sha256:${'d'.repeat(64)}`),
+          byteLength: 40,
+          mediaType: 'text/html',
+          cacheClass: 'page',
+        },
+        {
+          path: 'static/legacy.js',
+          contentHash: createContentHash(`sha256:${'e'.repeat(64)}`),
+          byteLength: 30,
+          mediaType: 'text/javascript',
+          cacheClass: 'immutable',
+        },
+      ],
+    });
+    const publisher = new FakePublisher();
+    let markerBaseHash: string | undefined;
+
+    const result = await new ReleaseOrchestrator({
+      generator,
+      publisher,
+      verifier: new FakeVerifier(),
+      baseUrl: 'https://blog.example/',
+      protectedPrefixes: ['legacy', 'static'],
+      createVerificationToken: () => 'verification-token',
+      writeMarker: (input) => {
+        markerBaseHash = input.manifestHash;
+        return Promise.resolve({
+          path: 'blog-studio-release.json',
+          contentHash: createContentHash(`sha256:${'f'.repeat(64)}`),
+          byteLength: 80,
+          mediaType: 'application/json',
+          cacheClass: 'metadata',
+        });
+      },
+    }).run({
+      release: release(),
+      workspaceRoot: '/workspace',
+      previousManifest: previous,
+    });
+
+    const planned = publisher.inputs[0]?.manifest;
+    expect(result.release.status).toBe('succeeded');
+    expect(
+      planned?.entries.find((item) => item.path === 'static/legacy.js'),
+    ).toEqual(
+      previous.entries.find((item) => item.path === 'static/legacy.js'),
+    );
+    expect(planned?.entries).toContainEqual(
+      previous.entries.find((item) => item.path === 'legacy/old.html'),
+    );
+    const effectiveBase = createReleaseManifest({
+      ...planned!,
+      entries: planned!.entries.filter(
+        (item) => item.path !== 'blog-studio-release.json',
+      ),
+    });
+    expect(markerBaseHash).toBe(hashReleaseManifest(effectiveBase));
+    expect(
+      result.events.some((event) =>
+        /Preserved 2 protected/.test(event.message),
+      ),
+    ).toBe(true);
   });
 
   it('adopts a remote baseline without rebuilding or overwriting site files', async () => {

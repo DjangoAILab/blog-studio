@@ -239,6 +239,55 @@ describe('TencentCosPublisher', () => {
     expect(client.active).toBe(0);
   });
 
+  it('never overwrites generated content inside a protected baseline', async () => {
+    const item = await fixture();
+    await mkdir(join(item.root, 'static'), { recursive: true });
+    await writeFile(join(item.root, 'static', 'legacy.bin'), 'generated drift');
+    const previous = createReleaseManifest({
+      ...item.previous,
+      entries: [
+        ...item.previous.entries,
+        entry('static/legacy.bin', 'legacy', 'immutable'),
+      ],
+    });
+    const current = createReleaseManifest({
+      ...item.current,
+      entries: [
+        ...item.current.entries,
+        entry('static/legacy.bin', 'generated drift', 'immutable'),
+      ],
+    });
+    const client = new FakeClient();
+    client.objects.set('site/index.html', Buffer.from('old page'));
+    client.objects.set('site/stale.html', Buffer.from('stale'));
+    client.objects.set('site/static/legacy.bin', Buffer.from('legacy'));
+    const publisher = new TencentCosPublisher({
+      client,
+      bucket: 'example-123456',
+      region: 'ap-shanghai',
+      targetPrefix: 'site',
+      statePrefix: '_blog-studio',
+      protectedPrefixes: ['static'],
+      retryDelay: async () => {},
+    });
+    const plan = await publisher.plan({
+      release: release(),
+      outputDirectory: item.root,
+      manifest: current,
+      previousManifest: previous,
+    });
+
+    expect(plan.changes.map((value) => value.path)).not.toContain(
+      'static/legacy.bin',
+    );
+    await publisher.apply(plan, 'assets', () => {});
+    await publisher.apply(plan, 'pages', () => {});
+    expect(
+      Buffer.from(client.objects.get('site/static/legacy.bin')!).toString(),
+    ).toBe('legacy');
+    expect(client.calls).not.toContain('put:site/static/legacy.bin');
+  });
+
   it('adopts an existing bucket-root baseline before enabling normal releases', async () => {
     const client = new FakeClient();
     client.objects.set('index.html', Buffer.from('old page'));

@@ -93,5 +93,83 @@ describe('release manifests', () => {
     ]);
     expect(plan.changes.map((item) => item.path)).toEqual(['index.html']);
     expect(plan.deletions).toEqual([]);
+    expect(plan.manifest.entries.map((item) => item.path)).toEqual([
+      'assets/new.webp',
+      'index.html',
+      'legacy/old.png',
+    ]);
+  });
+
+  it('retains baseline bytes when generated protected content drifts', () => {
+    const previous = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-one'),
+      targetId: 'production',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      verificationToken: 'old-token',
+      entries: [
+        entry('index.html', 'a'),
+        entry('static/legacy.js', 'b', 'immutable'),
+      ],
+    });
+    const current = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-two'),
+      targetId: 'production',
+      createdAt: '2026-08-02T01:00:00.000Z',
+      verificationToken: 'new-token',
+      entries: [
+        entry('index.html', 'c'),
+        entry('static/legacy.js', 'd', 'immutable'),
+      ],
+    });
+
+    const plan = createPublishPlan('/build', current, previous, ['static']);
+    expect(plan.changes.map((item) => item.path)).toEqual(['index.html']);
+    expect(
+      plan.manifest.entries.find((item) => item.path === 'static/legacy.js')
+        ?.contentHash,
+    ).toBe(previous.entries[1]?.contentHash);
+  });
+
+  it('rejects new protected output without an imported baseline', () => {
+    const current = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-one'),
+      targetId: 'production',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      verificationToken: 'new-token',
+      entries: [entry('static/unknown.js', 'a', 'immutable')],
+    });
+
+    expect(() =>
+      createPublishPlan('/build', current, undefined, ['static']),
+    ).toThrow(/requires an imported baseline manifest/);
+  });
+
+  it('rejects late protected reconciliation after marker generation', () => {
+    const previous = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-one'),
+      targetId: 'production',
+      createdAt: '2026-08-02T00:00:00.000Z',
+      verificationToken: 'old-token',
+      entries: [entry('static/legacy.js', 'a', 'immutable')],
+    });
+    const current = createReleaseManifest({
+      version: 1,
+      releaseId: createReleaseId('release-two'),
+      targetId: 'production',
+      createdAt: '2026-08-02T01:00:00.000Z',
+      verificationToken: 'new-token',
+      entries: [
+        entry('blog-studio-release.json', 'b', 'metadata'),
+        entry('static/legacy.js', 'c', 'immutable'),
+      ],
+    });
+
+    expect(() =>
+      createPublishPlan('/build', current, previous, ['static']),
+    ).toThrow(/before the release marker is generated/);
   });
 });

@@ -23,6 +23,7 @@ import {
   createReleaseMarker,
   hashReleaseManifest,
   manifestsHaveSameContent,
+  reconcileProtectedEntries,
   RELEASE_MARKER_PATH,
 } from './manifest.js';
 import type { ReleaseVerifier } from './verification.js';
@@ -262,9 +263,20 @@ export class ReleaseOrchestrator {
         mode: 'production',
       });
       aborted();
-      const baseEntries = build.manifest.filter(
+      const generatedEntries = build.manifest.filter(
         (entry) => entry.path !== RELEASE_MARKER_PATH,
       );
+      const protectedEntries = reconcileProtectedEntries(
+        generatedEntries,
+        input.previousManifest,
+        this.options.protectedPrefixes ?? [],
+      );
+      const baseEntries = protectedEntries.entries;
+      if (protectedEntries.preserved.length > 0)
+        emit(
+          'building',
+          `Preserved ${protectedEntries.preserved.length} protected baseline objects without overwrite or deletion`,
+        );
       if (
         input.previousManifest &&
         manifestsHaveSameContent(baseEntries, input.previousManifest)
