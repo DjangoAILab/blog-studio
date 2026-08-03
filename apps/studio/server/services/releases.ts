@@ -423,6 +423,10 @@ export class ReleaseService {
           this.options.verifierFactory?.(workspace) ??
           new HttpReleaseVerifier(),
         baseUrl: workspace.config.verification!.baseUrl,
+        protectedPrefixes: stringArrayOption(
+          workspace.config.publish.options,
+          'protectedPrefixes',
+        ),
         ...(draft
           ? {
               prepare: () => prepareDraft(sandbox!.workspaceRoot),
