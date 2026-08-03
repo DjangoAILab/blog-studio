@@ -182,6 +182,11 @@ then explicitly discarded, Studio returned healthy, and the production hashes
 below remained exact. This closes cold-restart recovery against real provider
 state without touching the production prefix.
 
+After evidence capture, the single untracked synthetic staging source file was
+removed from the server workspace. It is retained only inside the verified
+pre-upgrade backup; the live workspace returned to 93 documents and a clean Git
+status.
+
 After these runs, production samples were still byte-identical to the original
 baseline:
 
