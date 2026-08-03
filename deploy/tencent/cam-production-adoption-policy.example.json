@@ -1,0 +1,36 @@
+{
+  "version": "2.0",
+  "statement": [
+    {
+      "effect": "allow",
+      "action": ["cos:GetBucket"],
+      "resource": ["qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/*"],
+      "condition": {
+        "string_like": {
+          "cos:prefix": ["blog.example.com/*"]
+        }
+      }
+    },
+    {
+      "effect": "allow",
+      "action": ["cos:GetObject"],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/*",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog-studio-state/blog.example.com/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": ["cos:PutObject", "cos:DeleteObject"],
+      "resource": [
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog.example.com/blog-studio-release.json",
+        "qcs::cos:ap-guangzhou:uid/1250000000:example-1250000000/blog-studio-state/blog.example.com/*"
+      ]
+    },
+    {
+      "effect": "allow",
+      "action": ["cdn:PurgeUrlsCache", "cdn:DescribePurgeTasks"],
+      "resource": ["*"]
+    }
+  ]
+}
