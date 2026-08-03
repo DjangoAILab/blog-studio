@@ -59,6 +59,48 @@ describe('TencentCacheProvider', () => {
     expect(result.requestIds).toHaveLength(4);
   });
 
+  it('collapses covered targets to an explicitly scoped directory purge', async () => {
+    const client = new FakeClient();
+    const provider = new TencentCacheProvider({
+      client,
+      mode: 'cdn',
+      directoryPurgeRoot: 'https://blog.example/__blog-studio-staging/v0.1/',
+      delay: async () => {},
+    });
+    const result = await provider.invalidate({
+      urls: [
+        'https://blog.example/__blog-studio-staging/v0.1/index.html',
+        'https://blog.example/__blog-studio-staging/v0.1/static/app.css',
+      ],
+      directories: [
+        'https://blog.example/__blog-studio-staging/v0.1/posts/hello/',
+      ],
+    });
+    expect(client.submissions).toEqual([
+      {
+        mode: 'cdn',
+        kind: 'directory',
+        targets: ['https://blog.example/__blog-studio-staging/v0.1/'],
+        method: 'invalidate',
+      },
+    ]);
+    expect(result).toMatchObject({ accepted: 3 });
+  });
+
+  it('rejects targets outside the configured directory purge root', async () => {
+    const provider = new TencentCacheProvider({
+      client: new FakeClient(),
+      mode: 'cdn',
+      directoryPurgeRoot: 'https://blog.example/__blog-studio-staging/v0.1/',
+    });
+    await expect(
+      provider.invalidate({
+        urls: ['https://blog.example/index.html'],
+        directories: [],
+      }),
+    ).rejects.toThrow(/outside/i);
+  });
+
   it('requires a zone for EdgeOne and uses plan-configurable batches', async () => {
     expect(
       () =>

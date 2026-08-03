@@ -842,6 +842,7 @@ describe('Studio workspace API', () => {
       },
     });
     const releaseId = started.json<ReleaseDetails>().release.id;
+    expect((await app.inject(previewUrl)).statusCode).toBe(404);
     expect(
       (await waitForRelease(app, session.cookie, releaseId)).release.status,
     ).toBe('succeeded');

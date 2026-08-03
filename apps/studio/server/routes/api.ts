@@ -414,6 +414,7 @@ export function registerApiRoutes(
       },
     },
     async (request, reply) => {
+      await dependencies.previews.stop(request.params.workspaceId);
       const release = await dependencies.releases.start(
         request.params.workspaceId,
         request.body.targetId,

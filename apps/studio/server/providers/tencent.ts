@@ -510,6 +510,11 @@ function cacheProvider(
     'cache',
     'edgeOneBatchSize',
   );
+  const directoryPurgeRoot = optionalStringOption(
+    adapter,
+    'cache',
+    'directoryPurgeRoot',
+  );
   const zoneId = optionalStringOption(adapter, 'cache', 'zoneId');
   return new TencentCacheProvider({
     client:
@@ -520,6 +525,7 @@ function cacheProvider(
     ...(zoneId ? { zoneId } : {}),
     ...(maxPollAttempts === undefined ? {} : { maxPollAttempts }),
     ...(edgeOneBatchSize === undefined ? {} : { edgeOneBatchSize }),
+    ...(directoryPurgeRoot ? { directoryPurgeRoot } : {}),
   });
 }
 
