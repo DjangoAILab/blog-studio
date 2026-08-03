@@ -37,6 +37,10 @@ an existing CI key whose policy has not been audited. The repository includes a
 copy-and-edit
 [`cam-staging-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-staging-policy.example.json).
 Replace its account, bucket, region, host, and run prefix before attaching it.
+For an existing production deployment, use the separate
+[`cam-production-adoption-policy.example.json`](https://github.com/DjangoAILab/blog-studio/blob/main/deploy/tencent/cam-production-adoption-policy.example.json)
+first; it can inventory production and write retained state plus the exact
+release marker, but it cannot overwrite or delete ordinary public objects.
 
 The staging policy intentionally grants no bucket configuration, bucket
 creation, account bucket listing, or production-prefix object permission. Its
@@ -102,6 +106,16 @@ partial or previously managed target must be recovered from its retained state,
 not silently re-adopted. After adoption, the first normal release is planned
 against the verified baseline, so unchanged legacy paths remain untouched and
 rollback has a precise boundary.
+
+Keep adoption and normal publishing as different privilege phases. The
+production-adoption policy grants `GetObject` across the managed target, but
+its only public `PutObject`/`DeleteObject` resource is
+`blog-studio-release.json`; retained manifests and rollback metadata are scoped
+to the configured state prefix. It grants URL refresh, not directory refresh,
+because adoption only invalidates the exact marker. After inspecting the first
+read-only diff, replace this policy with a separately reviewed production policy
+that grants content writes only if promotion is approved. Do not expand the
+adoption identity in place.
 
 ## CDN and EdgeOne cache model
 
