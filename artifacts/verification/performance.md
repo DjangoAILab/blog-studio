@@ -35,5 +35,20 @@ recurring authenticated writing-shell journey, which is 880.2 ms p95.
 - repeat Docker build with only a VCS label change: under one second with the
   OpenSSL, dependency, and application layers cached.
 
-The `< 90 s` changed-article production release gate remains open until the
-least-privilege Tencent credentials permit a real non-production-prefix run.
+## Provider-backed release
+
+The final deterministic Tencent staging release completed in 193.427 seconds:
+roughly 35 seconds for preflight, Hexo build, planning, COS publishing, and
+verification around a 157.8-second classic CDN directory-refresh task. The
+immediately following byte-identical release completed as a no-op in 4.774
+seconds with no object uploads and no cache task.
+
+The changed-content result does not meet the original `< 90 s` completion gate.
+Tencent's
+[published classic CDN guidance](https://cloud.tencent.com/document/product/228/3946)
+allows approximately five minutes for global URL refresh to take effect, so the
+measured result is provider-normal but still a failed product target. The
+release remains asynchronous and visible to the author, but v0.1 readiness must
+either improve and remeasure invalidation or explicitly revise the gate to a
+provider-aware bound; application work is not reported as completed while the
+awaited cache task is still pending.
