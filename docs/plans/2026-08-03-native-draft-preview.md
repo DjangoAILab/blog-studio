@@ -30,6 +30,8 @@
 **Files:**
 
 - Modify: `apps/studio/server/services/previews.ts`
+- Modify: `packages/adapter-hexo/src/adapter.ts`
+- Test: `packages/adapter-hexo/test/adapter.test.ts`
 
 1. Capture the result of `writeDocument`.
 2. When the selected reference belongs to `drafts`, require
@@ -37,7 +39,9 @@
    returned reference.
 3. Resolve the public URL and persist the preview session using that effective
    reference.
-4. Run the focused Studio test and verify it passes.
+4. Remove Hexo's global `--draft` preview flag and pass only the configured
+   site timezone as the child process `TZ` value.
+5. Verify the Hexo command regression and focused Studio test pass.
 
 ### Task 3: Verify and ship the repair
 

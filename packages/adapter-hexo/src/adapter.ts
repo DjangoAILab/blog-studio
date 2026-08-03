@@ -33,6 +33,7 @@ interface HexoConfiguration {
   readonly url?: string;
   readonly root?: string;
   readonly permalink?: string;
+  readonly timezone?: string;
   readonly source_dir?: string;
   readonly public_dir?: string;
 }
@@ -456,17 +457,21 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       args: [
         ...this.#executableArgs,
         'generate',
-        ...(input.mode === 'preview' ? ['--draft'] : []),
         ...(this.#configPath === '_config.yml'
           ? []
           : ['--config', this.#configPath]),
       ],
       workspaceRoot: input.workspaceRoot,
       timeoutMs: this.#buildTimeoutMs,
-      environmentAllowlist: ['CI', 'NODE_ENV'],
+      environmentAllowlist: [
+        'CI',
+        'NODE_ENV',
+        ...(config.timezone ? ['TZ'] : []),
+      ],
       environment: {
         CI: 'true',
         NODE_ENV: input.mode === 'production' ? 'production' : 'development',
+        ...(config.timezone ? { TZ: config.timezone } : {}),
       },
     });
     if (result.exitCode !== 0) {

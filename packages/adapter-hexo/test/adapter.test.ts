@@ -254,7 +254,8 @@ describe('HexoGeneratorAdapter', () => {
 
   it('builds with an argument array and returns a content manifest', async () => {
     const root = await copySite();
-    const result = await createAdapter({ build: true }).build({
+    const adapter = createAdapter({ build: true });
+    const result = await adapter.build({
       workspaceRoot: root,
       mode: 'production',
     });
@@ -264,6 +265,16 @@ describe('HexoGeneratorAdapter', () => {
       'index.html',
     ]);
     await expect(stat(result.outputDirectory)).resolves.toMatchObject({});
+
+    await adapter.build({ workspaceRoot: root, mode: 'preview' });
+    await expect(
+      readFile(join(root, '.hexo-build-request.json'), 'utf8').then(
+        (content) => JSON.parse(content) as unknown,
+      ),
+    ).resolves.toEqual({
+      args: ['generate'],
+      timezone: 'Asia/Shanghai',
+    });
   });
 
   it('rejects stale writes', async () => {
