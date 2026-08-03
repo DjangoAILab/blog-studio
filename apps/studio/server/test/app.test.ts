@@ -110,7 +110,8 @@ publish:
     ${
       usesCosBaseline
         ? `targetId: production
-    allowBaselineAdoption: true`
+    allowBaselineAdoption: true
+    protectedPrefixes: [static]`
         : `directory: ${publishTarget}`
     }
 verification:
@@ -178,6 +179,7 @@ verification:
                 targetPrefix: '/',
                 allowBucketRoot: true,
                 statePrefix: '_blog-studio',
+                protectedPrefixes: ['static'],
                 retryDelay: () => Promise.resolve(),
               }),
           },
@@ -219,7 +221,7 @@ interface ReleaseDetails {
     readonly createdAt: string;
     readonly stages: Array<{ readonly status: string }>;
   };
-  readonly events: Array<{ readonly stage: string }>;
+  readonly events: Array<{ readonly stage: string; readonly message: string }>;
 }
 
 async function waitForRelease(
@@ -1015,6 +1017,30 @@ describe('Studio workspace API', () => {
         { publishTarget: { baselineAdoption: 'complete', configured: true } },
       ],
     });
+
+    const published = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers: mutationHeaders,
+      payload: { targetId: 'production' },
+    });
+    expect(published.statusCode, published.body).toBe(202);
+    const publishedReleaseId = published.json<ReleaseDetails>().release.id;
+    const publishedDetails = await waitForRelease(
+      app,
+      session.cookie,
+      publishedReleaseId,
+    );
+    expect(publishedDetails.release.status).toBe('succeeded');
+    expect(
+      publishedDetails.events.some(({ message }) =>
+        message.includes('Preserved 1 protected baseline object'),
+      ),
+    ).toBe(true);
+    expect(cosObjects.get('static/legacy.png')).toEqual(
+      Uint8Array.from([1, 2, 3, 4]),
+    );
+
     const repeated = await app.inject({
       method: 'POST',
       url: '/api/workspaces/test-blog/releases/adopt-baseline',
