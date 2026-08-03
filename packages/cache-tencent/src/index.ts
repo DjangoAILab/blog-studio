@@ -160,16 +160,25 @@ export class TencentCacheProvider implements CacheProvider {
                 },
               ];
         })()
-      : [
-          ...batches(input.urls, urlBatchSize).map((targets) => ({
-            kind: 'url' as const,
-            targets,
-          })),
-          ...batches(input.directories, directoryBatchSize).map((targets) => ({
-            kind: 'directory' as const,
-            targets,
-          })),
-        ];
+      : this.#mode === 'cdn'
+        ? batches([...input.urls, ...input.directories], urlBatchSize).map(
+            (targets) => ({
+              kind: 'url' as const,
+              targets,
+            }),
+          )
+        : [
+            ...batches(input.urls, urlBatchSize).map((targets) => ({
+              kind: 'url' as const,
+              targets,
+            })),
+            ...batches(input.directories, directoryBatchSize).map(
+              (targets) => ({
+                kind: 'directory' as const,
+                targets,
+              }),
+            ),
+          ];
     const requestIds: string[] = [];
     for (const request of requests) {
       const result = await this.#client.submit({
