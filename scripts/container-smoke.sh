@@ -128,6 +128,10 @@ login() {
     "$origin/api/session"
 }
 
+container_node() {
+  docker exec "$container" node "$@"
+}
+
 start_container
 wait_for_health
 
@@ -139,12 +143,12 @@ fi
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/workspaces")" == '401' ]]
 
 session="$(login)"
-csrf="$(node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.csrfToken)' "$session")"
+csrf="$(container_node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.csrfToken)' "$session")"
 documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/smoke-blog/documents?collection=posts")"
-document_id="$(node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.documents[0].ref.documentId)' "$documents")"
+document_id="$(container_node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.documents[0].ref.documentId)' "$documents")"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/smoke-blog/documents/$document_id?collection=posts")"
-revision="$(node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.source.revision)' "$document")"
-payload="$(node -e 'process.stdout.write(JSON.stringify({expectedVersion:0,sourceRevision:process.argv[1],frontMatter:{title:"Container smoke test",date:"2026-08-02 10:00:00"},body:"Durable draft from container smoke test.\n"}))' "$revision")"
+revision="$(container_node -e 'const input=JSON.parse(process.argv[1]); process.stdout.write(input.source.revision)' "$document")"
+payload="$(container_node -e 'process.stdout.write(JSON.stringify({expectedVersion:0,sourceRevision:process.argv[1],frontMatter:{title:"Container smoke test",date:"2026-08-02 10:00:00"},body:"Durable draft from container smoke test.\n"}))' "$revision")"
 saved="$(curl --fail --silent --show-error \
   --request PUT \
   --cookie "$fixture/cookies" \
@@ -153,7 +157,7 @@ saved="$(curl --fail --silent --show-error \
   --header 'Content-Type: application/json' \
   --data "$payload" \
   "$origin/api/workspaces/smoke-blog/documents/$document_id/draft?collection=posts")"
-node -e 'const input=JSON.parse(process.argv[1]); if(input.draft.version!==1) process.exit(1)' "$saved"
+container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft.version!==1) process.exit(1)' "$saved"
 test -s "$fixture/data/blog-studio.sqlite"
 
 docker stop --time 10 "$container" >/dev/null
@@ -164,6 +168,6 @@ wait_for_health
 
 session="$(login)"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/smoke-blog/documents/$document_id?collection=posts")"
-node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
+container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
 
 echo 'container smoke passed: non-root, read-only root, health, auth, durable draft, SIGTERM, cold restart'
