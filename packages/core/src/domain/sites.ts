@@ -1,5 +1,5 @@
 import type { AdapterDiagnostic } from '../adapters/common.js';
-import type { SiteId, WorkspaceId } from './identifiers.js';
+import type { ContentHash, SiteId, WorkspaceId } from './identifiers.js';
 
 export interface SiteCapabilities {
   readonly generator: string;
@@ -30,6 +30,16 @@ export interface SiteDiscoveryCandidate {
   readonly contentCounts: Readonly<Record<string, number>>;
   readonly capabilities: SiteCapabilities;
   readonly diagnostics: readonly AdapterDiagnostic[];
+  readonly repository:
+    | {
+        readonly available: true;
+        readonly branch: string;
+        readonly head: ContentHash;
+        readonly dirtyCount: number;
+        readonly ahead: number;
+        readonly behind: number;
+      }
+    | { readonly available: false; readonly diagnostic: string };
   readonly advanced: {
     readonly workspaceId: WorkspaceId;
     readonly workspaceRoot: string;

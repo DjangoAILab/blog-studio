@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
+import { createArticleAssetScope } from '@blog-studio/assets';
 import {
   BlogStudioError,
   createContentHash,
@@ -8,6 +10,7 @@ import {
   type ChangeSetReview,
   type FrozenDocumentChange,
   type DocumentRef,
+  type AssetRecord,
 } from '@blog-studio/core';
 import type {
   ChangeSetRecord,
@@ -32,6 +35,41 @@ function canonical(value: unknown): string {
 function fingerprint(value: unknown) {
   return createContentHash(
     `sha256:${createHash('sha256').update(canonical(value)).digest('hex')}`,
+  );
+}
+
+function bytesFingerprint(value: Uint8Array) {
+  return createContentHash(
+    `sha256:${createHash('sha256').update(value).digest('hex')}`,
+  );
+}
+
+async function referencedResources(
+  workspace: ReturnType<WorkspaceService['get']>,
+  workspaceId: string,
+  documents: readonly FrozenDocumentChange[],
+): Promise<readonly AssetRecord[]> {
+  const records = new Map<string, AssetRecord>();
+  for (const document of documents) {
+    const referenceText = canonical({
+      frontMatter: document.frontMatter,
+      body: document.body,
+    });
+    const scope = createArticleAssetScope(
+      createWorkspaceId(workspaceId),
+      document.documentId,
+      workspace.assetRootPrefix,
+    );
+    for (const resource of await workspace.assetProvider.list(scope)) {
+      if (
+        referenceText.includes(resource.publicUrl) ||
+        referenceText.includes(resource.key)
+      )
+        records.set(resource.id, resource);
+    }
+  }
+  return [...records.values()].sort((left, right) =>
+    left.key.localeCompare(right.key),
   );
 }
 
@@ -130,6 +168,10 @@ export class ChangeSetService {
       });
     }
     documents.sort((left, right) => left.path.localeCompare(right.path));
+    const [configurationRevision, resources] = await Promise.all([
+      readFile(workspace.configurationPath).then(bytesFingerprint),
+      referencedResources(workspace, workspaceId, documents),
+    ]);
     const preparedAt = this.now().toISOString();
     const frozen = {
       version: 1,
@@ -137,7 +179,9 @@ export class ChangeSetService {
       workspaceId: createWorkspaceId(workspaceId),
       baseRevision: repositoryStatus.head,
       branch: repositoryStatus.branch,
+      configurationRevision,
       documents,
+      resources,
       repositoryChanges: [...repositoryStatus.changes].sort((left, right) =>
         left.path.localeCompare(right.path),
       ),
@@ -187,14 +231,30 @@ export class ChangeSetService {
       createWorkspaceId(workspaceId),
       root,
     );
+    const currentConfigurationRevision = bytesFingerprint(
+      await readFile(workspace.configurationPath),
+    );
     if (
       repositoryStatus.head !== changeSet.payload.baseRevision ||
+      currentConfigurationRevision !==
+        changeSet.payload.configurationRevision ||
       canonical(repositoryStatus.changes) !==
         canonical(changeSet.payload.repositoryChanges)
     ) {
       this.repository.invalidate(id, this.now().toISOString());
       throw new ChangeSetConflictError(
-        'Repository changed after ChangeSet preparation',
+        'Repository or Site configuration changed after ChangeSet preparation',
+      );
+    }
+    const resources = await referencedResources(
+      workspace,
+      workspaceId,
+      changeSet.payload.documents,
+    );
+    if (canonical(resources) !== canonical(changeSet.payload.resources)) {
+      this.repository.invalidate(id, this.now().toISOString());
+      throw new ChangeSetConflictError(
+        'Referenced resources changed after ChangeSet preparation',
       );
     }
     const documents: ApplyJournalDocument[] = [];

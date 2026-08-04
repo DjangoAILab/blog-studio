@@ -170,6 +170,23 @@ export class SiteService {
             workspace.generator.detect(root),
             workspace.generator.inspect(root),
           ]);
+          const repository = await workspace.repository
+            .status(createWorkspaceId(workspace.config.workspace.id), root)
+            .then((status) => ({
+              available: true as const,
+              branch: status.branch,
+              head: status.head,
+              dirtyCount: status.dirtyPaths.length,
+              ahead: status.ahead,
+              behind: status.behind,
+            }))
+            .catch((error: unknown) => ({
+              available: false as const,
+              diagnostic:
+                error instanceof Error
+                  ? error.message
+                  : 'Repository status is unavailable',
+            }));
           const counts: Record<string, number> = {};
           await Promise.all(
             model.collections.map(async (collection) => {
@@ -191,6 +208,7 @@ export class SiteService {
             ...(normalizedUrl ? { canonicalUrl: normalizedUrl } : {}),
             contentCounts: counts,
             capabilities: capabilities(workspace),
+            repository,
             diagnostics: [...detection.diagnostics, ...model.diagnostics],
             advanced: {
               workspaceId: createWorkspaceId(workspace.config.workspace.id),

@@ -70,6 +70,8 @@ export interface StudioServerOptions {
   readonly assetFactories?: Readonly<Record<string, AssetProviderFactory>>;
   readonly publisherFactories?: ReleaseServiceOptions['publisherFactories'];
   readonly cacheFactories?: ReleaseServiceOptions['cacheFactories'];
+  /** Temporary v0.1 API compatibility; disabled unless explicitly enabled. */
+  readonly allowLegacyReleaseApi?: boolean;
 }
 
 function equalSecret(left: string, right: string): boolean {
@@ -516,6 +518,7 @@ export async function createStudioServer(
     markdownPreviews,
     previews,
     releases,
+    allowLegacyReleaseApi: options.allowLegacyReleaseApi ?? false,
   });
 
   if (options.clientDirectory) {

@@ -44,6 +44,7 @@ interface ApiDependencies {
   readonly markdownPreviews: MarkdownPreviewService;
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
+  readonly allowLegacyReleaseApi: boolean;
 }
 
 const workspaceParams = {
@@ -959,6 +960,15 @@ export function registerApiRoutes(
       },
     },
     async (request, reply) => {
+      if (!dependencies.allowLegacyReleaseApi)
+        return reply.code(410).send({
+          type: 'about:blank',
+          title: 'Legacy live-tree release is disabled',
+          status: 410,
+          code: 'LEGACY_RELEASE_DISABLED',
+          action:
+            'Prepare, apply, and commit a Site ChangeSet before remote release',
+        });
       await dependencies.previews.stop(request.params.workspaceId);
       const release = await dependencies.releases.start(
         request.params.workspaceId,

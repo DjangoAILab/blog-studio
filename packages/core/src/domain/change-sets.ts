@@ -1,4 +1,5 @@
 import type { RepositoryChange } from '../adapters/repository.js';
+import type { AssetRecord } from './assets.js';
 import type { FrontMatterValue } from './documents.js';
 import type {
   ContentHash,
@@ -30,7 +31,9 @@ export interface ChangeSetPayload {
   readonly workspaceId: WorkspaceId;
   readonly baseRevision: ContentHash;
   readonly branch: string;
+  readonly configurationRevision: ContentHash;
   readonly documents: readonly FrozenDocumentChange[];
+  readonly resources: readonly AssetRecord[];
   readonly repositoryChanges: readonly RepositoryChange[];
   readonly preparedAt: string;
 }

@@ -38,6 +38,7 @@ interface FixtureOptions {
   readonly secondWorkspace?: boolean;
   readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
   readonly logger?: StudioServerOptions['logger'];
+  readonly legacyReleaseApi?: boolean;
 }
 
 async function fixture(options: FixtureOptions = {}): Promise<{
@@ -201,6 +202,7 @@ verification:
     cookieSecret,
     allowedOrigins: [origin],
     secureCookies: false,
+    allowLegacyReleaseApi: options.legacyReleaseApi ?? true,
     clientDirectory: client,
     ...(options.logger ? { logger: options.logger } : {}),
     releaseVerifierFactory: () => ({
@@ -508,6 +510,23 @@ describe('Studio workspace API', () => {
 
   it('discovers and confirms a v0.1 workspace as a user-facing Site', async () => {
     const { app, workspace } = await fixture();
+    execFileSync('git', ['-C', workspace, 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.name',
+      'Studio Test',
+    ]);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.email',
+      'studio@example.invalid',
+    ]);
+    execFileSync('git', ['-C', workspace, 'add', '.']);
+    execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
     const session = await login(app);
     const headers = {
       cookie: session.cookie,
@@ -528,6 +547,11 @@ describe('Studio workspace API', () => {
         proposedDisplayName: string;
         canonicalUrl: string;
         contentCounts: Record<string, number>;
+        repository: {
+          available: boolean;
+          head: string;
+          dirtyCount: number;
+        };
         advanced: { workspaceRoot: string; configurationPath: string };
       }>;
     }>().candidates[0];
@@ -539,6 +563,11 @@ describe('Studio workspace API', () => {
       advanced: { workspaceRoot: workspace },
     });
     expect(candidate?.advanced.configurationPath).toMatch(/blog-studio\.yml$/);
+    expect(candidate?.repository).toMatchObject({
+      available: true,
+      dirtyCount: 0,
+    });
+    expect(candidate?.repository.head).toMatch(/^sha256:[a-f0-9]{64}$/);
 
     const registered = await app.inject({
       method: 'POST',
@@ -1904,6 +1933,34 @@ describe('Studio workspace API', () => {
         'utf8',
       ),
     ).toContain('Published draft body');
+  });
+
+  it('disables the legacy live-tree release API by default policy', async () => {
+    const { app, publishTarget } = await fixture({ legacyReleaseApi: false });
+    const session = await login(app);
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers: {
+        cookie: session.cookie,
+        origin,
+        'x-csrf-token': session.csrfToken,
+      },
+      payload: { targetId: 'production' },
+    });
+    expect(rejected.statusCode, rejected.body).toBe(410);
+    expect(rejected.json()).toMatchObject({
+      code: 'LEGACY_RELEASE_DISABLED',
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces/test-blog/releases',
+          headers: { cookie: session.cookie },
+        })
+      ).json(),
+    ).toEqual({ releases: [] });
+    await expect(stat(publishTarget)).rejects.toThrow();
   });
 
   it('promotes exactly one native draft only after a verified release', async () => {

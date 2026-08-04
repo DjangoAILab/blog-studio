@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -8,6 +8,7 @@ import {
   createDocumentId,
   createSiteId,
   createWorkspaceId,
+  type AssetRecord,
   type DocumentSource,
 } from '@blog-studio/core';
 import {
@@ -38,6 +39,8 @@ describe('ChangeSet interrupted-apply recovery', () => {
   it('uses the durable journal to roll a target document back on restart', async () => {
     const root = mkdtempSync(join(tmpdir(), 'blog-studio-change-recovery-'));
     roots.push(root);
+    const configurationPath = join(root, 'blog-studio.yml');
+    writeFileSync(configurationPath, 'version: 1\n');
     const database = openStudioDatabase(join(root, 'studio.sqlite'));
     const siteId = createSiteId('site-one');
     const workspaceId = createWorkspaceId('workspace-one');
@@ -51,9 +54,22 @@ describe('ChangeSet interrupted-apply recovery', () => {
     const original = {
       frontMatter: { title: 'Before' },
       body: 'before\n',
-      revision: hash('before'),
+      revision: hash(JSON.stringify({ title: 'Before' }) + 'before\n'),
     };
     let current = { ...original };
+    let resources: AssetRecord[] = [
+      {
+        id: 'asset-one' as AssetRecord['id'],
+        workspaceId,
+        documentId,
+        key: 'media/posts/post-one/resource.pdf',
+        publicUrl: 'https://assets.example/resource.pdf',
+        mediaType: 'application/pdf',
+        byteLength: 10,
+        contentHash: hash('resource'),
+        createdAt: '2026-08-04T00:00:00.000Z',
+      },
+    ];
     const generator = {
       id: 'test',
       inspect: () =>
@@ -98,8 +114,11 @@ describe('ChangeSet interrupted-apply recovery', () => {
       },
     };
     const workspace = {
+      configurationPath,
       config: { workspace: { id: workspaceId, root } },
       generator,
+      assetRootPrefix: 'media/posts',
+      assetProvider: { list: () => Promise.resolve(resources) },
       repository: {
         status: () =>
           Promise.resolve({
@@ -146,7 +165,7 @@ describe('ChangeSet interrupted-apply recovery', () => {
       expectedVersion: 0,
       sourceRevision: original.revision,
       frontMatter: { title: 'After' },
-      body: 'after\n',
+      body: 'after\n[resource](https://assets.example/resource.pdf)\n',
       savedAt: '2026-08-04T00:00:01.000Z',
     });
     const records = new SqliteChangeSetRepository(database);
@@ -180,6 +199,20 @@ describe('ChangeSet interrupted-apply recovery', () => {
     expect(current.body).toBe(original.body);
     expect(records.applying()).toEqual([]);
     expect(records.get(prepared.id)?.status).toBe('prepared');
+
+    writeFileSync(configurationPath, 'version: 1\nsite: changed\n');
+    await expect(service.apply(siteId, prepared.id)).rejects.toThrow(
+      'Repository or Site configuration changed after ChangeSet preparation',
+    );
+    expect(records.get(prepared.id)?.status).toBe('invalidated');
+
+    writeFileSync(configurationPath, 'version: 1\n');
+    const resourcePrepared = await service.prepare(siteId);
+    resources = [{ ...resources[0]!, byteLength: 11 }];
+    await expect(service.apply(siteId, resourcePrepared.id)).rejects.toThrow(
+      'Referenced resources changed after ChangeSet preparation',
+    );
+    expect(records.get(resourcePrepared.id)?.status).toBe('invalidated');
     database.close();
   });
 });
