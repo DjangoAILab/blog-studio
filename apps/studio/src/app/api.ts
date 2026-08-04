@@ -79,6 +79,33 @@ export interface DocumentPayload {
   };
 }
 
+export type ContentState = 'draft' | 'published' | 'modified';
+
+export interface ContentSummary {
+  readonly documentId: string;
+  readonly collectionId: string;
+  readonly path: string;
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly state: ContentState;
+  readonly sourceState: 'draft' | 'published';
+  readonly updatedAt?: string;
+  readonly workingCopy?: {
+    readonly version: number;
+    readonly savedAt: string;
+    readonly sourceRevision: string;
+    readonly stale: boolean;
+  };
+}
+
+export interface ContentQueryResult {
+  readonly items: readonly ContentSummary[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly counts: Readonly<Record<'all' | ContentState, number>>;
+}
+
 export interface OrphanAssetPlan {
   readonly confirmation: string;
   readonly sourceRevision: string;
@@ -155,6 +182,79 @@ export class StudioApi {
   public workspaces() {
     return this.#request<{ workspaces: readonly WorkspaceSummary[] }>(
       '/api/workspaces',
+    );
+  }
+
+  public content(
+    siteId: string,
+    query: {
+      readonly search?: string;
+      readonly collection?: string;
+      readonly state?: ContentState;
+      readonly tag?: string;
+      readonly from?: string;
+      readonly to?: string;
+      readonly page?: number;
+      readonly pageSize?: number;
+    } = {},
+  ) {
+    const parameters = new URLSearchParams();
+    if (query.search) parameters.set('search', query.search);
+    if (query.collection) parameters.set('collection', query.collection);
+    if (query.state) parameters.set('state', query.state);
+    if (query.tag) parameters.set('tag', query.tag);
+    if (query.from) parameters.set('from', query.from);
+    if (query.to) parameters.set('to', query.to);
+    if (query.page !== undefined) parameters.set('page', String(query.page));
+    if (query.pageSize !== undefined)
+      parameters.set('pageSize', String(query.pageSize));
+    const suffix = parameters.size > 0 ? `?${parameters.toString()}` : '';
+    return this.#request<{ content: ContentQueryResult }>(
+      `/api/sites/${siteId}/content${suffix}`,
+    );
+  }
+
+  public siteDocument(siteId: string, documentId: string, collection: string) {
+    return this.#request<DocumentPayload & { readonly stale: boolean }>(
+      `/api/sites/${siteId}/content/${documentId}?collection=${encodeURIComponent(collection)}`,
+    );
+  }
+
+  public saveWorkingCopy(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedVersion: number;
+    readonly sourceRevision: string;
+    readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly body: string;
+  }) {
+    return this.#request<{ draft: { version: number } }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedVersion: input.expectedVersion,
+          sourceRevision: input.sourceRevision,
+          frontMatter: input.frontMatter,
+          body: input.body,
+        }),
+      },
+    );
+  }
+
+  public discardWorkingCopy(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedVersion: number;
+  }) {
+    return this.#request<{ discarded: true }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ expectedVersion: input.expectedVersion }),
+      },
     );
   }
 

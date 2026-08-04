@@ -50,14 +50,16 @@ describe('SQLite draft repository', () => {
     firstDatabase.close();
 
     const secondDatabase = openStudioDatabase(path);
-    const restored = new SqliteDraftRepository(secondDatabase).get(
-      workspaceId,
-      documentId,
-    );
+    const secondRepository = new SqliteDraftRepository(secondDatabase);
+    const restored = secondRepository.get(workspaceId, documentId);
+    const listed = secondRepository.listMetadataForWorkspace(workspaceId);
     secondDatabase.close();
 
+    const { body, ...metadata } = saved;
     expect(saved.version).toBe(1);
+    expect(body).toBe('# Durable draft');
     expect(restored).toEqual(saved);
+    expect(listed).toEqual([metadata]);
   });
 
   it('rejects a stale optimistic revision without overwriting', () => {

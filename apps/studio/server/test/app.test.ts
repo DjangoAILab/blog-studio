@@ -641,8 +641,192 @@ describe('Studio workspace API', () => {
     });
   });
 
+  it('queries published, draft, and modified content through the Site contract', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Content Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const initial = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    expect(initial.statusCode, initial.body).toBe(200);
+    const initialContent = initial.json<{
+      content: {
+        items: Array<{
+          documentId: string;
+          collectionId: string;
+          state: string;
+          path: string;
+        }>;
+        counts: Record<string, number>;
+      };
+    }>().content;
+    expect(initialContent).toMatchObject({
+      counts: { all: 1, published: 1, draft: 0, modified: 0 },
+      items: [{ state: 'published', collectionId: 'posts' }],
+    });
+    expect(JSON.stringify(initialContent)).not.toContain('Body');
+    const published = initialContent.items[0];
+    if (!published) throw new Error('fixture post missing');
+
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${published.documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+        body: string;
+      };
+    }>().source;
+    const workingCopyUrl = `/api/sites/${siteId}/content/${published.documentId}/working-copy?collection=posts`;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: workingCopyUrl,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: {
+          ...source.frontMatter,
+          title: 'Edited Hello',
+          tags: ['Release', '中文'],
+        },
+        body: 'SQLite working copy only\n',
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(saved.json()).toMatchObject({ draft: { version: 1 } });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Body');
+
+    const nativeDraft = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Native idea', slug: 'native-idea' },
+    });
+    expect(nativeDraft.statusCode, nativeDraft.body).toBe(201);
+
+    const merged = await app.inject({
+      url: `/api/sites/${siteId}/content?page=1&pageSize=1`,
+      headers,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+    expect(merged.json()).toMatchObject({
+      content: {
+        page: 1,
+        pageSize: 1,
+        total: 2,
+        counts: { all: 2, published: 0, draft: 1, modified: 1 },
+        items: [{ title: 'Native idea', state: 'draft' }],
+      },
+    });
+    const filtered = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified&tag=release&search=edited&pageSize=10`,
+      headers,
+    });
+    expect(filtered.json()).toMatchObject({
+      content: {
+        total: 1,
+        items: [
+          {
+            documentId: published.documentId,
+            title: 'Edited Hello',
+            state: 'modified',
+            sourceState: 'published',
+            tags: ['Release', '中文'],
+            workingCopy: { version: 1, stale: false },
+          },
+        ],
+      },
+    });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?search=source%2F_posts&collection=posts`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({
+      content: {
+        total: 1,
+        items: [{ documentId: published.documentId, state: 'modified' }],
+      },
+    });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?collection=drafts`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 1, items: [{ state: 'draft' }] } });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?to=2000-01-01T00%3A00%3A00.000Z`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 0 } });
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: Canonical changed\ndate: 2026-08-02 10:00:00\n---\nChanged elsewhere\n',
+    );
+    const staleList = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified`,
+      headers,
+    });
+    expect(staleList.json()).toMatchObject({
+      content: { items: [{ workingCopy: { version: 1, stale: true } }] },
+    });
+    const staleSave = await app.inject({
+      method: 'PUT',
+      url: workingCopyUrl,
+      headers,
+      payload: {
+        expectedVersion: 1,
+        sourceRevision: source.revision,
+        frontMatter: { title: 'Must not overwrite' },
+        body: 'stale',
+      },
+    });
+    expect(staleSave.statusCode).toBe(409);
+    expect(staleSave.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
+
+    const staleDiscard = await app.inject({
+      method: 'DELETE',
+      url: workingCopyUrl,
+      headers,
+      payload: { expectedVersion: 2 },
+    });
+    expect(staleDiscard.statusCode).toBe(409);
+    const discarded = await app.inject({
+      method: 'DELETE',
+      url: workingCopyUrl,
+      headers,
+      payload: { expectedVersion: 1 },
+    });
+    expect(discarded.statusCode, discarded.body).toBe(200);
+  });
+
   it('scans, lists, reads, and autosaves with optimistic conflicts', async () => {
-    const { app } = await fixture();
+    const { app, workspace } = await fixture();
     const session = await login(app);
     const getHeaders = { cookie: session.cookie };
     const mutationHeaders = {
@@ -694,6 +878,18 @@ describe('Studio workspace API', () => {
     });
     expect(conflict.statusCode, conflict.body).toBe(409);
     expect(conflict.json()).toMatchObject({ code: 'REVISION_CONFLICT' });
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: Changed outside Studio\ndate: 2026-08-02 10:00:00\n---\nExternal change\n',
+    );
+    const sourceConflict = await app.inject({
+      method: 'PUT',
+      url,
+      headers: mutationHeaders,
+      payload: { ...payload, expectedVersion: 1 },
+    });
+    expect(sourceConflict.statusCode, sourceConflict.body).toBe(409);
+    expect(sourceConflict.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
   });
 
   it('creates native drafts and discards only a version-matched snapshot', async () => {

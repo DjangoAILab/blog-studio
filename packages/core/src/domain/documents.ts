@@ -1,4 +1,9 @@
-import type { ContentHash, DocumentId, WorkspaceId } from './identifiers.js';
+import type {
+  ContentHash,
+  DocumentId,
+  SiteId,
+  WorkspaceId,
+} from './identifiers.js';
 
 export type FrontMatterValue =
   | string
@@ -62,9 +67,39 @@ export interface PromoteDocumentResult {
 
 export interface DocumentSummary {
   readonly ref: DocumentRef;
+  readonly revision: ContentHash;
   readonly title: string;
+  readonly tags: readonly string[];
   readonly updatedAt?: string;
   readonly state: 'draft' | 'published';
+}
+
+export type ContentState = 'draft' | 'published' | 'modified';
+
+export interface ContentSummary {
+  readonly siteId: SiteId;
+  readonly documentId: DocumentId;
+  readonly collectionId: string;
+  readonly path: string;
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly state: ContentState;
+  readonly sourceState: 'draft' | 'published';
+  readonly updatedAt?: string;
+  readonly workingCopy?: {
+    readonly version: number;
+    readonly savedAt: string;
+    readonly sourceRevision: ContentHash;
+    readonly stale: boolean;
+  };
+}
+
+export interface ContentQueryResult {
+  readonly items: readonly ContentSummary[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly counts: Readonly<Record<'all' | ContentState, number>>;
 }
 
 export interface ContentCollection {

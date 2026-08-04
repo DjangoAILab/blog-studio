@@ -40,6 +40,8 @@ describe('CommandGeneratorAdapter', () => {
     });
     const documents = await adapter.listDocuments(root, 'notes');
     expect(documents[0]?.title).toBe('Hello');
+    expect(documents[0]?.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(documents[0]?.tags).toEqual([]);
     if (!documents[0]) throw new Error('fixture document missing');
     await expect(
       adapter.resolvePublicUrl(root, documents[0].ref),

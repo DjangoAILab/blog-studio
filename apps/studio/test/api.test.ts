@@ -65,6 +65,54 @@ describe('StudioApi', () => {
     });
   });
 
+  it('queries and saves content through the Site-first working-copy contract', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ content: { items: [] } }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new StudioApi('csrf-token');
+
+    await api.content('site-one', {
+      search: 'hello world',
+      state: 'modified',
+      tag: 'release',
+      page: 2,
+      pageSize: 10,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/sites/site-one/content?search=hello+world&state=modified&tag=release&page=2&pageSize=10',
+    );
+
+    await api.saveWorkingCopy({
+      siteId: 'site-one',
+      documentId: 'hello-world',
+      collection: 'published posts',
+      expectedVersion: 3,
+      sourceRevision: 'sha256:source',
+      frontMatter: { title: 'Edited' },
+      body: '# Edited',
+    });
+    const [url, request] = fetchMock.mock.calls[1] ?? [];
+    expect(url).toBe(
+      '/api/sites/site-one/content/hello-world/working-copy?collection=published%20posts',
+    );
+    expect(request?.method).toBe('PUT');
+    expect(request?.headers).toMatchObject({ 'x-csrf-token': 'csrf-token' });
+    if (typeof request?.body !== 'string')
+      throw new Error('Expected a JSON string request body');
+    expect(JSON.parse(request.body)).toEqual({
+      expectedVersion: 3,
+      sourceRevision: 'sha256:source',
+      frontMatter: { title: 'Edited' },
+      body: '# Edited',
+    });
+  });
+
   it('starts a release with the exact saved draft version', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

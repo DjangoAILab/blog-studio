@@ -21,6 +21,8 @@ export interface DraftSnapshot {
   readonly savedAt: string;
 }
 
+export type DraftMetadata = Omit<DraftSnapshot, 'body'>;
+
 export interface SaveDraftInput {
   readonly workspaceId: WorkspaceId;
   readonly documentId: DocumentId;
@@ -74,6 +76,17 @@ function decodeDraft(row: DraftRow): DraftSnapshot {
   };
 }
 
+function decodeDraftMetadata(row: Omit<DraftRow, 'body'>): DraftMetadata {
+  return {
+    workspaceId: createWorkspaceId(row.workspace_id),
+    documentId: createDocumentId(row.document_id),
+    version: row.version,
+    sourceRevision: createContentHash(row.source_revision),
+    frontMatter: decodeFrontMatter(row.front_matter_json),
+    savedAt: row.saved_at,
+  };
+}
+
 export class SqliteDraftRepository {
   public constructor(private readonly database: StudioDatabase) {}
 
@@ -90,6 +103,22 @@ export class SqliteDraftRepository {
       )
       .get(workspaceId, documentId) as DraftRow | undefined;
     return row === undefined ? null : decodeDraft(row);
+  }
+
+  public listMetadataForWorkspace(
+    workspaceId: WorkspaceId,
+  ): readonly DraftMetadata[] {
+    return (
+      this.database
+        .prepare(
+          `SELECT workspace_id, document_id, version, source_revision,
+                  front_matter_json, saved_at
+             FROM drafts
+            WHERE workspace_id = ?
+            ORDER BY saved_at DESC, document_id`,
+        )
+        .all(workspaceId) as unknown as Array<Omit<DraftRow, 'body'>>
+    ).map(decodeDraftMetadata);
   }
 
   public save(input: SaveDraftInput): DraftSnapshot {

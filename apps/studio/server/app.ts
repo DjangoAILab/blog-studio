@@ -31,6 +31,7 @@ import {
 } from './auth/owner-auth.js';
 import { PasswordPolicyError } from './auth/passwords.js';
 import { registerApiRoutes } from './routes/api.js';
+import { ContentService } from './services/content.js';
 import { PreviewService } from './services/previews.js';
 import {
   BaselineAdoptionRequiredError,
@@ -136,6 +137,7 @@ export async function createStudioServer(
   );
   const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
   const drafts = new SqliteDraftRepository(database);
+  const content = new ContentService(sites, workspaces, drafts);
   const previews = new PreviewService(workspaces);
   const releases = new ReleaseService({
     workspaces,
@@ -484,6 +486,7 @@ export async function createStudioServer(
   registerApiRoutes(app, {
     workspaces,
     sites,
+    content,
     drafts,
     previews,
     releases,

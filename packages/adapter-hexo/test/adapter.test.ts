@@ -55,6 +55,8 @@ describe('HexoGeneratorAdapter', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]?.ref.path).toBe('source/_posts/你好-世界.md');
     expect(posts[0]?.title).toBe('你好，世界');
+    expect(posts[0]?.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(posts[0]?.tags).toEqual(['测试']);
     expect(drafts[0]?.state).toBe('draft');
   });
 

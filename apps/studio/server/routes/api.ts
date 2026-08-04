@@ -18,6 +18,10 @@ import {
 } from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
 
+import {
+  SourceRevisionConflictError,
+  type ContentService,
+} from '../services/content.js';
 import type { PreviewService } from '../services/previews.js';
 import type { SiteService } from '../services/sites.js';
 import {
@@ -29,6 +33,7 @@ import type { WorkspaceService } from '../services/workspaces.js';
 interface ApiDependencies {
   readonly workspaces: WorkspaceService;
   readonly sites: SiteService;
+  readonly content: ContentService;
   readonly drafts: SqliteDraftRepository;
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
@@ -49,6 +54,19 @@ const siteParams = {
   required: ['siteId'],
   properties: {
     siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
+  },
+} as const;
+
+const siteDocumentParams = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['siteId', 'documentId'],
+  properties: {
+    siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
+    documentId: {
+      type: 'string',
+      pattern: '^[a-z0-9][a-z0-9._-]*$',
+    },
   },
 } as const;
 
@@ -324,6 +342,138 @@ export function registerApiRoutes(
         ...request.body,
       }),
     }),
+  );
+
+  app.get<{
+    Params: { siteId: string };
+    Querystring: {
+      search?: string;
+      collection?: string;
+      state?: 'draft' | 'published' | 'modified';
+      tag?: string;
+      from?: string;
+      to?: string;
+      page?: number;
+      pageSize?: number;
+    };
+  }>(
+    '/api/sites/:siteId/content',
+    {
+      schema: {
+        params: siteParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            search: { type: 'string', minLength: 1, maxLength: 200 },
+            collection: { type: 'string', minLength: 1, maxLength: 64 },
+            state: { enum: ['draft', 'published', 'modified'] },
+            tag: { type: 'string', minLength: 1, maxLength: 100 },
+            from: { type: 'string', format: 'date-time' },
+            to: { type: 'string', format: 'date-time' },
+            page: { type: 'integer', minimum: 1, maximum: 1_000_000 },
+            pageSize: { type: 'integer', minimum: 1, maximum: 100 },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      content: await dependencies.content.list(
+        request.params.siteId,
+        request.query,
+      ),
+    }),
+  );
+
+  app.get<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId',
+    {
+      schema: { params: siteDocumentParams, querystring: collectionQuery },
+    },
+    async (request) =>
+      await dependencies.content.read(
+        request.params.siteId,
+        request.query.collection,
+        request.params.documentId,
+      ),
+  );
+
+  app.put<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: {
+      expectedVersion: number;
+      sourceRevision: string;
+      frontMatter: Record<string, FrontMatterValue>;
+      body: string;
+    };
+  }>(
+    '/api/sites/:siteId/content/:documentId/working-copy',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'expectedVersion',
+            'sourceRevision',
+            'frontMatter',
+            'body',
+          ],
+          properties: {
+            expectedVersion: { type: 'integer', minimum: 0 },
+            sourceRevision: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+            },
+            frontMatter: { type: 'object', additionalProperties: true },
+            body: { type: 'string', maxLength: 1_500_000 },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      draft: await dependencies.content.save({
+        siteId: request.params.siteId,
+        collectionId: request.query.collection,
+        documentId: request.params.documentId,
+        ...request.body,
+      }),
+    }),
+  );
+
+  app.delete<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { expectedVersion: number };
+  }>(
+    '/api/sites/:siteId/content/:documentId/working-copy',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedVersion'],
+          properties: { expectedVersion: { type: 'integer', minimum: 1 } },
+        },
+      },
+    },
+    async (request) => {
+      await dependencies.content.discard({
+        siteId: request.params.siteId,
+        collectionId: request.query.collection,
+        documentId: request.params.documentId,
+        expectedVersion: request.body.expectedVersion,
+      });
+      return { discarded: true };
+    },
   );
 
   app.get('/api/workspaces', () => ({
@@ -679,6 +829,17 @@ export function registerApiRoutes(
         request.query.collection,
         request.params.documentId,
       );
+      const workspace = dependencies.workspaces.get(request.params.workspaceId);
+      const source = await workspace.generator.readDocument(
+        workspace.config.workspace.root,
+        ref,
+      );
+      if (source.revision !== request.body.sourceRevision) {
+        throw new SourceRevisionConflictError(
+          request.body.sourceRevision,
+          source.revision,
+        );
+      }
       const snapshot = dependencies.drafts.save({
         workspaceId: ref.workspaceId,
         documentId: ref.documentId,

@@ -82,6 +82,12 @@ function hash(content: string | Buffer): ContentHash {
   );
 }
 
+function stringList(value: FrontMatterValue | undefined): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
 function documentId(path: string) {
   return createDocumentId(`doc-${hash(path).slice('sha256:'.length, 25)}`);
 }
@@ -237,10 +243,12 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
               documentId: documentId(documentPath),
               path: documentPath,
             },
+            revision: hash(raw),
             title:
               typeof frontMatter.title === 'string'
                 ? frontMatter.title
                 : basename(path, extname(path)),
+            tags: stringList(frontMatter.tags),
             updatedAt: details.mtime.toISOString(),
             state: collection.state ?? 'published',
           };

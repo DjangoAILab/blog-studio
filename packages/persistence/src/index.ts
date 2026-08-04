@@ -20,6 +20,7 @@ export {
 export {
   RevisionConflictError,
   SqliteDraftRepository,
+  type DraftMetadata,
   type DraftSnapshot,
   type SaveDraftInput,
 } from './drafts.js';

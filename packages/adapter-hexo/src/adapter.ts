@@ -62,6 +62,12 @@ function stringValue(value: FrontMatterValue | undefined): string | undefined {
     : undefined;
 }
 
+function stringList(value: FrontMatterValue | undefined): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
 function hexoDateParts(
   value: string,
 ):
@@ -259,8 +265,10 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
             documentId: safeId(relativePath),
             path: relativePath,
           },
+          revision: hashContent(raw),
           title:
             stringValue(frontMatter.title) ?? basename(path, extname(path)),
+          tags: stringList(frontMatter.tags),
           updatedAt:
             stringValue(frontMatter.updated) ?? details.mtime.toISOString(),
           state: collectionId === 'drafts' ? 'draft' : 'published',
