@@ -25,6 +25,7 @@ import type {
 import { FilesystemAssetProvider } from '@blog-studio/storage-filesystem';
 
 export interface WorkspaceHandle {
+  readonly configurationPath: string;
   readonly config: BlogStudioConfig;
   readonly generator: GeneratorAdapter;
   readonly assetProvider: AssetProvider;
@@ -333,6 +334,7 @@ export class WorkspaceService {
       const generator = createGenerator(config);
       const assets = await createAssets(config, options.assetFactories ?? {});
       service.#workspaces.set(config.workspace.id, {
+        configurationPath,
         config,
         generator,
         assetProvider: assets.provider,

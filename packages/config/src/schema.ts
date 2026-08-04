@@ -59,6 +59,13 @@ const httpUrlSchema = z.url().refine((value) => {
 export const blogStudioConfigSchema = z
   .object({
     version: z.literal(CONFIG_SCHEMA_VERSION),
+    site: z
+      .object({
+        displayName: z.string().trim().min(1).max(120),
+        canonicalUrl: httpUrlSchema.optional(),
+      })
+      .strict()
+      .optional(),
     workspace: z
       .object({
         id: z

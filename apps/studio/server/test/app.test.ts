@@ -34,6 +34,7 @@ interface FixtureOptions {
   readonly existingCosObjects?: Map<string, Uint8Array>;
   readonly ownerPassword?: string;
   readonly omitLegacyAuthToken?: boolean;
+  readonly secondWorkspace?: boolean;
   readonly logger?: StudioServerOptions['logger'];
 }
 
@@ -94,9 +95,7 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
   const usesCosBaseline = options.existingCosObjects !== undefined;
-  await writeFile(
-    configPath,
-    `version: 1
+  const configuration = `version: 1
 workspace:
   id: test-blog
   root: ${workspace}
@@ -125,8 +124,17 @@ publish:
     }
 verification:
   baseUrl: https://blog.example.test
-`,
-  );
+`;
+  await writeFile(configPath, configuration);
+  const configurationPaths = [configPath];
+  if (options.secondWorkspace) {
+    const secondConfigPath = join(parent, 'blog-studio-second.yml');
+    await writeFile(
+      secondConfigPath,
+      configuration.replace('id: test-blog', 'id: second-blog'),
+    );
+    configurationPaths.push(secondConfigPath);
+  }
 
   const cosObjects = options.existingCosObjects;
   const cosClient: CosPublisherClient | undefined = cosObjects
@@ -175,7 +183,7 @@ verification:
     database.close();
   }
   const app = await createStudioServer({
-    configurationPaths: [configPath],
+    configurationPaths,
     allowedWorkspaceRoot: parent,
     databasePath,
     ...(options.omitLegacyAuthToken ? {} : { authToken }),
@@ -485,6 +493,152 @@ describe('Studio workspace API', () => {
       payload: { token: authToken },
     });
     expect(rejected.statusCode).toBe(403);
+  });
+
+  it('discovers and confirms a v0.1 workspace as a user-facing Site', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    expect((await app.inject({ url: '/api/sites', headers })).json()).toEqual({
+      sites: [],
+    });
+    const discovery = await app.inject({
+      url: '/api/sites/discover',
+      headers,
+    });
+    expect(discovery.statusCode, discovery.body).toBe(200);
+    const candidate = discovery.json<{
+      candidates: Array<{
+        candidateId: string;
+        proposedDisplayName: string;
+        canonicalUrl: string;
+        contentCounts: Record<string, number>;
+        advanced: { workspaceRoot: string; configurationPath: string };
+      }>;
+    }>().candidates[0];
+    expect(candidate).toMatchObject({
+      candidateId: 'test-blog',
+      proposedDisplayName: 'test-blog',
+      canonicalUrl: 'https://blog.example.test/',
+      contentCounts: { posts: 1, drafts: 0 },
+      advanced: { workspaceRoot: workspace },
+    });
+    expect(candidate?.advanced.configurationPath).toMatch(/blog-studio\.yml$/);
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'test-blog',
+        displayName: '测试博客',
+        canonicalUrl: 'https://blog.example.test',
+      },
+    });
+    expect(registered.statusCode, registered.body).toBe(201);
+    const site = registered.json<{
+      site: {
+        id: string;
+        displayName: string;
+        canonicalUrl: string;
+        updatedAt: string;
+        workspaceId?: string;
+      };
+    }>().site;
+    expect(site).toMatchObject({
+      displayName: '测试博客',
+      canonicalUrl: 'https://blog.example.test/',
+    });
+    expect(site.id).toMatch(/^site-[a-f0-9-]+$/);
+    expect(site.workspaceId).toBeUndefined();
+    expect(
+      (await app.inject({ url: '/api/sites/discover', headers })).json(),
+    ).toEqual({ candidates: [] });
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: site.updatedAt,
+        displayName: '测试博客 Studio',
+        canonicalUrl: 'https://writing.example.test',
+      },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json()).toMatchObject({
+      site: {
+        displayName: '测试博客 Studio',
+        canonicalUrl: 'https://writing.example.test/',
+      },
+    });
+    const stale = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: site.updatedAt,
+        displayName: '陈旧设置',
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(
+      await readFile(join(workspace, '..', 'blog-studio.yml'), 'utf8'),
+    ).not.toContain('测试博客 Studio');
+  });
+
+  it('rejects duplicate Site identity and unsupported canonical URLs', async () => {
+    const { app } = await fixture({ secondWorkspace: true });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'test-blog',
+        displayName: 'Same Site',
+      },
+    });
+    expect(first.statusCode, first.body).toBe(201);
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'second-blog',
+        displayName: 'same site',
+      },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      title: 'A Site already exists with the same displayName',
+    });
+
+    const unsupportedUrl = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${first.json<{ site: { id: string } }>().site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: first.json<{ site: { updatedAt: string } }>().site
+          .updatedAt,
+        displayName: 'Same Site',
+        canonicalUrl: 'ftp://blog.example.test',
+      },
+    });
+    expect(unsupportedUrl.statusCode).toBe(422);
+    expect(unsupportedUrl.json()).toMatchObject({
+      title: 'Site canonical URL must use HTTP or HTTPS',
+    });
   });
 
   it('scans, lists, reads, and autosaves with optimistic conflicts', async () => {

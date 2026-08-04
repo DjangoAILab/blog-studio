@@ -11,6 +11,9 @@ import {
   RevisionConflictError,
   SqliteOwnerCredentialRepository,
   SqliteOwnerSessionRepository,
+  SiteAlreadyExistsError,
+  SiteRevisionConflictError,
+  SqliteSiteRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
   openStudioDatabase,
@@ -39,6 +42,7 @@ import {
   WorkspaceService,
   type AssetProviderFactory,
 } from './services/workspaces.js';
+import { SiteService, SiteValidationError } from './services/sites.js';
 
 const SESSION_COOKIE = 'blog_studio_session';
 const CSRF_COOKIE = 'blog_studio_csrf';
@@ -130,6 +134,7 @@ export async function createStudioServer(
     new SqliteOwnerCredentialRepository(database),
     new SqliteOwnerSessionRepository(database),
   );
+  const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
   const drafts = new SqliteDraftRepository(database);
   const previews = new PreviewService(workspaces);
   const releases = new ReleaseService({
@@ -430,34 +435,39 @@ export async function createStudioServer(
           ? 422
           : error instanceof OwnerNotInitializedError
             ? 409
-            : error instanceof RevisionConflictError
+            : error instanceof SiteAlreadyExistsError ||
+                error instanceof SiteRevisionConflictError
               ? 409
-              : error instanceof BlogStudioError &&
-                  error.code === 'DOCUMENT_CONFLICT'
-                ? 409
-                : error instanceof ActiveReleaseConflictError
+              : error instanceof SiteValidationError
+                ? 422
+                : error instanceof RevisionConflictError
                   ? 409
-                  : error instanceof BaselineAdoptionRequiredError ||
-                      error instanceof BaselineAlreadyAdoptedError ||
-                      message ===
-                        'Existing deployment baseline must be adopted before publishing' ||
-                      message === 'A verified baseline already exists'
+                  : error instanceof BlogStudioError &&
+                      error.code === 'DOCUMENT_CONFLICT'
                     ? 409
-                    : error instanceof AssetPolicyError
-                      ? error.code === 'ASSET_TOO_LARGE'
-                        ? 413
-                        : 422
-                      : message === 'Draft source revision conflict'
+                    : error instanceof ActiveReleaseConflictError
+                      ? 409
+                      : error instanceof BaselineAdoptionRequiredError ||
+                          error instanceof BaselineAlreadyAdoptedError ||
+                          message ===
+                            'Existing deployment baseline must be adopted before publishing' ||
+                          message === 'A verified baseline already exists'
                         ? 409
-                        : message.startsWith('Invalid Hexo document date:')
-                          ? 422
-                          : validationError
-                            ? 400
-                            : declaredStatus !== undefined
-                              ? declaredStatus
-                              : /^(Unknown|Unsupported)/.test(message)
-                                ? 404
-                                : 500;
+                        : error instanceof AssetPolicyError
+                          ? error.code === 'ASSET_TOO_LARGE'
+                            ? 413
+                            : 422
+                          : message === 'Draft source revision conflict'
+                            ? 409
+                            : message.startsWith('Invalid Hexo document date:')
+                              ? 422
+                              : validationError
+                                ? 400
+                                : declaredStatus !== undefined
+                                  ? declaredStatus
+                                  : /^(Unknown|Unsupported)/.test(message)
+                                    ? 404
+                                    : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
@@ -473,6 +483,7 @@ export async function createStudioServer(
 
   registerApiRoutes(app, {
     workspaces,
+    sites,
     drafts,
     previews,
     releases,

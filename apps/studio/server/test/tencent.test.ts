@@ -290,6 +290,7 @@ verification:
     const assets = await factories.assetFactories['tencent-cos']!(config);
     const workspace = {
       config,
+      configurationPath: '/config/blog-studio.yml',
       generator: {} as never,
       assetProvider: assets.provider,
       assetRootPrefix: assets.rootPrefix,
@@ -342,6 +343,7 @@ verification:
     );
     const provider = factories.cacheFactories['tencent-cdn']!({
       config: cdnConfig,
+      configurationPath: '/config/blog-studio.yml',
       generator: {} as never,
       assetProvider: {} as never,
       assetRootPrefix: 'assets',

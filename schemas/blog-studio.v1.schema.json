@@ -6,6 +6,22 @@
       "type": "number",
       "const": 1
     },
+    "site": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": ["displayName"],
+      "additionalProperties": false
+    },
     "workspace": {
       "type": "object",
       "properties": {

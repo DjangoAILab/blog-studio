@@ -19,6 +19,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 
 import type { PreviewService } from '../services/previews.js';
+import type { SiteService } from '../services/sites.js';
 import {
   BASELINE_ADOPTION_CONFIRMATION,
   type ReleaseService,
@@ -27,6 +28,7 @@ import type { WorkspaceService } from '../services/workspaces.js';
 
 interface ApiDependencies {
   readonly workspaces: WorkspaceService;
+  readonly sites: SiteService;
   readonly drafts: SqliteDraftRepository;
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
@@ -38,6 +40,15 @@ const workspaceParams = {
   required: ['workspaceId'],
   properties: {
     workspaceId: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+  },
+} as const;
+
+const siteParams = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['siteId'],
+  properties: {
+    siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
   },
 } as const;
 
@@ -231,6 +242,89 @@ export function registerApiRoutes(
   dependencies: ApiDependencies,
 ): void {
   app.get('/api/health', () => ({ status: 'ok' as const }));
+
+  app.get('/api/sites', () => ({ sites: dependencies.sites.list() }));
+
+  app.get('/api/sites/discover', async () => ({
+    candidates: await dependencies.sites.discover(),
+  }));
+
+  app.post<{
+    Body: {
+      candidateId: string;
+      displayName: string;
+      canonicalUrl?: string;
+    };
+  }>(
+    '/api/sites',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['candidateId', 'displayName'],
+          properties: {
+            candidateId: {
+              type: 'string',
+              pattern: '^[a-z0-9][a-z0-9._-]*$',
+            },
+            displayName: { type: 'string', minLength: 1, maxLength: 120 },
+            canonicalUrl: {
+              type: 'string',
+              format: 'uri',
+              maxLength: 2048,
+            },
+          },
+        },
+      },
+    },
+    (request, reply) => {
+      const site = dependencies.sites.register(request.body);
+      return reply.code(201).send({ site });
+    },
+  );
+
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId',
+    { schema: { params: siteParams } },
+    (request) => ({ site: dependencies.sites.get(request.params.siteId) }),
+  );
+
+  app.patch<{
+    Params: { siteId: string };
+    Body: {
+      expectedUpdatedAt: string;
+      displayName: string;
+      canonicalUrl?: string;
+    };
+  }>(
+    '/api/sites/:siteId',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedUpdatedAt', 'displayName'],
+          properties: {
+            expectedUpdatedAt: { type: 'string', format: 'date-time' },
+            displayName: { type: 'string', minLength: 1, maxLength: 120 },
+            canonicalUrl: {
+              type: 'string',
+              format: 'uri',
+              maxLength: 2048,
+            },
+          },
+        },
+      },
+    },
+    (request) => ({
+      site: dependencies.sites.update({
+        siteId: request.params.siteId,
+        ...request.body,
+      }),
+    }),
+  );
 
   app.get('/api/workspaces', () => ({
     workspaces: dependencies.workspaces.list().map((workspace) => ({

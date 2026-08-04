@@ -68,6 +68,29 @@ describe('blog-studio configuration schema', () => {
     expect(result.publish.options).toEqual({});
   });
 
+  it('accepts optional user-facing Site identity without requiring it from v0.1', () => {
+    const legacy = parseBlogStudioConfig(validConfig);
+    expect(legacy.site).toBeUndefined();
+
+    const withSite = parseBlogStudioConfig({
+      ...validConfig,
+      site: {
+        displayName: '王二的博客',
+        canonicalUrl: 'https://blog.wj2015.com',
+      },
+    });
+    expect(withSite.site).toEqual({
+      displayName: '王二的博客',
+      canonicalUrl: 'https://blog.wj2015.com',
+    });
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        site: { displayName: '', canonicalUrl: 'file:///tmp/blog' },
+      }),
+    ).toThrow();
+  });
+
   it('parses YAML using the same strict schema', () => {
     const result = parseBlogStudioConfigYaml(`
 version: 1

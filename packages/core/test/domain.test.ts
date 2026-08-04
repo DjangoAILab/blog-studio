@@ -7,6 +7,7 @@ import {
   createContentHash,
   createDocumentId,
   createReleaseId,
+  createSiteId,
   createWorkspaceId,
   InvalidReleaseTransitionError,
   isTerminalReleaseStatus,
@@ -22,6 +23,7 @@ describe('core identifiers', () => {
     );
     expect(createAssetId('asset-01j9y2p7k6')).toBe('asset-01j9y2p7k6');
     expect(createReleaseId('release-01j9y2p7k6')).toBe('release-01j9y2p7k6');
+    expect(createSiteId('site-personal-blog')).toBe('site-personal-blog');
   });
 
   it.each(['Uppercase', 'has spaces', '../escape', '', 'a'.repeat(129)])(
