@@ -96,8 +96,8 @@ node scripts/tencent-production-writer-policy.mjs \
 
 - [x] Record only policy/user IDs, release IDs, request IDs, counts, durations,
       and hashes—never secret values.
-- [ ] Keep the adoption identity unmodified for audit history; disable or remove
+- [x] Keep the adoption identity unmodified for audit history; disable or remove
       its active key after the writer path is proven.
 - [x] Retain or rotate the writer key according to the operating decision, and
-      document the next rotation date.
+      document its storage controls, rotation triggers, and overlap procedure.
 - [x] Merge evidence through protected `main` before signing `v0.1.0`.

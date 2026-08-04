@@ -53,18 +53,24 @@ management call was separately denied. The one-time credential CSV was removed
 from both the workstation and server after the values were installed directly
 as mode-`0600` Docker secret files.
 
-The writer key is retained as the operating production credential. Its first
-scheduled rotation is **2026-11-01** (within 90 days), or immediately after any
-suspected exposure. Rotation requires overlapping old/new probes, a Studio-only
+The writer key is retained as the operating production credential in the
+home-server's administrator-controlled, mode-`0600` Docker secret files. It has
+no calendar-only replacement date: rotate after suspected exposure, a material
+identity or permission-boundary change, a Tencent requirement, or cryptographic
+deprecation. Rotation requires overlapping old/new probes, a Studio-only
 restart, and removal of the old key after health and read-only plan gates pass.
+Routine reviews recheck the active policy and last-use evidence without issuing
+a new credential.
 
 The adoption CAM user and policy remain unchanged for audit history. Its
-superseded API key is not part of the running Studio configuration, but its
-disable operation is still open: the Tencent console session expired while the
-request remained asynchronous, and an isolated read-only COS probe still
-returned `200`. The signed release remains gated until a renewed console
-session reports the key disabled and the same probe is rejected. No account,
-policy, group, or public object was changed while diagnosing that delay.
+superseded API key is not part of the running Studio configuration and is now
+disabled. Console read-back reported `已禁用` with `启用` as the available
+operation. An isolated read-only COS probe using that credential returned HTTP
+`403` with `InvalidAccessKeyId`, while the same one-object listing with the
+writer returned `200`. The disabled credential files remain in the
+administrator-controlled, mode-`0600` home-server secret directory; no
+downloaded credential CSV is retained. No account, policy, group, or public
+object changed during this disposition.
 
 ## Plan and safe planning rejection
 
@@ -156,6 +162,9 @@ release and the latest succeeded manifest remained the adopted baseline.
   scoped COS request IDs and cleanup proof;
 - [`production-phase-b/writer-cam-deny.json`](production-phase-b/writer-cam-deny.json):
   denied CAM-management probe;
+- [`production-phase-b/credential-disposition.json`](production-phase-b/credential-disposition.json):
+  disabled adoption-key read-back, rejected old-credential probe, successful
+  writer probe, local storage controls, and post-action health checks;
 - [`production-phase-b/publish-rollback.json`](production-phase-b/publish-rollback.json):
   durable events, status transitions, continuous public checks, provider task
   IDs, marker transition, and restoration;
