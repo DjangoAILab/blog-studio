@@ -111,6 +111,17 @@ describe('StudioApi', () => {
       frontMatter: { title: 'Edited' },
       body: '# Edited',
     });
+
+    await api.startContentPreview({
+      siteId: 'site-one',
+      documentId: 'hello-world',
+      collection: 'published posts',
+      mode: 'enhanced',
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe(
+      '/api/sites/site-one/content/hello-world/preview?collection=published+posts&mode=enhanced',
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('POST');
   });
 
   it('starts a release with the exact saved draft version', async () => {

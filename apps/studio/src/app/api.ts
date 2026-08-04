@@ -258,6 +258,35 @@ export class StudioApi {
     );
   }
 
+  public startContentPreview(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly mode?: 'markdown' | 'enhanced';
+  }) {
+    const parameters = new URLSearchParams({ collection: input.collection });
+    if (input.mode) parameters.set('mode', input.mode);
+    return this.#request<{
+      preview: {
+        readonly id: string;
+        readonly mode: 'markdown' | 'enhanced';
+        readonly status: 'ready';
+        readonly url: string;
+        readonly fallbackReason?:
+          | 'missing-output'
+          | 'route-error'
+          | 'build-error'
+          | 'timeout'
+          | 'unsupported-engine'
+          | 'canceled'
+          | 'restart';
+      };
+    }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/preview?${parameters.toString()}`,
+      { method: 'POST' },
+    );
+  }
+
   public documents(workspaceId: string, collection = 'posts') {
     return this.#request<{ documents: readonly DocumentSummary[] }>(
       `/api/workspaces/${workspaceId}/documents?collection=${collection}`,

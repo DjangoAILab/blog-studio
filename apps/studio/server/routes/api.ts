@@ -22,7 +22,11 @@ import {
   SourceRevisionConflictError,
   type ContentService,
 } from '../services/content.js';
-import type { PreviewService } from '../services/previews.js';
+import type { MarkdownPreviewService } from '../services/markdown-previews.js';
+import {
+  PreviewReadinessError,
+  type PreviewService,
+} from '../services/previews.js';
 import type { SiteService } from '../services/sites.js';
 import {
   BASELINE_ADOPTION_CONFIRMATION,
@@ -35,6 +39,7 @@ interface ApiDependencies {
   readonly sites: SiteService;
   readonly content: ContentService;
   readonly drafts: SqliteDraftRepository;
+  readonly markdownPreviews: MarkdownPreviewService;
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
 }
@@ -473,6 +478,133 @@ export function registerApiRoutes(
         expectedVersion: request.body.expectedVersion,
       });
       return { discarded: true };
+    },
+  );
+
+  app.get<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string; source: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId/resource',
+    { schema: { params: siteDocumentParams, querystring: assetSourceQuery } },
+    async (request, reply) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const workspace = dependencies.workspaces.get(workspaceId);
+      const { ref } = await dependencies.workspaces.findDocument(
+        workspaceId,
+        request.query.collection,
+        request.params.documentId,
+      );
+      const sourcePath = await workspace.generator.resolveAssetSourcePath?.(
+        workspace.config.workspace.root,
+        ref,
+        request.query.source,
+      );
+      if (!sourcePath) throw new Error('Unknown preview resource');
+      const absolutePath = await resolveWorkspacePath(
+        workspace.config.workspace.root,
+        sourcePath,
+      );
+      return reply
+        .header('cache-control', 'private, max-age=60')
+        .header(
+          'content-security-policy',
+          "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+        )
+        .header('x-content-type-options', 'nosniff')
+        .type(
+          mediaTypes[extname(absolutePath).toLowerCase()] ??
+            'application/octet-stream',
+        )
+        .send(await readFile(absolutePath));
+    },
+  );
+
+  app.post<{
+    Params: { siteId: string; documentId: string };
+    Querystring: {
+      collection: string;
+      mode?: 'markdown' | 'enhanced';
+    };
+  }>(
+    '/api/sites/:siteId/content/:documentId/preview',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['collection'],
+          properties: {
+            collection: { type: 'string', minLength: 1, maxLength: 64 },
+            mode: { enum: ['markdown', 'enhanced'] },
+          },
+        },
+      },
+    },
+    async (request) => {
+      const opened = await dependencies.content.read(
+        request.params.siteId,
+        request.query.collection,
+        request.params.documentId,
+      );
+      const frontMatter =
+        opened.draft?.frontMatter ?? opened.source.frontMatter;
+      const body = opened.draft?.body ?? opened.source.body;
+      const titleValue = frontMatter.title;
+      const title =
+        typeof titleValue === 'string' || typeof titleValue === 'number'
+          ? String(titleValue)
+          : request.params.documentId;
+      const resourceBase = `/api/sites/${request.params.siteId}/content/${request.params.documentId}/resource?collection=${encodeURIComponent(request.query.collection)}&source=`;
+      const markdown = dependencies.markdownPreviews.start({
+        title,
+        body,
+        resourceBase,
+      });
+      const markdownResult = {
+        id: markdown.id,
+        mode: 'markdown' as const,
+        status: 'ready' as const,
+        url: `/api/markdown-previews/${markdown.id}`,
+        createdAt: markdown.createdAt,
+        expiresAt: markdown.expiresAt,
+      };
+      if (request.query.mode === 'markdown') return { preview: markdownResult };
+
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      try {
+        const enhanced = await dependencies.previews.start({
+          workspaceId,
+          ref: opened.source.ref,
+          sourceRevision: opened.source.revision,
+          source: opened.source,
+          ...(opened.draft ? { draft: opened.draft } : {}),
+        });
+        return {
+          preview: {
+            id: enhanced.id,
+            mode: 'enhanced' as const,
+            status: 'ready' as const,
+            url: `/api/previews/${enhanced.id}/content${enhanced.contentPath}`,
+            createdAt: enhanced.createdAt,
+            expiresAt: enhanced.expiresAt,
+          },
+        };
+      } catch (error) {
+        return {
+          preview: {
+            ...markdownResult,
+            fallbackReason:
+              error instanceof PreviewReadinessError
+                ? error.reason
+                : error instanceof Error &&
+                    /timed? out|timeout/i.test(error.message)
+                  ? ('timeout' as const)
+                  : ('build-error' as const),
+          },
+        };
+      }
     },
   );
 
@@ -1002,6 +1134,7 @@ export function registerApiRoutes(
         workspaceId: request.params.workspaceId,
         ref,
         sourceRevision: source.revision,
+        source,
         ...(draft === null ? {} : { draft }),
       });
       return {
@@ -1026,6 +1159,25 @@ export function registerApiRoutes(
     async (request) => ({
       stopped: await dependencies.previews.stop(request.params.workspaceId),
     }),
+  );
+
+  app.get<{ Params: { previewId: string } }>(
+    '/api/markdown-previews/:previewId',
+    async (request, reply) => {
+      const preview = dependencies.markdownPreviews.get(
+        request.params.previewId,
+      );
+      return reply
+        .header(
+          'content-security-policy',
+          "sandbox; default-src 'none'; img-src 'self' https:; media-src 'self' https:; style-src 'unsafe-inline'; font-src 'none'; object-src 'none'; script-src 'none'; base-uri 'none'; form-action 'none'",
+        )
+        .header('x-content-type-options', 'nosniff')
+        .header('referrer-policy', 'no-referrer')
+        .header('cache-control', 'no-store')
+        .type('text/html; charset=utf-8')
+        .send(preview.html);
+    },
   );
 
   app.get<{ Params: { previewId: string; '*': string } }>(

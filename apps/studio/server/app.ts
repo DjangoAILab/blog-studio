@@ -32,6 +32,7 @@ import {
 import { PasswordPolicyError } from './auth/passwords.js';
 import { registerApiRoutes } from './routes/api.js';
 import { ContentService } from './services/content.js';
+import { MarkdownPreviewService } from './services/markdown-previews.js';
 import { PreviewService } from './services/previews.js';
 import {
   BaselineAdoptionRequiredError,
@@ -138,6 +139,7 @@ export async function createStudioServer(
   const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
   const drafts = new SqliteDraftRepository(database);
   const content = new ContentService(sites, workspaces, drafts);
+  const markdownPreviews = new MarkdownPreviewService();
   const previews = new PreviewService(workspaces);
   const releases = new ReleaseService({
     workspaces,
@@ -158,6 +160,7 @@ export async function createStudioServer(
   });
   await releases.recover();
   const previewReaper = setInterval(() => {
+    markdownPreviews.reapExpired();
     void previews.reapExpired().catch((error: unknown) => {
       app.log.error({ err: error }, 'Failed to reap expired previews');
     });
@@ -165,6 +168,7 @@ export async function createStudioServer(
   previewReaper.unref();
   app.addHook('onClose', async () => {
     clearInterval(previewReaper);
+    markdownPreviews.dispose();
     await previews.dispose();
     await releases.dispose();
     database.close();
@@ -488,6 +492,7 @@ export async function createStudioServer(
     sites,
     content,
     drafts,
+    markdownPreviews,
     previews,
     releases,
   });

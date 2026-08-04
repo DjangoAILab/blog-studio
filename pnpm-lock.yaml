@@ -98,6 +98,9 @@ importers:
       fastify:
         specifier: 5.11.0
         version: 5.11.0
+      micromark:
+        specifier: 4.0.2
+        version: 4.0.2
       react:
         specifier: 19.2.8
         version: 19.2.8

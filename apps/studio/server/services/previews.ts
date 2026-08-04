@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { rm, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import type {
   ContentHash,
   DocumentRef,
@@ -17,6 +18,25 @@ export interface PreviewDraft {
   readonly sourceRevision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
   readonly body: string;
+}
+
+export type PreviewFallbackReason =
+  | 'missing-output'
+  | 'route-error'
+  | 'build-error'
+  | 'timeout'
+  | 'unsupported-engine'
+  | 'canceled'
+  | 'restart';
+
+export class PreviewReadinessError extends Error {
+  public constructor(
+    readonly reason: PreviewFallbackReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'PreviewReadinessError';
+  }
 }
 
 export interface PreviewSession {
@@ -49,6 +69,10 @@ export class PreviewService {
     readonly workspaceId: string;
     readonly ref: DocumentRef;
     readonly sourceRevision: ContentHash;
+    readonly source: {
+      readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+      readonly body: string;
+    };
     readonly draft?: PreviewDraft;
   }): Promise<PreviewSession> {
     const now = Date.now();
@@ -72,26 +96,33 @@ export class PreviewService {
     }
 
     const workspace = this.workspaces.get(input.workspaceId);
+    if (!workspace.generator.capabilities.preview) {
+      throw new PreviewReadinessError(
+        'unsupported-engine',
+        `Generator ${workspace.generator.id} does not support enhanced preview`,
+      );
+    }
     const sandbox = await createWorkspaceSandbox(workspace, 'preview');
     const isolatedWorkspace = sandbox.workspaceRoot;
     const temporaryRoot = dirname(isolatedWorkspace);
+    const id = randomUUID();
+    const marker = `blog-studio-preview:${id}`;
     try {
       let previewRef = input.ref;
-      let previewRevision = input.sourceRevision;
-      if (input.draft) {
-        if (input.draft.sourceRevision !== input.sourceRevision)
-          throw new Error('Draft source revision conflict');
-        const written = await workspace.generator.writeDocument(
-          isolatedWorkspace,
-          {
-            ref: input.ref,
-            expectedRevision: input.sourceRevision,
-            frontMatter: input.draft.frontMatter,
-            body: input.draft.body,
-          },
-        );
-        previewRevision = written.revision;
+      if (input.draft && input.draft.sourceRevision !== input.sourceRevision) {
+        throw new Error('Draft source revision conflict');
       }
+      const previewSource = input.draft ?? input.source;
+      const written = await workspace.generator.writeDocument(
+        isolatedWorkspace,
+        {
+          ref: input.ref,
+          expectedRevision: input.sourceRevision,
+          frontMatter: previewSource.frontMatter,
+          body: `${previewSource.body}\n<span data-blog-studio-preview="${id}" hidden>${marker}</span>\n`,
+        },
+      );
+      const previewRevision = written.revision;
       if (input.ref.collectionId === 'drafts') {
         if (!workspace.generator.promoteDocument)
           throw new Error(
@@ -115,15 +146,45 @@ export class PreviewService {
         workspaceRoot: isolatedWorkspace,
         mode: 'preview',
       });
+      const contentPath = new URL(publicUrl).pathname;
+      const targetPath = contentPath.endsWith('/')
+        ? `${contentPath.slice(1)}index.html`
+        : contentPath.slice(1);
+      let generatedTarget: string;
+      try {
+        generatedTarget = await resolveWorkspacePath(
+          build.outputDirectory,
+          targetPath,
+        );
+      } catch {
+        throw new PreviewReadinessError(
+          'missing-output',
+          `Enhanced preview output is missing: ${contentPath}`,
+        );
+      }
+      const targetDetails = await stat(generatedTarget);
+      if (!targetDetails.isFile()) {
+        throw new PreviewReadinessError(
+          'missing-output',
+          `Enhanced preview target is not a file: ${contentPath}`,
+        );
+      }
+      const generatedHtml = await readFile(generatedTarget, 'utf8');
+      if (!generatedHtml.includes(marker)) {
+        throw new PreviewReadinessError(
+          'route-error',
+          'Enhanced preview target did not render the expected session marker',
+        );
+      }
       const session: PreviewSession = {
-        id: randomUUID(),
+        id,
         workspaceId: input.workspaceId,
         workspaceDirectory: temporaryRoot,
         sourceDirectory: isolatedWorkspace,
         ref: previewRef,
         outputDirectory: build.outputDirectory,
         manifest: build.manifest,
-        contentPath: new URL(publicUrl).pathname,
+        contentPath,
         fingerprint,
         createdAt: new Date(now).toISOString(),
         expiresAt: new Date(now + this.idleMs).toISOString(),

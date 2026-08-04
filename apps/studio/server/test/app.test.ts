@@ -35,6 +35,7 @@ interface FixtureOptions {
   readonly ownerPassword?: string;
   readonly omitLegacyAuthToken?: boolean;
   readonly secondWorkspace?: boolean;
+  readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
   readonly logger?: StudioServerOptions['logger'];
 }
 
@@ -76,19 +77,28 @@ async function fixture(options: FixtureOptions = {}): Promise<{
     [
       '#!/usr/bin/env node',
       "const{mkdir,readdir,readFile,writeFile}=await import('node:fs/promises');",
+      ...(options.previewFailure === 'build-error'
+        ? ["throw new Error('fixture preview build failed');"]
+        : []),
       "await mkdir('public/css',{recursive:true});",
       "await writeFile('public/index.html','preview');",
       "await writeFile('public/css/site.css','body{background:url(../../static/reading.jpeg)}');",
-      "for(const name of await readdir('source/_posts')){",
-      "if(!name.endsWith('.md'))continue;",
-      "const body=await readFile('source/_posts/'+name,'utf8');",
-      'const date=body.match(/date:\\s*[\\"\']?(\\d{4})-(\\d{2})-(\\d{2})/);',
-      "if(!date)throw new Error('missing fixture date: '+name);",
-      'const slug=name.slice(0,-3);',
-      "const directory='public/'+date[1]+'/'+date[2]+'/'+date[3]+'/'+slug;",
-      'await mkdir(directory,{recursive:true});',
-      'await writeFile(directory+\'/index.html\',\'<link href="/css/site.css"><img src="../../../../static/reading.jpeg">\'+body);',
-      '}',
+      ...(options.previewFailure === 'missing-output'
+        ? []
+        : [
+            "for(const name of await readdir('source/_posts')){",
+            "if(!name.endsWith('.md'))continue;",
+            "const body=await readFile('source/_posts/'+name,'utf8');",
+            'const date=body.match(/date:\\s*[\\"\']?(\\d{4})-(\\d{2})-(\\d{2})/);',
+            "if(!date)throw new Error('missing fixture date: '+name);",
+            'const slug=name.slice(0,-3);',
+            "const directory='public/'+date[1]+'/'+date[2]+'/'+date[3]+'/'+slug;",
+            'await mkdir(directory,{recursive:true});',
+            options.previewFailure === 'route-error'
+              ? "await writeFile(directory+'/index.html','rendered without marker');"
+              : 'await writeFile(directory+\'/index.html\',\'<link href="/css/site.css"><img src="../../../../static/reading.jpeg">\'+body);',
+            '}',
+          ]),
       '',
     ].join('\n'),
   );
@@ -891,6 +901,155 @@ describe('Studio workspace API', () => {
     expect(sourceConflict.statusCode, sourceConflict.body).toBe(409);
     expect(sourceConflict.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
   });
+
+  it('serves immediate sanitized Markdown and marker-verified enhanced previews', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Preview Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: { revision: string; frontMatter: Record<string, unknown> };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: source.frontMatter,
+        body: '# Markdown works\n\n<script>alert(1)</script>\n\n![Reading](/static/reading.jpeg)\n',
+      },
+    });
+
+    const markdownStarted = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts&mode=markdown`,
+      headers,
+    });
+    expect(markdownStarted.statusCode, markdownStarted.body).toBe(200);
+    const markdownPreview = markdownStarted.json<{
+      preview: { mode: string; status: string; url: string };
+    }>().preview;
+    expect(markdownPreview).toMatchObject({
+      mode: 'markdown',
+      status: 'ready',
+    });
+    const markdown = await app.inject({
+      url: markdownPreview.url,
+      headers,
+    });
+    expect(markdown.statusCode, markdown.body).toBe(200);
+    expect(markdown.body).toContain('<h1>Markdown works</h1>');
+    expect(markdown.body).not.toContain('<script>');
+    expect(markdown.body).toContain(
+      `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&amp;source=%2Fstatic%2Freading.jpeg`,
+    );
+    expect(markdown.headers['content-security-policy']).toContain(
+      "script-src 'none'",
+    );
+    const resource = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&source=%2Fstatic%2Freading.jpeg`,
+      headers,
+    });
+    expect(resource.statusCode, resource.body).toBe(200);
+    expect(resource.headers['content-type']).toContain('image/jpeg');
+
+    const enhancedStarted = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+      headers,
+    });
+    expect(enhancedStarted.statusCode, enhancedStarted.body).toBe(200);
+    const enhancedPreview = enhancedStarted.json<{
+      preview: { mode: string; status: string; url: string };
+    }>().preview;
+    expect(enhancedPreview).toMatchObject({
+      mode: 'enhanced',
+      status: 'ready',
+    });
+    const enhanced = await app.inject({ url: enhancedPreview.url, headers });
+    expect(enhanced.statusCode, enhanced.body).toBe(200);
+    expect(enhanced.body).toContain('blog-studio-preview:');
+    expect(enhanced.body).toContain('# Markdown works');
+  });
+
+  it.each([
+    ['missing-output', 'missing-output'],
+    ['route-error', 'route-error'],
+    ['build-error', 'build-error'],
+  ] as const)(
+    'falls back to Markdown when enhanced preview reports %s',
+    async (previewFailure, fallbackReason) => {
+      const { app } = await fixture({ previewFailure });
+      const session = await login(app);
+      const headers = {
+        cookie: session.cookie,
+        origin,
+        'x-csrf-token': session.csrfToken,
+      };
+      const registered = await app.inject({
+        method: 'POST',
+        url: '/api/sites',
+        headers,
+        payload: { candidateId: 'test-blog', displayName: 'Fallback Site' },
+      });
+      const siteId = registered.json<{ site: { id: string } }>().site.id;
+      const listed = await app.inject({
+        url: `/api/sites/${siteId}/content`,
+        headers,
+      });
+      const documentId = listed.json<{
+        content: { items: Array<{ documentId: string }> };
+      }>().content.items[0]?.documentId;
+      if (!documentId) throw new Error('fixture post missing');
+
+      const started = await app.inject({
+        method: 'POST',
+        url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+        headers,
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      const preview = started.json<{
+        preview: {
+          mode: string;
+          status: string;
+          fallbackReason: string;
+          url: string;
+        };
+      }>().preview;
+      expect(preview).toMatchObject({
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason,
+      });
+      expect((await app.inject({ url: preview.url, headers })).statusCode).toBe(
+        200,
+      );
+    },
+  );
 
   it('creates native drafts and discards only a version-matched snapshot', async () => {
     const { app, workspace } = await fixture();
