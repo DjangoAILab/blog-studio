@@ -30,7 +30,6 @@ cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
 cp -R examples/workspace/. workspace/
 umask 077
-openssl rand -base64 32 > secrets/auth_token
 openssl rand -base64 48 > secrets/cookie_secret
 git -C workspace init
 git -C workspace config user.name "Blog Studio Quick Start"
@@ -46,19 +45,37 @@ connect a real site, replace `workspace/` with a clean trusted checkout, install
 its locked dependencies on the host, and update the adapter configuration. The
 container path remains `/workspaces/blog`.
 
-## 2. Validate and start
+## 2. Initialize the owner and start
 
 ```sh
 docker compose config --quiet
 docker compose build --pull
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-Open the configured HTTPS origin and enter the value from
-`secrets/auth_token`. All non-health application APIs still require a signed
-session; mutations additionally require same-origin CSRF validation.
+The CLI reads and confirms the first owner password without echo. Open the
+configured HTTPS origin and log in with that password. All non-health
+application APIs still require a signed session; mutations additionally require
+same-origin CSRF validation.
+
+Use the same trusted-container entry point for status or recovery:
+
+```sh
+docker compose run --rm studio \
+  node dist/server/cli.js auth status \
+  --database /data/blog-studio.sqlite
+docker compose run --rm studio \
+  node dist/server/cli.js auth reset \
+  --database /data/blog-studio.sqlite
+```
+
+Reset revokes every existing browser session. The legacy opaque token is an
+optional v0.1 migration fallback and is not part of the normal setup journey.
 
 ## 3. Join an existing Traefik network
 
@@ -94,7 +111,7 @@ internet.
 | `data/`                  | `/data`                   | SQLite drafts, jobs, releases |
 | `config/blog-studio.yml` | `/config/blog-studio.yml` | administrator policy          |
 | `workspace/`             | `/workspaces/blog`        | files, Git, generator         |
-| `secrets/*`              | `/run/secrets/*`          | login and cookie secrets      |
+| `secrets/*`              | `/run/secrets/*`          | cookie/provider secrets       |
 
 The static public site has no request-time dependency on these mounts or on
 Studio availability.

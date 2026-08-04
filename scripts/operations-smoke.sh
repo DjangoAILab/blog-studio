@@ -14,9 +14,9 @@ export BLOG_STUDIO_SECURE_COOKIES=false
 export BLOG_STUDIO_DATA_PATH="$fixture/data"
 export BLOG_STUDIO_CONFIG_PATH="$fixture/config/blog-studio.yml"
 export BLOG_STUDIO_WORKSPACE_PATH="$fixture/workspace"
-export BLOG_STUDIO_AUTH_TOKEN_PATH="$fixture/secrets/auth_token"
 export BLOG_STUDIO_COOKIE_SECRET_PATH="$fixture/secrets/cookie_secret"
 export BLOG_STUDIO_BACKUP_PATH="$fixture/backups"
+owner_password='operations-smoke-owner-password'
 
 cleanup() {
   docker compose -f "$project_directory/docker-compose.yml" down --remove-orphans >/dev/null 2>&1 || true
@@ -32,9 +32,8 @@ mkdir -p \
   "$fixture/workspace/source/_posts"
 chmod 755 "$fixture" "$fixture/config" "$fixture/secrets"
 chmod 777 "$fixture/data" "$fixture/workspace"
-printf '%s\n' 'operations-smoke-auth-token' >"$fixture/secrets/auth_token"
 printf '%s\n' 'operations-smoke-cookie-secret-with-more-than-thirty-two-characters' >"$fixture/secrets/cookie_secret"
-chmod 644 "$fixture/secrets/auth_token" "$fixture/secrets/cookie_secret"
+chmod 644 "$fixture/secrets/cookie_secret"
 cat >"$fixture/workspace/package.json" <<'JSON'
 {"private":true,"dependencies":{"hexo":"smoke-fixture"}}
 JSON
@@ -90,7 +89,7 @@ login() {
     --cookie-jar "$fixture/cookies" \
     --header "Origin: $origin" \
     --header 'Content-Type: application/json' \
-    --data '{"token":"operations-smoke-auth-token"}' \
+    --data "{\"password\":\"$owner_password\"}" \
     "$origin/api/session"
 }
 
@@ -115,6 +114,11 @@ save_draft() {
     "$origin/api/workspaces/operations-blog/documents/$document_id/draft?collection=posts"
 }
 
+printf '%s\n' "$owner_password" | docker compose \
+  -f "$project_directory/docker-compose.yml" run --rm -T studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite \
+  --password-stdin
 docker compose -f "$project_directory/docker-compose.yml" up --detach --no-build
 wait_for_health
 first="$(save_draft 0 'Backed up durable draft.')"

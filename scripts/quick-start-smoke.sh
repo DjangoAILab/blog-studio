@@ -6,7 +6,7 @@ fixture="$(mktemp -d "${TMPDIR:-/tmp}/blog-studio-quick-start.XXXXXX")"
 project="blog-studio-quick-start-$$"
 port="${BLOG_STUDIO_QUICK_START_PORT:-24310}"
 origin="http://127.0.0.1:${port}"
-auth_token='quick-start-auth-token-at-least-sixteen'
+owner_password='quick-start-owner-password'
 cookie_secret='quick-start-cookie-secret-with-more-than-thirty-two-characters'
 
 export BLOG_STUDIO_IMAGE="${BLOG_STUDIO_QUICK_START_IMAGE:-blog-studio:quick-start}"
@@ -19,7 +19,6 @@ export BLOG_STUDIO_SECURE_COOKIES=false
 export BLOG_STUDIO_DATA_PATH="$fixture/data"
 export BLOG_STUDIO_CONFIG_PATH="$fixture/config/blog-studio.yml"
 export BLOG_STUDIO_WORKSPACE_PATH="$fixture/workspace"
-export BLOG_STUDIO_AUTH_TOKEN_PATH="$fixture/secrets/auth_token"
 export BLOG_STUDIO_COOKIE_SECRET_PATH="$fixture/secrets/cookie_secret"
 
 compose() {
@@ -35,9 +34,8 @@ trap cleanup EXIT INT TERM
 mkdir -p "$fixture/config" "$fixture/data" "$fixture/secrets" "$fixture/workspace"
 cp "$repository_root/examples/config/blog-studio.yml" "$fixture/config/blog-studio.yml"
 cp -R "$repository_root/examples/workspace/." "$fixture/workspace/"
-printf '%s\n' "$auth_token" >"$fixture/secrets/auth_token"
 printf '%s\n' "$cookie_secret" >"$fixture/secrets/cookie_secret"
-chmod 600 "$fixture/secrets/auth_token" "$fixture/secrets/cookie_secret"
+chmod 600 "$fixture/secrets/cookie_secret"
 git -C "$fixture/workspace" init --quiet
 git -C "$fixture/workspace" config user.name 'Blog Studio Quick Start'
 git -C "$fixture/workspace" config user.email 'quick-start@localhost'
@@ -48,6 +46,10 @@ compose config --quiet
 if [[ "${BLOG_STUDIO_QUICK_START_SKIP_BUILD:-false}" != 'true' ]]; then
   compose build --pull studio
 fi
+printf '%s\n' "$owner_password" | compose run --rm -T studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite \
+  --password-stdin
 compose up -d studio
 
 container="$(compose ps -q studio)"
@@ -67,7 +69,7 @@ session="$(curl --fail --silent --show-error \
   --cookie-jar "$fixture/cookies" \
   --header "Origin: $origin" \
   --header 'Content-Type: application/json' \
-  --data "{\"token\":\"$auth_token\"}" \
+  --data "{\"password\":\"$owner_password\"}" \
   "$origin/api/session")"
 csrf="$(node -e 'const input=JSON.parse(process.argv[1]);process.stdout.write(input.csrfToken)' "$session")"
 workspace="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces")"
@@ -113,4 +115,4 @@ curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin$preview_u
 test -s "$fixture/data/blog-studio.sqlite"
 [[ -z "$(git -C "$fixture/workspace" status --short)" ]]
 
-echo 'quick start passed: command workspace, auth, article discovery, durable autosave, real preview, publish disabled'
+echo 'quick start passed: owner password, command workspace, durable autosave, real preview, publish disabled'

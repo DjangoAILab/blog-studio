@@ -8,9 +8,10 @@ release. It is not a CMS database, hosted control plane, or Hexo admin panel.
 
 ## 1. Return to the work
 
-The author opens a configured workspace and continues from the latest
-acknowledged draft. Discovery never rewrites files. Drafts are stored in SQLite
-with optimistic versions, while the published Markdown file remains canonical.
+The owner registers a discovered Site, then returns to one content library that
+merges published documents, native drafts, and modified working copies.
+Discovery never rewrites files. Working copies are stored in SQLite with
+optimistic versions, while the published Markdown file remains canonical.
 
 A compatible editor must always provide source mode. Visual editing is a
 convenience, not a reason to discard unknown front matter, raw HTML, or generator
@@ -18,21 +19,25 @@ syntax.
 
 ## 2. See the real result
 
-Preview runs the configured static-site generator in the workspace and proxies
-its output. This is intentionally slower than a fake Markdown preview on first
-start, but it preserves theme, plugin, permalink, and legacy-resource behavior.
+Preview first renders sanitized Markdown without a subprocess or Provider. When
+supported, enhanced preview runs the configured static-site generator inside an
+isolated sandbox and proxies the marker-verified target. The enhanced mode is
+slower but preserves theme, plugin, permalink, and legacy-resource behavior;
+failure falls back to Markdown with a typed diagnostic.
 
 ## 3. Make production change legible
 
-A release is not a shell command. It is a persisted state machine:
+A public release never begins from whichever files happen to be live at click
+time. The owner first prepares an immutable ChangeSet, reviews it, applies it,
+and creates a separate local Git commit. Only that recorded commit can enter the
+persisted remote-release state machine:
 
-1. preflight the workspace and target;
-2. apply the selected draft to source;
-3. build and hash output;
-4. compare it with the last verified manifest;
-5. upload immutable assets before referencing pages;
-6. invalidate the exact cache surface;
-7. verify the public marker and URLs.
+1. preflight the reviewed revision and target;
+2. build and hash output from a detached Git worktree;
+3. compare it with the last verified manifest;
+4. upload immutable assets before referencing pages;
+5. invalidate the exact cache surface;
+6. verify the public marker and URLs.
 
 Every provider operation is awaited and recorded. A no-op diff performs no
 uploads.

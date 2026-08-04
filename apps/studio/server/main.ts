@@ -57,6 +57,8 @@ const app = await createStudioServer({
   cookieSecret: requiredSecret('BLOG_STUDIO_COOKIE_SECRET'),
   allowedOrigins: listEnvironment('BLOG_STUDIO_ALLOWED_ORIGINS'),
   secureCookies: process.env.BLOG_STUDIO_SECURE_COOKIES !== 'false',
+  allowLegacyReleaseApi:
+    process.env.BLOG_STUDIO_ALLOW_LEGACY_RELEASE_API === 'true',
   clientDirectory: resolve(
     process.env.BLOG_STUDIO_CLIENT_DIRECTORY ??
       fileURLToPath(new URL('../client', import.meta.url)),

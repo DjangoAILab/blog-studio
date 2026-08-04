@@ -6,7 +6,7 @@ port="${BLOG_STUDIO_SMOKE_PORT:-14310}"
 container="blog-studio-smoke-$$"
 fixture="$(mktemp -d "${TMPDIR:-/tmp}/blog-studio-container-smoke.XXXXXX")"
 origin="http://127.0.0.1:${port}"
-auth_token="container-smoke-auth-token"
+owner_password="container-smoke-owner-password"
 cookie_secret="container-smoke-cookie-secret-with-more-than-thirty-two-characters"
 
 cleanup() {
@@ -24,9 +24,8 @@ mkdir -p \
   "$fixture/workspace/source/_posts"
 chmod 755 "$fixture" "$fixture/config" "$fixture/secrets"
 chmod 777 "$fixture/data" "$fixture/workspace"
-printf '%s\n' "$auth_token" >"$fixture/secrets/auth_token"
 printf '%s\n' "$cookie_secret" >"$fixture/secrets/cookie_secret"
-chmod 644 "$fixture/secrets/auth_token" "$fixture/secrets/cookie_secret"
+chmod 644 "$fixture/secrets/cookie_secret"
 
 cat >"$fixture/workspace/package.json" <<'JSON'
 {"private":true,"dependencies":{"hexo":"smoke-fixture"}}
@@ -90,14 +89,12 @@ start_container() {
     --env BLOG_STUDIO_CONFIG_PATHS=/config/blog-studio.yml \
     --env BLOG_STUDIO_WORKSPACE_ROOT=/workspaces \
     --env BLOG_STUDIO_DATABASE_PATH=/data/blog-studio.sqlite \
-    --env BLOG_STUDIO_AUTH_TOKEN_FILE=/run/secrets/auth_token \
     --env BLOG_STUDIO_COOKIE_SECRET_FILE=/run/secrets/cookie_secret \
     --env BLOG_STUDIO_ALLOWED_ORIGINS="$origin" \
     --env BLOG_STUDIO_SECURE_COOKIES=false \
     --mount "type=bind,src=$fixture/data,dst=/data" \
     --mount "type=bind,src=$fixture/config/blog-studio.yml,dst=/config/blog-studio.yml,readonly" \
     --mount "type=bind,src=$fixture/workspace,dst=/workspaces/blog" \
-    --mount "type=bind,src=$fixture/secrets/auth_token,dst=/run/secrets/auth_token,readonly" \
     --mount "type=bind,src=$fixture/secrets/cookie_secret,dst=/run/secrets/cookie_secret,readonly" \
     "$image" >/dev/null
 }
@@ -124,13 +121,20 @@ login() {
     --cookie-jar "$fixture/cookies" \
     --header "Origin: $origin" \
     --header 'Content-Type: application/json' \
-    --data "{\"token\":\"$auth_token\"}" \
+    --data "{\"password\":\"$owner_password\"}" \
     "$origin/api/session"
 }
 
 container_node() {
   docker exec "$container" node "$@"
 }
+
+printf '%s\n' "$owner_password" | docker run --rm --interactive \
+  --user 1000:1000 \
+  --mount "type=bind,src=$fixture/data,dst=/data" \
+  "$image" node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite \
+  --password-stdin
 
 start_container
 wait_for_health
