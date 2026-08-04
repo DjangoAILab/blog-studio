@@ -1,5 +1,17 @@
 export { openStudioDatabase, type StudioDatabase } from './database.js';
 export {
+  CredentialGenerationConflictError,
+  OwnerAlreadyInitializedError,
+  OwnerNotInitializedError,
+  SqliteOwnerCredentialRepository,
+  type OwnerCredential,
+} from './credentials.js';
+export {
+  migrateStudioDatabase,
+  STUDIO_SCHEMA_VERSION,
+  UnsupportedDatabaseVersionError,
+} from './migrations.js';
+export {
   RevisionConflictError,
   SqliteDraftRepository,
   type DraftSnapshot,
@@ -11,3 +23,4 @@ export {
   SqliteReleaseRepository,
   type StoredRelease,
 } from './releases.js';
+export { SqliteOwnerSessionRepository, type OwnerSession } from './sessions.js';
