@@ -26,6 +26,7 @@ import type { ChangeSetService } from '../services/change-sets.js';
 import type { MarkdownPreviewService } from '../services/markdown-previews.js';
 import {
   PreviewReadinessError,
+  type PreviewFallbackReason,
   type PreviewService,
 } from '../services/previews.js';
 import type { SiteService } from '../services/sites.js';
@@ -45,6 +46,13 @@ interface ApiDependencies {
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
   readonly allowLegacyReleaseApi: boolean;
+}
+
+function previewFallbackReason(error: unknown): PreviewFallbackReason {
+  if (error instanceof PreviewReadinessError) return error.reason;
+  if (error instanceof Error && /timed? out|timeout/i.test(error.message))
+    return 'timeout';
+  return 'build-error';
 }
 
 const workspaceParams = {
@@ -765,13 +773,7 @@ export function registerApiRoutes(
         return {
           preview: {
             ...markdownResult,
-            fallbackReason:
-              error instanceof PreviewReadinessError
-                ? error.reason
-                : error instanceof Error &&
-                    /timed? out|timeout/i.test(error.message)
-                  ? ('timeout' as const)
-                  : ('build-error' as const),
+            fallbackReason: previewFallbackReason(error),
           },
         };
       }
@@ -1309,23 +1311,54 @@ export function registerApiRoutes(
         ref,
       );
       const draft = dependencies.drafts.get(ref.workspaceId, ref.documentId);
-      const preview = await dependencies.previews.start({
-        workspaceId: request.params.workspaceId,
-        ref,
-        sourceRevision: source.revision,
-        source,
-        ...(draft === null ? {} : { draft }),
+      const previewSource = draft ?? source;
+      const titleValue = previewSource.frontMatter.title;
+      const title =
+        typeof titleValue === 'string' || typeof titleValue === 'number'
+          ? String(titleValue)
+          : request.params.documentId;
+      const markdown = dependencies.markdownPreviews.start({
+        title,
+        body: previewSource.body,
+        resourceBase: `/api/workspaces/${request.params.workspaceId}/documents/${request.params.documentId}/legacy-asset?collection=${encodeURIComponent(request.query.collection)}&source=`,
       });
-      return {
-        preview: {
-          id: preview.id,
-          workspaceId: preview.workspaceId,
-          files: preview.manifest.length,
-          createdAt: preview.createdAt,
-          expiresAt: preview.expiresAt,
-          url: `/api/previews/${preview.id}/content${preview.contentPath}`,
-        },
+      const markdownResult = {
+        id: markdown.id,
+        mode: 'markdown' as const,
+        status: 'ready' as const,
+        files: 0,
+        createdAt: markdown.createdAt,
+        expiresAt: markdown.expiresAt,
+        url: `/api/markdown-previews/${markdown.id}`,
       };
+      try {
+        const preview = await dependencies.previews.start({
+          workspaceId: request.params.workspaceId,
+          ref,
+          sourceRevision: source.revision,
+          source,
+          ...(draft === null ? {} : { draft }),
+        });
+        return {
+          preview: {
+            id: preview.id,
+            mode: 'enhanced' as const,
+            status: 'ready' as const,
+            workspaceId: preview.workspaceId,
+            files: preview.manifest.length,
+            createdAt: preview.createdAt,
+            expiresAt: preview.expiresAt,
+            url: `/api/previews/${preview.id}/content${preview.contentPath}`,
+          },
+        };
+      } catch (error) {
+        return {
+          preview: {
+            ...markdownResult,
+            fallbackReason: previewFallbackReason(error),
+          },
+        };
+      }
     },
   );
 

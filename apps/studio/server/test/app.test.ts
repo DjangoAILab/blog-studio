@@ -1476,6 +1476,36 @@ describe('Studio workspace API', () => {
       expect((await app.inject({ url: preview.url, headers })).statusCode).toBe(
         200,
       );
+
+      const compatibilityStarted = await app.inject({
+        method: 'POST',
+        url: `/api/workspaces/test-blog/documents/${documentId}/preview?collection=posts`,
+        headers,
+      });
+      expect(compatibilityStarted.statusCode, compatibilityStarted.body).toBe(
+        200,
+      );
+      const compatibilityPreview = compatibilityStarted.json<{
+        preview: {
+          mode: string;
+          status: string;
+          fallbackReason: string;
+          url: string;
+        };
+      }>().preview;
+      expect(compatibilityPreview).toMatchObject({
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason,
+      });
+      expect(
+        (
+          await app.inject({
+            url: compatibilityPreview.url,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(200);
     },
   );
 

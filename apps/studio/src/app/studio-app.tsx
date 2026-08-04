@@ -5,6 +5,7 @@ import {
   type DocumentPayload,
   type DocumentSummary,
   type OrphanAssetPlan,
+  type PreviewFallbackReason,
   type ReleaseDetails,
   type ReleaseStatus,
   type WorkspaceSummary,
@@ -49,6 +50,17 @@ const releaseLabels: Readonly<Record<ReleaseStatus, string>> = {
   'rolled-back': '已安全回滚',
   canceled: '已取消',
 };
+
+const previewFallbackMessages: Readonly<Record<PreviewFallbackReason, string>> =
+  {
+    'missing-output': '真实主题没有生成当前文章页，已显示 Markdown 预览。',
+    'route-error': '真实主题路由未返回当前文章，已显示 Markdown 预览。',
+    'build-error': '站点生成器运行失败，已显示 Markdown 预览。',
+    timeout: '站点生成器超时，已显示 Markdown 预览。',
+    'unsupported-engine': '当前引擎不支持真实主题预览，已显示 Markdown 预览。',
+    canceled: '真实主题预览已取消，已显示 Markdown 预览。',
+    restart: '真实主题预览因服务重启中断，已显示 Markdown 预览。',
+  };
 
 function Login({
   onLogin,
@@ -154,6 +166,8 @@ export function StudioApp() {
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewError, setPreviewError] = useState('');
+  const [previewFallback, setPreviewFallback] =
+    useState<PreviewFallbackReason>();
   const [panel, setPanel] = useState<'library' | 'write' | 'preview'>('write');
   const [uploads, setUploads] = useState<readonly AssetUpload[]>([]);
   const [release, setRelease] = useState<ReleaseDetails>();
@@ -268,6 +282,7 @@ export function StudioApp() {
     setPreviewUrl('');
     setPreviewState('idle');
     setPreviewError('');
+    setPreviewFallback(undefined);
     setOrphanPlan(undefined);
     setOrphanState('idle');
     setOrphanError('');
@@ -589,6 +604,7 @@ export function StudioApp() {
             setPanel('preview');
             setPreviewState('building');
             setPreviewError('');
+            setPreviewFallback(undefined);
             void api
               .startPreview(
                 workspace.id,
@@ -597,10 +613,12 @@ export function StudioApp() {
               )
               .then(({ preview }) => {
                 setPreviewUrl(preview.url);
+                setPreviewFallback(preview.fallbackReason);
                 setPreviewState('ready');
               })
               .catch((reason: unknown) => {
                 setPreviewUrl('');
+                setPreviewFallback(undefined);
                 setPreviewState('error');
                 setPreviewError(
                   reason instanceof Error ? reason.message : '预览生成失败',
@@ -1179,7 +1197,14 @@ export function StudioApp() {
               </div>
             </div>
           ) : previewUrl ? (
-            <iframe title="文章真实预览" sandbox="" src={previewUrl} />
+            <div className="preview-frame">
+              {previewFallback ? (
+                <p className="preview-notice" role="status">
+                  {previewFallbackMessages[previewFallback]}
+                </p>
+              ) : null}
+              <iframe title="文章真实预览" sandbox="" src={previewUrl} />
+            </div>
           ) : (
             <div className="preview-empty" aria-live="polite">
               <span>{previewState === 'building' ? '◒' : '◌'}</span>

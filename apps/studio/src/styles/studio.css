@@ -671,13 +671,29 @@ body::before {
   display: grid;
   grid-template-rows: 64px 1fr;
 }
+.preview-frame {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
 .preview-panel iframe {
+  flex: 1;
+  min-height: 0;
   width: calc(100% - 2rem);
-  height: calc(100% - 2rem);
+  height: auto;
   margin: 1rem;
   border: 0;
   background: white;
   box-shadow: 0 12px 40px #2028251f;
+}
+.preview-notice {
+  margin: 1rem 1rem 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--line));
+  background: color-mix(in srgb, var(--paper) 88%, var(--accent));
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.5;
 }
 .preview-empty {
   align-self: center;

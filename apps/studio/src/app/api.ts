@@ -26,6 +26,23 @@ export type ReleaseStatus =
   | 'rolled-back'
   | 'canceled';
 
+export type PreviewFallbackReason =
+  | 'missing-output'
+  | 'route-error'
+  | 'build-error'
+  | 'timeout'
+  | 'unsupported-engine'
+  | 'canceled'
+  | 'restart';
+
+interface ReadyPreview {
+  readonly id: string;
+  readonly mode: 'markdown' | 'enhanced';
+  readonly status: 'ready';
+  readonly url: string;
+  readonly fallbackReason?: PreviewFallbackReason;
+}
+
 export interface ReleaseDetails {
   readonly release: {
     readonly id: string;
@@ -267,20 +284,7 @@ export class StudioApi {
     const parameters = new URLSearchParams({ collection: input.collection });
     if (input.mode) parameters.set('mode', input.mode);
     return this.#request<{
-      preview: {
-        readonly id: string;
-        readonly mode: 'markdown' | 'enhanced';
-        readonly status: 'ready';
-        readonly url: string;
-        readonly fallbackReason?:
-          | 'missing-output'
-          | 'route-error'
-          | 'build-error'
-          | 'timeout'
-          | 'unsupported-engine'
-          | 'canceled'
-          | 'restart';
-      };
+      preview: ReadyPreview;
     }>(
       `/api/sites/${input.siteId}/content/${input.documentId}/preview?${parameters.toString()}`,
       { method: 'POST' },
@@ -359,7 +363,7 @@ export class StudioApi {
     documentId: string,
     collection = 'posts',
   ) {
-    return this.#request<{ preview: { id: string; url: string } }>(
+    return this.#request<{ preview: ReadyPreview }>(
       `/api/workspaces/${workspaceId}/documents/${documentId}/preview?collection=${collection}`,
       { method: 'POST' },
     );

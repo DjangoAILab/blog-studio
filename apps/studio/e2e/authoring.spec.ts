@@ -32,6 +32,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(page.getByTitle('文章真实预览')).toBeVisible({
     timeout: 10_000,
   });
+  await expect(page.getByRole('status')).toContainText('已显示 Markdown 预览');
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '放弃修改' }).click();
