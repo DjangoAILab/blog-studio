@@ -1,5 +1,11 @@
 export { openStudioDatabase, type StudioDatabase } from './database.js';
 export {
+  ChangeSetStateConflictError,
+  SqliteChangeSetRepository,
+  type ChangeSetRecord,
+  type ChangeSetStatus,
+} from './change-sets.js';
+export {
   CredentialGenerationConflictError,
   OwnerAlreadyInitializedError,
   OwnerNotInitializedError,
@@ -24,3 +30,11 @@ export {
   type StoredRelease,
 } from './releases.js';
 export { SqliteOwnerSessionRepository, type OwnerSession } from './sessions.js';
+export {
+  SiteAlreadyExistsError,
+  SiteRevisionConflictError,
+  SqliteSiteRepository,
+  type CreateSiteInput,
+  type SiteRecord,
+  type SiteUniqueField,
+} from './sites.js';

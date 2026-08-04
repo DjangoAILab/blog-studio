@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -125,5 +125,57 @@ describe('Studio database migrations', () => {
     expect(() => openStudioDatabase(path)).toThrow(
       UnsupportedDatabaseVersionError,
     );
+  });
+
+  it('rolls back every statement when a migration is interrupted', () => {
+    const path = databasePath();
+    const damaged = new DatabaseSync(path);
+    damaged.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY CHECK (version > 0),
+        name TEXT NOT NULL UNIQUE,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO schema_migrations VALUES (1, 'v0.1-baseline', '2026-08-03T00:00:00.000Z');
+      CREATE TABLE sites (id TEXT PRIMARY KEY) STRICT;
+    `);
+    damaged.close();
+
+    expect(() => openStudioDatabase(path)).toThrow(/display_name/);
+    const inspected = new DatabaseSync(path);
+    expect(tableNames(inspected)).not.toContain('owner_credentials');
+    expect(
+      inspected
+        .prepare('SELECT MAX(version) AS version FROM schema_migrations')
+        .get(),
+    ).toEqual({ version: 1 });
+    inspected.close();
+  });
+
+  it('opens a closed database-file backup with all operational rows intact', () => {
+    const path = databasePath();
+    const original = openStudioDatabase(path);
+    original
+      .prepare(
+        `INSERT INTO owner_credentials (
+           owner_id, verifier, generation, created_at, updated_at
+         ) VALUES (1, 'scrypt:backup', 1, '2026-08-04T00:00:00.000Z',
+                   '2026-08-04T00:00:00.000Z')`,
+      )
+      .run();
+    original.close();
+
+    const backupPath = `${path}.backup`;
+    copyFileSync(path, backupPath);
+    const restored = openStudioDatabase(backupPath);
+    expect(
+      restored
+        .prepare('SELECT verifier FROM owner_credentials WHERE owner_id = 1')
+        .get(),
+    ).toEqual({ verifier: 'scrypt:backup' });
+    expect(restored.prepare('PRAGMA integrity_check').get()).toEqual({
+      integrity_check: 'ok',
+    });
+    restored.close();
   });
 });

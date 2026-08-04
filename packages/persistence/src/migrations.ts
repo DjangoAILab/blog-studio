@@ -119,6 +119,9 @@ const migrations: readonly Migration[] = [
         updated_at TEXT NOT NULL
       ) STRICT;
 
+      CREATE UNIQUE INDEX IF NOT EXISTS sites_display_name_unique
+        ON sites(lower(display_name));
+
       CREATE TABLE IF NOT EXISTS change_sets (
         id TEXT PRIMARY KEY,
         site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
@@ -136,6 +139,10 @@ const migrations: readonly Migration[] = [
 
       CREATE INDEX IF NOT EXISTS change_sets_site_created
         ON change_sets(site_id, created_at DESC);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS change_sets_one_prepared_fingerprint
+        ON change_sets(site_id, fingerprint)
+        WHERE status = 'prepared';
     `,
   },
 ];
