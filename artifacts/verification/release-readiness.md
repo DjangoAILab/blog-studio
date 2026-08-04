@@ -129,19 +129,21 @@ request IDs, hashes, and raw timelines are recorded in
 
 The owner's existing `id_ed25519` public key is registered as a GitHub SSH
 signing key and a disposable signature was verified before release work. The
-writer credential is the only operating production credential and has a first
-scheduled rotation date of 2026-11-01. The adoption-only CAM user and policy
-remain unchanged for audit history. Disabling its superseded API key is the
-only remaining credential-disposition gate: the Tencent console session expired
-before the asynchronous disable request completed, and a subsequent read-only
-COS probe proved that the key was still active. The release must not claim this
-gate until console read-back and a rejected credential probe both agree.
+writer credential is the only operating production credential. It remains in
+administrator-controlled, mode-`0600` home-server secret files and uses
+event-driven rotation rather than calendar-only replacement. The adoption-only
+CAM user and policy remain unchanged for audit history. Its superseded API key
+is disabled: console read-back showed the disabled state, a read-only COS probe
+returned `403 InvalidAccessKeyId`, and the writer's matching probe still returned
+`200`. Both disabled adoption and active writer credential files remain locally
+available under mode-`0600` host controls, so routine operation does not require
+reissuing keys or repeating interactive verification.
 
-All product and controlled-publish gates required before the signed `v0.1.0`
-tag are green. After the credential-disposition gate above closes, the release
-workflow will build the multi-platform image, attach its immutable digest,
-generate deterministic checksums/source/notes/upgrade artifacts, and publish
-the GitHub release from that verified tag.
+All product, controlled-publish, and credential-disposition gates required
+before the signed `v0.1.0` tag are green. The release workflow will build the
+multi-platform image, attach its immutable digest, generate deterministic
+checksums/source/notes/upgrade artifacts, and publish the GitHub release from
+that verified tag.
 
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part

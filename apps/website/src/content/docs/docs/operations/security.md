@@ -36,12 +36,20 @@ Traefik reaches the container over an external Docker network.
 ## Secret handling
 
 The authentication and cookie secrets are mounted files. Provider secrets should
-come from a secret manager or environment references. Do not commit `.env`,
+come from a secret manager or environment references. For a single-owner
+self-hosted installation, dedicated files outside the repository are also
+acceptable when they are owned by the runtime administrator, mode `0600`,
+mounted read-only into the container, and protected by the host and backup
+access controls. Do not retain downloaded credential CSVs or commit `.env`,
 secret files, provider logs, support bundles, or backup archives.
 
 Rotate a compromised login token by replacing its file and recreating the
-container. Rotate the cookie secret to invalidate all sessions. Provider-key
-rotation must follow the provider's own least-privilege and overlap procedure.
+container. Rotate the cookie secret to invalidate all sessions. Do not rotate a
+healthy provider key solely because an arbitrary calendar interval elapsed.
+Rotate after suspected exposure, a material identity or permission-boundary
+change, a provider requirement, or cryptographic deprecation. Rotation must use
+the provider's least-privilege and overlap procedure; ordinary security reviews
+should recheck scope and usage without issuing a new credential.
 
 ## Public-site independence
 
