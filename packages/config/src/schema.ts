@@ -66,6 +66,51 @@ export const blogStudioConfigSchema = z
       })
       .strict()
       .optional(),
+    resources: z
+      .object({
+        maxInputBytes: z
+          .number()
+          .int()
+          .positive()
+          .max(100 * 1024 * 1024),
+        allowedMediaTypes: z
+          .array(
+            z.enum([
+              'image/png',
+              'image/jpeg',
+              'image/webp',
+              'application/pdf',
+              'application/zip',
+              'text/plain',
+            ]),
+          )
+          .min(1),
+        inlinePreviewMediaTypes: z
+          .array(
+            z.enum([
+              'image/png',
+              'image/jpeg',
+              'image/webp',
+              'application/pdf',
+              'application/zip',
+              'text/plain',
+            ]),
+          )
+          .optional(),
+      })
+      .strict()
+      .superRefine((policy, context) => {
+        for (const mediaType of policy.inlinePreviewMediaTypes ?? []) {
+          if (!policy.allowedMediaTypes.includes(mediaType)) {
+            context.addIssue({
+              code: 'custom',
+              path: ['inlinePreviewMediaTypes'],
+              message: `${mediaType} must also appear in allowedMediaTypes`,
+            });
+          }
+        }
+      })
+      .optional(),
     workspace: z
       .object({
         id: z

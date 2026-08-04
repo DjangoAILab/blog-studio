@@ -446,6 +446,34 @@ export class StudioApi {
     );
   }
 
+  public uploadResource(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly file: File;
+  }) {
+    return this.#request<{
+      resource: {
+        readonly id: string;
+        readonly kind: 'image' | 'attachment';
+        readonly publicUrl: string;
+        readonly mediaType: string;
+        readonly insertion: string;
+        readonly inlinePreview: boolean;
+      };
+    }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/resources?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: input.file,
+        headers: {
+          'content-type': input.file.type || 'application/octet-stream',
+          'x-blog-studio-filename': encodeURIComponent(input.file.name),
+        },
+      },
+    );
+  }
+
   public orphanAssets(input: {
     readonly workspaceId: string;
     readonly documentId: string;

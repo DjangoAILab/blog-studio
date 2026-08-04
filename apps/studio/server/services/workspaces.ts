@@ -7,7 +7,7 @@ import {
   type CommandCollectionOptions,
 } from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
-import { AssetPipeline } from '@blog-studio/assets';
+import { AssetPipeline, ResourcePipeline } from '@blog-studio/assets';
 import {
   assertKnownAdapters,
   parseBlogStudioConfigYaml,
@@ -31,6 +31,7 @@ export interface WorkspaceHandle {
   readonly assetProvider: AssetProvider;
   readonly assetRootPrefix: string;
   readonly assets: AssetPipeline;
+  readonly resources: ResourcePipeline;
 }
 
 export type AssetProviderFactory = (config: BlogStudioConfig) =>
@@ -340,6 +341,20 @@ export class WorkspaceService {
         assetProvider: assets.provider,
         assetRootPrefix: assets.rootPrefix,
         assets: assets.pipeline,
+        resources: new ResourcePipeline(assets.provider, {
+          ...(config.resources?.maxInputBytes
+            ? { maxInputBytes: config.resources.maxInputBytes }
+            : {}),
+          ...(config.resources?.allowedMediaTypes
+            ? { allowedMediaTypes: config.resources.allowedMediaTypes }
+            : {}),
+          ...(config.resources?.inlinePreviewMediaTypes
+            ? {
+                inlinePreviewMediaTypes:
+                  config.resources.inlinePreviewMediaTypes,
+              }
+            : {}),
+        }),
       });
     }
     return service;

@@ -22,6 +22,47 @@
       "required": ["displayName"],
       "additionalProperties": false
     },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "maxInputBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 104857600
+        },
+        "allowedMediaTypes": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf",
+              "application/zip",
+              "text/plain"
+            ]
+          }
+        },
+        "inlinePreviewMediaTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf",
+              "application/zip",
+              "text/plain"
+            ]
+          }
+        }
+      },
+      "required": ["maxInputBytes", "allowedMediaTypes"],
+      "additionalProperties": false
+    },
     "workspace": {
       "type": "object",
       "properties": {

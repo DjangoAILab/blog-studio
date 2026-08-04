@@ -89,6 +89,41 @@ describe('blog-studio configuration schema', () => {
         site: { displayName: '', canonicalUrl: 'file:///tmp/blog' },
       }),
     ).toThrow();
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        resources: {
+          maxInputBytes: 1024,
+          allowedMediaTypes: ['text/plain'],
+          inlinePreviewMediaTypes: ['application/pdf'],
+        },
+      }),
+    ).toThrow();
+  });
+
+  it('accepts a bounded generic resource policy', () => {
+    const result = parseBlogStudioConfig({
+      ...validConfig,
+      resources: {
+        maxInputBytes: 8 * 1024 * 1024,
+        allowedMediaTypes: ['image/png', 'application/pdf', 'text/plain'],
+        inlinePreviewMediaTypes: ['image/png'],
+      },
+    });
+    expect(result.resources).toEqual({
+      maxInputBytes: 8 * 1024 * 1024,
+      allowedMediaTypes: ['image/png', 'application/pdf', 'text/plain'],
+      inlinePreviewMediaTypes: ['image/png'],
+    });
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        resources: {
+          maxInputBytes: 0,
+          allowedMediaTypes: ['application/x-executable'],
+        },
+      }),
+    ).toThrow();
   });
 
   it('parses YAML using the same strict schema', () => {

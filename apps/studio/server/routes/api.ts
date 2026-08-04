@@ -522,6 +522,60 @@ export function registerApiRoutes(
 
   app.post<{
     Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: Buffer;
+  }>(
+    '/api/sites/:siteId/content/:documentId/resources',
+    { schema: { params: siteDocumentParams, querystring: collectionQuery } },
+    async (request, reply) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const workspace = dependencies.workspaces.get(workspaceId);
+      await dependencies.workspaces.findDocument(
+        workspaceId,
+        request.query.collection,
+        request.params.documentId,
+      );
+      const encodedFilename = request.headers['x-blog-studio-filename'];
+      if (typeof encodedFilename !== 'string') {
+        return reply.code(400).send({
+          type: 'about:blank',
+          title: 'Missing resource filename',
+          status: 400,
+        });
+      }
+      let filename: string;
+      try {
+        filename = decodeURIComponent(encodedFilename);
+      } catch {
+        return reply.code(400).send({
+          type: 'about:blank',
+          title: 'Invalid resource filename encoding',
+          status: 400,
+        });
+      }
+      if (!Buffer.isBuffer(request.body)) {
+        return reply.code(400).send({
+          type: 'about:blank',
+          title: 'Resource body must be binary data',
+          status: 400,
+        });
+      }
+      const resource = await workspace.resources.ingest({
+        scope: createArticleAssetScope(
+          createWorkspaceId(workspaceId),
+          createDocumentId(request.params.documentId),
+          workspace.assetRootPrefix,
+        ),
+        filename,
+        claimedMediaType: request.headers['content-type'] ?? '',
+        bytes: request.body,
+      });
+      return reply.code(201).send({ resource });
+    },
+  );
+
+  app.post<{
+    Params: { siteId: string; documentId: string };
     Querystring: {
       collection: string;
       mode?: 'markdown' | 'enhanced';

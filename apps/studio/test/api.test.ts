@@ -122,6 +122,22 @@ describe('StudioApi', () => {
       '/api/sites/site-one/content/hello-world/preview?collection=published+posts&mode=enhanced',
     );
     expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('POST');
+
+    await api.uploadResource({
+      siteId: 'site-one',
+      documentId: 'hello-world',
+      collection: 'posts',
+      file: new File(['%PDF-1.7'], 'Guide 终稿.pdf', {
+        type: 'application/pdf',
+      }),
+    });
+    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+      '/api/sites/site-one/content/hello-world/resources?collection=posts',
+    );
+    expect(fetchMock.mock.calls[3]?.[1]?.headers).toMatchObject({
+      'content-type': 'application/pdf',
+      'x-blog-studio-filename': 'Guide%20%E7%BB%88%E7%A8%BF.pdf',
+    });
   });
 
   it('starts a release with the exact saved draft version', async () => {

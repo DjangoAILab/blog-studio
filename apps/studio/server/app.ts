@@ -117,8 +117,9 @@ export async function createStudioServer(
     logger,
     trustProxy: true,
   });
+  app.removeContentTypeParser('text/plain');
   app.addContentTypeParser(
-    /^image\/(?:png|jpeg|webp)(?:;.*)?$/,
+    /^(?:image\/(?:png|jpeg|webp)|application\/(?:pdf|zip|octet-stream)|text\/plain)(?:;.*)?$/,
     { parseAs: 'buffer' },
     (_request, body, done) => done(null, body),
   );

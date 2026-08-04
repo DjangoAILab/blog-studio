@@ -295,6 +295,7 @@ verification:
       assetProvider: assets.provider,
       assetRootPrefix: assets.rootPrefix,
       assets: {} as never,
+      resources: {} as never,
     } satisfies WorkspaceHandle;
 
     expect(assets.provider.id).toBe('tencent-cos');
@@ -348,6 +349,7 @@ verification:
       assetProvider: {} as never,
       assetRootPrefix: 'assets',
       assets: {} as never,
+      resources: {} as never,
     });
     await provider?.invalidate({
       urls: ['https://staging.example.com/releases/v0.1/index.html'],

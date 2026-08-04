@@ -42,6 +42,23 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
     nativeDrafts: workspace.generator.capabilities.drafts,
     createDocuments: workspace.generator.createDocument !== undefined,
     assetProvider: workspace.config.assets.adapter,
+    resourceMediaTypes: workspace.config.resources?.allowedMediaTypes ?? [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'application/pdf',
+      'application/zip',
+      'text/plain',
+    ],
+    inlinePreviewResourceMediaTypes: workspace.config.resources
+      ?.inlinePreviewMediaTypes ?? [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'application/pdf',
+    ],
+    maxResourceBytes:
+      workspace.config.resources?.maxInputBytes ?? 12 * 1024 * 1024,
     publishProvider: workspace.config.publish.adapter,
     publishConfigured: workspace.config.publish.adapter !== 'none',
   };
@@ -69,11 +86,27 @@ function storedCapabilities(
   ] as const;
   if (
     requiredBooleans.some((key) => typeof value[key] !== 'boolean') ||
-    requiredStrings.some((key) => typeof value[key] !== 'string')
+    requiredStrings.some((key) => typeof value[key] !== 'string') ||
+    typeof value.maxResourceBytes !== 'number' ||
+    !Array.isArray(value.resourceMediaTypes) ||
+    value.resourceMediaTypes.some((item) => typeof item !== 'string')
   ) {
     throw new Error('Stored Site capabilities are invalid');
   }
-  return value as unknown as SiteCapabilities;
+  const inlinePreviewResourceMediaTypes =
+    value.inlinePreviewResourceMediaTypes === undefined
+      ? []
+      : value.inlinePreviewResourceMediaTypes;
+  if (
+    !Array.isArray(inlinePreviewResourceMediaTypes) ||
+    inlinePreviewResourceMediaTypes.some((item) => typeof item !== 'string')
+  ) {
+    throw new Error('Stored Site capabilities are invalid');
+  }
+  return {
+    ...value,
+    inlinePreviewResourceMediaTypes,
+  } as unknown as SiteCapabilities;
 }
 
 function publicSite(record: SiteRecord): Site {

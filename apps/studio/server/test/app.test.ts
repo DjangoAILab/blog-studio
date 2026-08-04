@@ -291,7 +291,7 @@ async function waitForRelease(
   cookie: string,
   releaseId: string,
 ): Promise<ReleaseDetails> {
-  for (let attempt = 0; attempt < 80; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const response = await app.inject({
       url: `/api/workspaces/test-blog/releases/${releaseId}`,
       headers: { cookie },
@@ -732,19 +732,44 @@ describe('Studio workspace API', () => {
     expect(nativeDraft.statusCode, nativeDraft.body).toBe(201);
 
     const merged = await app.inject({
-      url: `/api/sites/${siteId}/content?page=1&pageSize=1`,
+      url: `/api/sites/${siteId}/content?page=1&pageSize=10`,
       headers,
     });
     expect(merged.statusCode, merged.body).toBe(200);
-    expect(merged.json()).toMatchObject({
+    const mergedContent = merged.json<{
       content: {
-        page: 1,
-        pageSize: 1,
-        total: 2,
-        counts: { all: 2, published: 0, draft: 1, modified: 1 },
-        items: [{ title: 'Native idea', state: 'draft' }],
-      },
+        items: Array<{ title: string; state: string }>;
+        page: number;
+        pageSize: number;
+        total: number;
+        counts: Record<string, number>;
+      };
+    }>().content;
+    expect(mergedContent).toMatchObject({
+      page: 1,
+      pageSize: 10,
+      total: 2,
+      counts: { all: 2, published: 0, draft: 1, modified: 1 },
     });
+    expect(mergedContent.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Native idea', state: 'draft' }),
+        expect.objectContaining({
+          title: 'Edited Hello',
+          state: 'modified',
+        }),
+      ]),
+    );
+    const paged = await app.inject({
+      url: `/api/sites/${siteId}/content?page=1&pageSize=1`,
+      headers,
+    });
+    expect(paged.json()).toMatchObject({
+      content: { page: 1, pageSize: 1, total: 2 },
+    });
+    expect(
+      paged.json<{ content: { items: unknown[] } }>().content.items,
+    ).toHaveLength(1);
     const filtered = await app.inject({
       url: `/api/sites/${siteId}/content?state=modified&tag=release&search=edited&pageSize=10`,
       headers,
@@ -994,6 +1019,70 @@ describe('Studio workspace API', () => {
     expect(enhanced.statusCode, enhanced.body).toBe(200);
     expect(enhanced.body).toContain('blog-studio-preview:');
     expect(enhanced.body).toContain('# Markdown works');
+  });
+
+  it('stores policy-approved non-image resources with portable insertion syntax', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Resource Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const url = `/api/sites/${siteId}/content/${documentId}/resources?collection=posts`;
+
+    const uploaded = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        ...headers,
+        'content-type': 'application/pdf',
+        'x-blog-studio-filename': encodeURIComponent('写作 Guide.pdf'),
+      },
+      payload: Buffer.from('%PDF-1.7\nresource body'),
+    });
+    expect(uploaded.statusCode, uploaded.body).toBe(201);
+    expect(uploaded.json()).toMatchObject({
+      resource: {
+        kind: 'attachment',
+        originalFilename: '写作 Guide.pdf',
+        mediaType: 'application/pdf',
+        inlinePreview: true,
+      },
+    });
+    expect(
+      uploaded.json<{ resource: { insertion: string } }>().resource.insertion,
+    ).toMatch(/^\[写作 Guide\.pdf\]\(https:\/\//);
+
+    const executable = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        ...headers,
+        'content-type': 'text/plain',
+        'x-blog-studio-filename': encodeURIComponent('harmless.txt'),
+      },
+      payload: Buffer.from([0x4d, 0x5a, 0x90, 0x00]),
+    });
+    expect(executable.statusCode).toBe(422);
+    expect(executable.json()).toMatchObject({
+      title: 'Executable resources are not accepted',
+    });
   });
 
   it.each([

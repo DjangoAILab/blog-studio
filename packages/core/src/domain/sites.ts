@@ -7,6 +7,9 @@ export interface SiteCapabilities {
   readonly nativeDrafts: boolean;
   readonly createDocuments: boolean;
   readonly assetProvider: string;
+  readonly resourceMediaTypes: readonly string[];
+  readonly inlinePreviewResourceMediaTypes: readonly string[];
+  readonly maxResourceBytes: number;
   readonly publishProvider: string;
   readonly publishConfigured: boolean;
 }
