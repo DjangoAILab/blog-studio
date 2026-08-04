@@ -208,8 +208,10 @@ sanitization libraries selected through dependency and security review.
 - Modify: `apps/studio/src/styles/studio.css`
 - Modify: `apps/studio/src/app/studio-app.tsx`
 
-1. Produce three image-based desktop/mobile directions grounded in working
-   journeys and the “living editorial room” principles.
+1. Produce three high-fidelity desktop/mobile directions grounded in working
+   journeys and the “living editorial room” principles. When the image backend
+   is unavailable, an explicitly approved interactive HTML decision artifact
+   is an acceptable equivalent.
 2. Obtain the owner's selection before production visual implementation.
 3. Encode semantic content/material/elevation/type/spacing/radius/focus/motion
    tokens and reduced-motion/transparency/high-contrast fallbacks.

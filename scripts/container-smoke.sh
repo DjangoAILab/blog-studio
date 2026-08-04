@@ -100,7 +100,9 @@ start_container() {
 }
 
 wait_for_health() {
-  for _ in $(seq 1 40); do
+  # The image healthcheck starts after 10s and runs every 30s. Give Docker
+  # enough time to schedule the first probe on a cold or busy host.
+  for _ in $(seq 1 120); do
     status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container")"
     if [[ "$status" == "healthy" ]]; then
       return
@@ -112,6 +114,7 @@ wait_for_health() {
     sleep 0.5
   done
   docker logs "$container" >&2
+  docker inspect --format '{{json .State.Health}}' "$container" >&2
   echo 'container did not become healthy' >&2
   return 1
 }
