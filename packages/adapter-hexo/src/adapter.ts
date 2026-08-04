@@ -485,6 +485,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
         NODE_ENV: input.mode === 'production' ? 'production' : 'development',
         ...(config.timezone ? { TZ: config.timezone } : {}),
       },
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     if (result.exitCode !== 0) {
       throw new Error(

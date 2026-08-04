@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   stat,
   writeFile,
 } from 'node:fs/promises';
@@ -37,6 +38,8 @@ interface FixtureOptions {
   readonly omitLegacyAuthToken?: boolean;
   readonly secondWorkspace?: boolean;
   readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
+  readonly previewDelayMs?: number;
+  readonly seedInterruptedPreviewSandbox?: boolean;
   readonly logger?: StudioServerOptions['logger'];
   readonly legacyReleaseApi?: boolean;
 }
@@ -45,6 +48,7 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   readonly app: FastifyInstance;
   readonly workspace: string;
   readonly publishTarget: string;
+  readonly previewStateDirectory: string;
   readonly cosObjects?: Map<string, Uint8Array>;
 }> {
   const parent = await mkdtemp(join(tmpdir(), 'blog-studio-api-'));
@@ -79,6 +83,11 @@ async function fixture(options: FixtureOptions = {}): Promise<{
     [
       '#!/usr/bin/env node',
       "const{mkdir,readdir,readFile,writeFile}=await import('node:fs/promises');",
+      ...(options.previewDelayMs
+        ? [
+            `await new Promise(resolve=>setTimeout(resolve,${options.previewDelayMs}));`,
+          ]
+        : []),
       ...(options.previewFailure === 'build-error'
         ? ["throw new Error('fixture preview build failed');"]
         : []),
@@ -186,6 +195,16 @@ verification:
     : undefined;
 
   const databasePath = join(parent, 'studio.sqlite');
+  const previewStateDirectory = join(parent, 'preview-sandboxes');
+  if (options.seedInterruptedPreviewSandbox) {
+    await mkdir(join(previewStateDirectory, 'preview-interrupted'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(previewStateDirectory, 'preview-interrupted', 'partial'),
+      'partial',
+    );
+  }
   if (options.ownerPassword) {
     const database = openStudioDatabase(databasePath);
     await new OwnerAuthService(
@@ -198,6 +217,7 @@ verification:
     configurationPaths,
     allowedWorkspaceRoot: parent,
     databasePath,
+    previewStateDirectory,
     ...(options.omitLegacyAuthToken ? {} : { authToken }),
     cookieSecret,
     allowedOrigins: [origin],
@@ -231,6 +251,7 @@ verification:
     app,
     workspace,
     publishTarget,
+    previewStateDirectory,
     ...(cosObjects ? { cosObjects } : {}),
   };
 }
@@ -1422,6 +1443,70 @@ describe('Studio workspace API', () => {
     expect(
       await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
     ).toContain('external edit');
+  });
+
+  it('reclaims interrupted preview sandboxes before the server becomes ready', async () => {
+    const { previewStateDirectory } = await fixture({
+      seedInterruptedPreviewSandbox: true,
+    });
+
+    expect(await readdir(previewStateDirectory)).toEqual([]);
+  });
+
+  it('cancels an in-flight Site preview and returns the ready Markdown fallback', async () => {
+    const { app, previewStateDirectory } = await fixture({
+      previewDelayMs: 10_000,
+    });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Cancelable Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+
+    const started = app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+      headers,
+    });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if ((await readdir(previewStateDirectory)).length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(await readdir(previewStateDirectory)).toHaveLength(1);
+
+    const canceled = await app.inject({
+      method: 'DELETE',
+      url: `/api/sites/${siteId}/preview`,
+      headers,
+    });
+    expect(canceled.statusCode, canceled.body).toBe(200);
+    expect(canceled.json()).toEqual({ stopped: true });
+    const fallback = await started;
+    expect(fallback.statusCode, fallback.body).toBe(200);
+    expect(fallback.json()).toMatchObject({
+      preview: {
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason: 'canceled',
+      },
+    });
+    expect(await readdir(previewStateDirectory)).toEqual([]);
   });
 
   it.each([

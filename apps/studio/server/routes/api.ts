@@ -780,6 +780,16 @@ export function registerApiRoutes(
     },
   );
 
+  app.delete<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/preview',
+    { schema: { params: siteParams } },
+    async (request) => ({
+      stopped: await dependencies.previews.stop(
+        dependencies.sites.workspaceId(request.params.siteId),
+      ),
+    }),
+  );
+
   app.get('/api/workspaces', () => ({
     workspaces: dependencies.workspaces.list().map((workspace) => ({
       id: workspace.config.workspace.id,

@@ -291,6 +291,12 @@ export class StudioApi {
     );
   }
 
+  public stopContentPreview(siteId: string) {
+    return this.#request<{ stopped: boolean }>(`/api/sites/${siteId}/preview`, {
+      method: 'DELETE',
+    });
+  }
+
   public documents(workspaceId: string, collection = 'posts') {
     return this.#request<{ documents: readonly DocumentSummary[] }>(
       `/api/workspaces/${workspaceId}/documents?collection=${collection}`,

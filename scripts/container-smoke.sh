@@ -167,11 +167,17 @@ test -s "$fixture/data/blog-studio.sqlite"
 docker stop --time 10 "$container" >/dev/null
 [[ "$(docker inspect --format '{{.State.ExitCode}}' "$container")" == '0' ]]
 docker rm "$container" >/dev/null
+docker run --rm \
+  --user 1000:1000 \
+  --mount "type=bind,src=$fixture/data,dst=/data" \
+  "$image" node -e \
+  'const{mkdir,writeFile}=require("node:fs/promises");(async()=>{await mkdir("/data/preview-sandboxes/preview-interrupted",{recursive:true});await writeFile("/data/preview-sandboxes/preview-interrupted/partial","partial")})()'
 start_container
 wait_for_health
+[[ -z "$(find "$fixture/data/preview-sandboxes" -mindepth 1 -maxdepth 1 -print -quit)" ]]
 
 session="$(login)"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/smoke-blog/documents/$document_id?collection=posts")"
 container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
 
-echo 'container smoke passed: non-root, read-only root, health, auth, durable draft, SIGTERM, cold restart'
+echo 'container smoke passed: non-root, read-only root, health, auth, durable draft, SIGTERM, cold restart, interrupted preview recovery'

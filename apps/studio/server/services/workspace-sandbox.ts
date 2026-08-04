@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { cp, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +20,7 @@ export async function createWorkspaceSandbox(
   workspace: WorkspaceHandle,
   purpose: 'preview' | 'release',
   commitId?: string,
+  parentDirectory?: string,
 ): Promise<WorkspaceSandbox> {
   const sourceRoot = await resolveWorkspacePath(
     workspace.config.workspace.root,
@@ -27,7 +28,14 @@ export async function createWorkspaceSandbox(
   );
   const model = await workspace.generator.inspect(sourceRoot);
   const outputPath = relative(sourceRoot, model.outputDirectory);
-  const directory = await mkdtemp(join(tmpdir(), `blog-studio-${purpose}-`));
+  const sandboxParent = parentDirectory ?? tmpdir();
+  await mkdir(sandboxParent, { recursive: true });
+  const directory = await mkdtemp(
+    join(
+      sandboxParent,
+      parentDirectory ? `${purpose}-` : `blog-studio-${purpose}-`,
+    ),
+  );
   const destination = join(directory, 'workspace');
   const excludedRoots = new Set(['.git', 'node_modules']);
   if (outputPath && !outputPath.startsWith('..'))

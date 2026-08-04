@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  CommandAbortedError,
   CommandTimeoutError,
   WorkspacePathError,
   runCommand,
@@ -42,6 +43,21 @@ describe('runCommand', () => {
         timeoutMs: 20,
       }),
     ).rejects.toBeInstanceOf(CommandTimeoutError);
+  });
+
+  it('terminates a running command when its caller cancels', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'blog-studio-command-'));
+    const controller = new AbortController();
+    const command = runCommand({
+      executable: process.execPath,
+      args: ['-e', 'setTimeout(() => {}, 10_000)'],
+      workspaceRoot: root,
+      signal: controller.signal,
+    });
+
+    controller.abort();
+
+    await expect(command).rejects.toBeInstanceOf(CommandAbortedError);
   });
 
   it('rejects a cwd that escapes through a symlink', async () => {

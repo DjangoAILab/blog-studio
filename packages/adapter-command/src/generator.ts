@@ -333,6 +333,7 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
       ...(this.#options.command.environment === undefined
         ? {}
         : { environment: this.#options.command.environment }),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     if (result.exitCode !== 0)
       throw new Error(`Build failed (${result.exitCode}): ${result.stderr}`);

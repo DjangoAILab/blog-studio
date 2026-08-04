@@ -123,6 +123,10 @@ describe('StudioApi', () => {
     );
     expect(fetchMock.mock.calls[2]?.[1]?.method).toBe('POST');
 
+    await api.stopContentPreview('site-one');
+    expect(fetchMock.mock.calls[3]?.[0]).toBe('/api/sites/site-one/preview');
+    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe('DELETE');
+
     await api.uploadResource({
       siteId: 'site-one',
       documentId: 'hello-world',
@@ -131,10 +135,10 @@ describe('StudioApi', () => {
         type: 'application/pdf',
       }),
     });
-    expect(fetchMock.mock.calls[3]?.[0]).toBe(
+    expect(fetchMock.mock.calls[4]?.[0]).toBe(
       '/api/sites/site-one/content/hello-world/resources?collection=posts',
     );
-    expect(fetchMock.mock.calls[3]?.[1]?.headers).toMatchObject({
+    expect(fetchMock.mock.calls[4]?.[1]?.headers).toMatchObject({
       'content-type': 'application/pdf',
       'x-blog-studio-filename': 'Guide%20%E7%BB%88%E7%A8%BF.pdf',
     });

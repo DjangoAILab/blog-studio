@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { readFile, rm, stat } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { lstat, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
 import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import type {
@@ -53,13 +54,43 @@ export interface PreviewSession {
   readonly expiresAt: string;
 }
 
+interface ActivePreview {
+  readonly fingerprint: string;
+  readonly controller: AbortController;
+  readonly promise: Promise<PreviewSession>;
+}
+
 export class PreviewService {
   readonly #sessions = new Map<string, PreviewSession>();
+  readonly #active = new Map<string, ActivePreview>();
 
   public constructor(
     private readonly workspaces: WorkspaceService,
     private readonly idleMs = 5 * 60_000,
+    private readonly sandboxDirectory = join(
+      tmpdir(),
+      `blog-studio-preview-service-${randomUUID()}`,
+    ),
   ) {}
+
+  public async recover(): Promise<number> {
+    if (this.#active.size > 0 || this.#sessions.size > 0)
+      throw new Error('Preview recovery is only valid before serving requests');
+    await mkdir(this.sandboxDirectory, { recursive: true });
+    const root = await lstat(this.sandboxDirectory);
+    if (!root.isDirectory() || root.isSymbolicLink())
+      throw new Error('Preview sandbox state path must be a real directory');
+    const entries = await readdir(this.sandboxDirectory);
+    await Promise.all(
+      entries.map(async (entry) =>
+        rm(join(this.sandboxDirectory, entry), {
+          force: true,
+          recursive: true,
+        }),
+      ),
+    );
+    return entries.length;
+  }
 
   async #disposeSession(session: PreviewSession): Promise<void> {
     await rm(session.workspaceDirectory, { force: true, recursive: true });
@@ -75,8 +106,60 @@ export class PreviewService {
     };
     readonly draft?: PreviewDraft;
   }): Promise<PreviewSession> {
-    const now = Date.now();
     const fingerprint = `${input.ref.documentId}:${input.sourceRevision}:${input.draft?.version ?? 0}`;
+    const active = this.#active.get(input.workspaceId);
+    if (active?.fingerprint === fingerprint) {
+      try {
+        return await active.promise;
+      } catch (error) {
+        if (active.controller.signal.aborted)
+          throw new PreviewReadinessError(
+            'canceled',
+            'Enhanced preview was canceled',
+          );
+        throw error;
+      }
+    }
+    if (active) {
+      active.controller.abort();
+      await active.promise.catch(() => undefined);
+    }
+
+    const controller = new AbortController();
+    const promise = this.#start(input, fingerprint, controller.signal);
+    const current = { fingerprint, controller, promise };
+    this.#active.set(input.workspaceId, current);
+    try {
+      return await promise;
+    } catch (error) {
+      if (controller.signal.aborted)
+        throw new PreviewReadinessError(
+          'canceled',
+          'Enhanced preview was canceled',
+        );
+      throw error;
+    } finally {
+      if (this.#active.get(input.workspaceId) === current)
+        this.#active.delete(input.workspaceId);
+    }
+  }
+
+  async #start(
+    input: {
+      readonly workspaceId: string;
+      readonly ref: DocumentRef;
+      readonly sourceRevision: ContentHash;
+      readonly source: {
+        readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+        readonly body: string;
+      };
+      readonly draft?: PreviewDraft;
+    },
+    fingerprint: string,
+    signal: AbortSignal,
+  ): Promise<PreviewSession> {
+    signal.throwIfAborted();
+    const now = Date.now();
     const existing = this.#sessions.get(input.workspaceId);
     if (
       existing &&
@@ -102,12 +185,18 @@ export class PreviewService {
         `Generator ${workspace.generator.id} does not support enhanced preview`,
       );
     }
-    const sandbox = await createWorkspaceSandbox(workspace, 'preview');
+    const sandbox = await createWorkspaceSandbox(
+      workspace,
+      'preview',
+      undefined,
+      this.sandboxDirectory,
+    );
     const isolatedWorkspace = sandbox.workspaceRoot;
     const temporaryRoot = dirname(isolatedWorkspace);
     const id = randomUUID();
     const marker = `blog-studio-preview:${id}`;
     try {
+      signal.throwIfAborted();
       let previewRef = input.ref;
       if (input.draft && input.draft.sourceRevision !== input.sourceRevision) {
         throw new Error('Draft source revision conflict');
@@ -122,6 +211,7 @@ export class PreviewService {
           body: `${previewSource.body}\n<span data-blog-studio-preview="${id}" hidden>${marker}</span>\n`,
         },
       );
+      signal.throwIfAborted();
       const previewRevision = written.revision;
       if (input.ref.collectionId === 'drafts') {
         if (!workspace.generator.promoteDocument)
@@ -138,6 +228,7 @@ export class PreviewService {
         );
         previewRef = promoted.ref;
       }
+      signal.throwIfAborted();
       const publicUrl = await workspace.generator.resolvePublicUrl(
         isolatedWorkspace,
         previewRef,
@@ -145,7 +236,9 @@ export class PreviewService {
       const build = await workspace.generator.build({
         workspaceRoot: isolatedWorkspace,
         mode: 'preview',
+        signal,
       });
+      signal.throwIfAborted();
       const contentPath = new URL(publicUrl).pathname;
       const targetPath = contentPath.endsWith('/')
         ? `${contentPath.slice(1)}index.html`
@@ -198,8 +291,13 @@ export class PreviewService {
   }
 
   public async stop(workspaceId: string): Promise<boolean> {
+    const active = this.#active.get(workspaceId);
+    if (active) {
+      active.controller.abort();
+      await active.promise.catch(() => undefined);
+    }
     const session = this.#sessions.get(workspaceId);
-    if (!session) return false;
+    if (!session) return active !== undefined;
     this.#sessions.delete(workspaceId);
     await this.#disposeSession(session);
     return true;
@@ -228,6 +326,11 @@ export class PreviewService {
   }
 
   public async dispose(): Promise<void> {
+    const active = [...this.#active.values()];
+    for (const preview of active) preview.controller.abort();
+    await Promise.all(
+      active.map(async (preview) => preview.promise.catch(() => undefined)),
+    );
     const sessions = [...this.#sessions.values()];
     this.#sessions.clear();
     await Promise.all(

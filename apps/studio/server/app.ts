@@ -60,6 +60,7 @@ export interface StudioServerOptions {
   readonly allowedWorkspaceRoot: string;
   readonly databasePath: string;
   readonly releaseStateDirectory?: string;
+  readonly previewStateDirectory?: string;
   readonly authToken?: string;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
@@ -155,7 +156,18 @@ export async function createStudioServer(
     changeSetRepository,
   );
   const markdownPreviews = new MarkdownPreviewService();
-  const previews = new PreviewService(workspaces);
+  const previews = new PreviewService(
+    workspaces,
+    undefined,
+    options.previewStateDirectory ??
+      join(dirname(options.databasePath), 'preview-sandboxes'),
+  );
+  const recoveredPreviewSandboxes = await previews.recover();
+  if (recoveredPreviewSandboxes > 0)
+    app.log.warn(
+      { recoveredPreviewSandboxes },
+      'Removed interrupted preview sandboxes during startup',
+    );
   await changeSets.recover();
   const releases = new ReleaseService({
     workspaces,
