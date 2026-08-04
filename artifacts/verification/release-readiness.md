@@ -140,10 +140,11 @@ available under mode-`0600` host controls, so routine operation does not require
 reissuing keys or repeating interactive verification.
 
 All product, controlled-publish, and credential-disposition gates required
-before the signed `v0.1.0` tag are green. The release workflow will build the
-multi-platform image, attach its immutable digest, generate deterministic
-checksums/source/notes/upgrade artifacts, and publish the GitHub release from
-that verified tag.
+before the signed `v0.1.0` tag are green. The release workflow built the
+multi-platform image, attached its immutable digest, generated deterministic
+checksums/source/notes/upgrade artifacts, and published the GitHub release from
+that verified tag. Independent post-publication verification is recorded in
+[`v0.1.0-release.md`](v0.1.0-release.md).
 
 The configured application fails closed at these provider boundaries. Tencent
 console configuration is still classic CDN, and no EdgeOne migration is part

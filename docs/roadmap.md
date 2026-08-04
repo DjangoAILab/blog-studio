@@ -57,7 +57,7 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] API and adapter reference generated from source.
 - [x] Accessibility, responsive, performance, and visual QA.
 - [x] Deploy to the home server and pass cold-restart verification.
-- [ ] Publish v0.1.0 release with checksums and release notes.
+- [x] Publish v0.1.0 release with checksums and release notes.
 
 ## Phase 4 — Ecosystem hardening
 
