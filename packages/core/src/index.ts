@@ -13,4 +13,5 @@ export * from './domain/identifiers.js';
 export * from './domain/jobs.js';
 export * from './domain/releases.js';
 export * from './domain/resources.js';
+export * from './domain/setup.js';
 export * from './domain/sites.js';

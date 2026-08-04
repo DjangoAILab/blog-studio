@@ -2,6 +2,7 @@ import type {
   Site,
   SiteAuditEvent,
   SiteDiscoveryCandidate,
+  StudioSetupStatus,
 } from '@blog-studio/core';
 
 export interface WorkspaceSummary {
@@ -171,6 +172,10 @@ export class StudioApi {
     return this.#request<{ initialized: boolean; generation?: number }>(
       '/api/auth/status',
     );
+  }
+
+  public setupStatus() {
+    return this.#request<StudioSetupStatus>('/api/setup/status');
   }
 
   public async login(password: string): Promise<void> {

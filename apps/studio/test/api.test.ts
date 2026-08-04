@@ -159,6 +159,7 @@ describe('StudioApi', () => {
     vi.stubGlobal('fetch', fetchMock);
     const api = new StudioApi('csrf-token');
 
+    await api.setupStatus();
     await api.sites();
     await api.discoverSites();
     await api.site('site-one');
@@ -175,6 +176,7 @@ describe('StudioApi', () => {
     await api.siteEvents('site-one');
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/setup/status',
       '/api/sites',
       '/api/sites/discover',
       '/api/sites/site-one',
@@ -182,7 +184,7 @@ describe('StudioApi', () => {
       '/api/sites/site-one',
       '/api/sites/site-one/events',
     ]);
-    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
       method: 'POST',
       body: JSON.stringify({
         candidateId: 'workspace-one',
@@ -190,7 +192,7 @@ describe('StudioApi', () => {
         canonicalUrl: 'https://example.test',
       }),
     });
-    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+    expect(fetchMock.mock.calls[5]?.[1]).toMatchObject({
       method: 'PATCH',
       body: JSON.stringify({
         expectedUpdatedAt: '2026-08-04T00:00:00.000Z',

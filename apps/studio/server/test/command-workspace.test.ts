@@ -206,9 +206,25 @@ describe('production command workspace wiring', () => {
     expect(preview.body).toContain('Previewed generic body');
   });
 
-  it('rejects unknown command options at startup', async () => {
-    await expect(
-      commandFixture({ extraGeneratorOption: 'unexpected: true' }),
-    ).rejects.toThrow(/generator\.options\.unexpected/);
+  it('keeps unknown command options fail-closed in degraded setup mode', async () => {
+    const { app } = await commandFixture({
+      extraGeneratorOption: 'unexpected: true',
+    });
+    expect((await app.inject('/api/health')).statusCode).toBe(503);
+    expect((await app.inject('/api/setup/status')).json()).toMatchObject({
+      ready: false,
+      configuration: {
+        state: 'invalid',
+        nextAction: 'repair-configuration',
+      },
+      site: { state: 'unavailable' },
+    });
+    const session = await login(app);
+    const workspaces = await app.inject({
+      url: '/api/workspaces',
+      headers: { cookie: session.cookie },
+    });
+    expect(workspaces.statusCode).toBe(503);
+    expect(workspaces.body).not.toContain('unexpected');
   });
 });

@@ -36,7 +36,7 @@ import {
 } from '../services/releases.js';
 import type { WorkspaceService } from '../services/workspaces.js';
 
-interface ApiDependencies {
+export interface ApiDependencies {
   readonly workspaces: WorkspaceService;
   readonly sites: SiteService;
   readonly content: ContentService;
@@ -285,8 +285,6 @@ export function registerApiRoutes(
   app: FastifyInstance,
   dependencies: ApiDependencies,
 ): void {
-  app.get('/api/health', () => ({ status: 'ok' as const }));
-
   app.get('/api/sites', () => ({ sites: dependencies.sites.list() }));
 
   app.get('/api/sites/discover', async () => ({

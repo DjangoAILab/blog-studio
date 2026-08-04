@@ -116,6 +116,18 @@ wait_for_health() {
   return 1
 }
 
+wait_for_setup_status() {
+  for _ in $(seq 1 40); do
+    if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/setup/status" || true)" == '200' ]]; then
+      return
+    fi
+    sleep 0.25
+  done
+  docker logs "$container" >&2
+  echo 'container setup status did not become reachable' >&2
+  return 1
+}
+
 login() {
   curl --fail --silent --show-error \
     --cookie-jar "$fixture/cookies" \
@@ -180,4 +192,20 @@ session="$(login)"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/smoke-blog/documents/$document_id?collection=posts")"
 container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
 
-echo 'container smoke passed: non-root, read-only root, health, auth, durable draft, SIGTERM, cold restart, interrupted preview recovery'
+docker stop --time 10 "$container" >/dev/null
+docker rm "$container" >/dev/null
+cat >"$fixture/config/blog-studio.yml" <<'YAML'
+version: invalid
+YAML
+start_container
+wait_for_setup_status
+[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/health")" == '503' ]]
+setup="$(curl --fail --silent --show-error "$origin/api/setup/status")"
+container_node -e 'const input=JSON.parse(process.argv[1]);if(input.ready!==false||input.configuration?.state!=="invalid"||input.configuration?.nextAction!=="repair-configuration"||input.site?.state!=="unavailable")process.exit(1)' "$setup"
+session="$(login)"
+[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' --cookie "$fixture/cookies" "$origin/api/workspaces")" == '503' ]]
+[[ "$(docker inspect --format '{{.State.Running}}' "$container")" == 'true' ]]
+docker stop --time 10 "$container" >/dev/null
+[[ "$(docker inspect --format '{{.State.ExitCode}}' "$container")" == '0' ]]
+
+echo 'container smoke passed: non-root, read-only root, health, auth, durable draft, SIGTERM, cold restart, interrupted preview recovery, fail-closed degraded setup'

@@ -35,6 +35,7 @@ const apps: FastifyInstance[] = [];
 interface FixtureOptions {
   readonly existingCosObjects?: Map<string, Uint8Array>;
   readonly ownerPassword?: string;
+  readonly invalidConfiguration?: boolean;
   readonly omitLegacyAuthToken?: boolean;
   readonly secondWorkspace?: boolean;
   readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
@@ -116,7 +117,9 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
   const usesCosBaseline = options.existingCosObjects !== undefined;
-  const configuration = `version: 1
+  const configuration = options.invalidConfiguration
+    ? 'version: invalid\n'
+    : `version: 1
 workspace:
   id: test-blog
   root: ${workspace}
@@ -339,6 +342,15 @@ afterEach(async () => {
 describe('Studio workspace API', () => {
   it('reports uninitialized owner state without allowing browser ownership claim', async () => {
     const { app } = await fixture({ omitLegacyAuthToken: true });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: {
+        state: 'not-ready',
+        nextAction: 'initialize-owner-credentials',
+      },
+      configuration: { state: 'valid' },
+      site: { state: 'not-registered', nextAction: 'discover-site' },
+    });
     expect((await app.inject('/api/auth/status')).json()).toEqual({
       initialized: false,
     });
@@ -355,6 +367,34 @@ describe('Studio workspace API', () => {
     expect((await app.inject('/api/auth/status')).json()).toEqual({
       initialized: false,
     });
+  });
+
+  it('starts fail-closed with a public repair action when configuration is invalid', async () => {
+    const ownerPassword = 'owner password for degraded configuration';
+    const { app } = await fixture({
+      invalidConfiguration: true,
+      omitLegacyAuthToken: true,
+      ownerPassword,
+    });
+    const health = await app.inject('/api/health');
+    expect(health.statusCode).toBe(503);
+    expect(health.json()).toEqual({
+      status: 'degraded',
+      code: 'CONFIGURATION_INVALID',
+    });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: { state: 'ready' },
+      configuration: {
+        state: 'invalid',
+        nextAction: 'repair-configuration',
+      },
+      site: { state: 'unavailable', nextAction: 'repair-configuration' },
+    });
+    const { cookie } = await loginWithPassword(app, ownerPassword);
+    const sites = await app.inject({ url: '/api/sites', headers: { cookie } });
+    expect(sites.statusCode).toBe(503);
+    expect(sites.json()).toMatchObject({ code: 'CONFIGURATION_INVALID' });
   });
 
   it('redacts credential, session, cookie, CSRF, and authorization log fields', async () => {
@@ -530,7 +570,11 @@ describe('Studio workspace API', () => {
   });
 
   it('discovers and confirms a v0.1 workspace as a user-facing Site', async () => {
-    const { app, workspace } = await fixture();
+    const ownerPassword = 'owner password for Site onboarding';
+    const { app, workspace } = await fixture({
+      omitLegacyAuthToken: true,
+      ownerPassword,
+    });
     execFileSync('git', ['-C', workspace, 'init', '-q']);
     execFileSync('git', [
       '-C',
@@ -548,7 +592,7 @@ describe('Studio workspace API', () => {
     ]);
     execFileSync('git', ['-C', workspace, 'add', '.']);
     execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
-    const session = await login(app);
+    const session = await loginWithPassword(app, ownerPassword);
     const headers = {
       cookie: session.cookie,
       origin,
@@ -556,6 +600,12 @@ describe('Studio workspace API', () => {
     };
     expect((await app.inject({ url: '/api/sites', headers })).json()).toEqual({
       sites: [],
+    });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: { state: 'ready' },
+      configuration: { state: 'valid' },
+      site: { state: 'not-registered', nextAction: 'discover-site' },
     });
     const discovery = await app.inject({
       url: '/api/sites/discover',
@@ -616,6 +666,12 @@ describe('Studio workspace API', () => {
     });
     expect(site.id).toMatch(/^site-[a-f0-9-]+$/);
     expect(site.workspaceId).toBeUndefined();
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: true,
+      credentials: { state: 'ready' },
+      configuration: { state: 'valid' },
+      site: { state: 'registered' },
+    });
     expect(
       (await app.inject({ url: '/api/sites/discover', headers })).json(),
     ).toEqual({ candidates: [] });

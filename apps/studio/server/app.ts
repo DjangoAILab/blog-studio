@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
 import { AssetPolicyError } from '@blog-studio/assets';
-import { BlogStudioError } from '@blog-studio/core';
+import { BlogStudioError, type StudioSetupStatus } from '@blog-studio/core';
 import {
   ActiveReleaseConflictError,
   OwnerNotInitializedError,
@@ -31,7 +31,7 @@ import {
   OwnerSessionInvalidError,
 } from './auth/owner-auth.js';
 import { PasswordPolicyError } from './auth/passwords.js';
-import { registerApiRoutes } from './routes/api.js';
+import { registerApiRoutes, type ApiDependencies } from './routes/api.js';
 import { ContentService } from './services/content.js';
 import {
   ChangeSetConflictError,
@@ -133,74 +133,131 @@ export async function createStudioServer(
   );
   await app.register(cookie, { secret: options.cookieSecret });
 
-  const workspaces = await WorkspaceService.load({
-    configurationPaths: options.configurationPaths,
-    allowedWorkspaceRoot: options.allowedWorkspaceRoot,
-    ...(options.assetFactories
-      ? { assetFactories: options.assetFactories }
-      : {}),
-  });
   const database = openStudioDatabase(options.databasePath);
   const ownerAuth = new OwnerAuthService(
     new SqliteOwnerCredentialRepository(database),
     new SqliteOwnerSessionRepository(database),
   );
-  const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
-  const drafts = new SqliteDraftRepository(database);
-  const content = new ContentService(sites, workspaces, drafts);
-  const changeSetRepository = new SqliteChangeSetRepository(database);
-  const changeSets = new ChangeSetService(
-    sites,
-    workspaces,
-    drafts,
-    changeSetRepository,
-  );
-  const markdownPreviews = new MarkdownPreviewService();
-  const previews = new PreviewService(
-    workspaces,
-    undefined,
-    options.previewStateDirectory ??
-      join(dirname(options.databasePath), 'preview-sandboxes'),
-  );
-  const recoveredPreviewSandboxes = await previews.recover();
-  if (recoveredPreviewSandboxes > 0)
-    app.log.warn(
-      { recoveredPreviewSandboxes },
-      'Removed interrupted preview sandboxes during startup',
-    );
-  await changeSets.recover();
-  const releases = new ReleaseService({
-    workspaces,
-    repository: new SqliteReleaseRepository(database),
-    drafts,
-    sites,
-    changeSets: changeSetRepository,
-    stateDirectory:
-      options.releaseStateDirectory ??
-      join(dirname(options.databasePath), 'release-state'),
-    ...(options.releaseVerifierFactory
-      ? { verifierFactory: options.releaseVerifierFactory }
-      : {}),
-    ...(options.publisherFactories
-      ? { publisherFactories: options.publisherFactories }
-      : {}),
-    ...(options.cacheFactories
-      ? { cacheFactories: options.cacheFactories }
-      : {}),
-  });
-  await releases.recover();
-  const previewReaper = setInterval(() => {
-    markdownPreviews.reapExpired();
-    void previews.reapExpired().catch((error: unknown) => {
-      app.log.error({ err: error }, 'Failed to reap expired previews');
+  const siteRepository = new SqliteSiteRepository(database);
+  let configurationError: Error | undefined;
+  let workspaces: WorkspaceService | undefined;
+  try {
+    workspaces = await WorkspaceService.load({
+      configurationPaths: options.configurationPaths,
+      allowedWorkspaceRoot: options.allowedWorkspaceRoot,
+      ...(options.assetFactories
+        ? { assetFactories: options.assetFactories }
+        : {}),
     });
-  }, 60_000);
-  previewReaper.unref();
+  } catch (error) {
+    configurationError =
+      error instanceof Error
+        ? error
+        : new Error('Unknown workspace configuration error');
+    app.log.error(
+      { err: configurationError },
+      'Studio started with invalid Site configuration',
+    );
+  }
+
+  let apiDependencies: ApiDependencies | undefined;
+  let disposeOperationalServices = async (): Promise<void> => {};
+  if (workspaces) {
+    const sites = new SiteService(workspaces, siteRepository);
+    const drafts = new SqliteDraftRepository(database);
+    const content = new ContentService(sites, workspaces, drafts);
+    const changeSetRepository = new SqliteChangeSetRepository(database);
+    const changeSets = new ChangeSetService(
+      sites,
+      workspaces,
+      drafts,
+      changeSetRepository,
+    );
+    const markdownPreviews = new MarkdownPreviewService();
+    const previews = new PreviewService(
+      workspaces,
+      undefined,
+      options.previewStateDirectory ??
+        join(dirname(options.databasePath), 'preview-sandboxes'),
+    );
+    const recoveredPreviewSandboxes = await previews.recover();
+    if (recoveredPreviewSandboxes > 0)
+      app.log.warn(
+        { recoveredPreviewSandboxes },
+        'Removed interrupted preview sandboxes during startup',
+      );
+    await changeSets.recover();
+    const releases = new ReleaseService({
+      workspaces,
+      repository: new SqliteReleaseRepository(database),
+      drafts,
+      sites,
+      changeSets: changeSetRepository,
+      stateDirectory:
+        options.releaseStateDirectory ??
+        join(dirname(options.databasePath), 'release-state'),
+      ...(options.releaseVerifierFactory
+        ? { verifierFactory: options.releaseVerifierFactory }
+        : {}),
+      ...(options.publisherFactories
+        ? { publisherFactories: options.publisherFactories }
+        : {}),
+      ...(options.cacheFactories
+        ? { cacheFactories: options.cacheFactories }
+        : {}),
+    });
+    await releases.recover();
+    const previewReaper = setInterval(() => {
+      markdownPreviews.reapExpired();
+      void previews.reapExpired().catch((error: unknown) => {
+        app.log.error({ err: error }, 'Failed to reap expired previews');
+      });
+    }, 60_000);
+    previewReaper.unref();
+    apiDependencies = {
+      workspaces,
+      sites,
+      content,
+      changeSets,
+      drafts,
+      markdownPreviews,
+      previews,
+      releases,
+      allowLegacyReleaseApi: options.allowLegacyReleaseApi ?? false,
+    };
+    disposeOperationalServices = async () => {
+      clearInterval(previewReaper);
+      markdownPreviews.dispose();
+      await previews.dispose();
+      await releases.dispose();
+    };
+  }
+
+  function setupStatus(): StudioSetupStatus {
+    const credentialsReady = ownerAuth.status().initialized;
+    const configurationValid = configurationError === undefined;
+    const siteRegistered = siteRepository.list().length > 0;
+    return {
+      ready: credentialsReady && configurationValid && siteRegistered,
+      credentials: credentialsReady
+        ? { state: 'ready' }
+        : {
+            state: 'not-ready',
+            nextAction: 'initialize-owner-credentials',
+          },
+      configuration: configurationValid
+        ? { state: 'valid' }
+        : { state: 'invalid', nextAction: 'repair-configuration' },
+      site: !configurationValid
+        ? { state: 'unavailable', nextAction: 'repair-configuration' }
+        : siteRegistered
+          ? { state: 'registered' }
+          : { state: 'not-registered', nextAction: 'discover-site' },
+    };
+  }
+
   app.addHook('onClose', async () => {
-    clearInterval(previewReaper);
-    markdownPreviews.dispose();
-    await previews.dispose();
-    await releases.dispose();
+    await disposeOperationalServices();
     database.close();
   });
 
@@ -249,6 +306,15 @@ export async function createStudioServer(
     });
   }
 
+  app.get('/api/health', (_request, reply) =>
+    configurationError
+      ? reply.code(503).send({
+          status: 'degraded',
+          code: 'CONFIGURATION_INVALID',
+        })
+      : { status: 'ok' as const },
+  );
+  app.get('/api/setup/status', setupStatus);
   app.get('/api/auth/status', () => ownerAuth.status());
 
   app.post<{ Body: { password?: string; token?: string } }>(
@@ -341,6 +407,7 @@ export async function createStudioServer(
     if (
       path === '/api/health' ||
       path === '/api/session' ||
+      path === '/api/setup/status' ||
       path === '/api/auth/status'
     )
       return;
@@ -521,17 +588,17 @@ export async function createStudioServer(
     });
   });
 
-  registerApiRoutes(app, {
-    workspaces,
-    sites,
-    content,
-    changeSets,
-    drafts,
-    markdownPreviews,
-    previews,
-    releases,
-    allowLegacyReleaseApi: options.allowLegacyReleaseApi ?? false,
-  });
+  if (apiDependencies) registerApiRoutes(app, apiDependencies);
+  else {
+    app.all('/api/*', (_request, reply) =>
+      reply.code(503).send({
+        type: 'about:blank',
+        title: 'Site configuration is invalid',
+        status: 503,
+        code: 'CONFIGURATION_INVALID',
+      }),
+    );
+  }
 
   if (options.clientDirectory) {
     await app.register(staticFiles, {
