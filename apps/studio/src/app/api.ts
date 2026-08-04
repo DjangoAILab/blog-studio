@@ -117,12 +117,39 @@ export class StudioApi {
     return result;
   }
 
-  public async login(token: string): Promise<void> {
+  public authStatus() {
+    return this.#request<{ initialized: boolean; generation?: number }>(
+      '/api/auth/status',
+    );
+  }
+
+  public async login(password: string): Promise<void> {
     const result = await this.#request<{ csrfToken: string }>('/api/session', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ password }),
     });
     this.setCsrfToken(result.csrfToken);
+  }
+
+  public async changePassword(input: {
+    readonly currentPassword: string;
+    readonly newPassword: string;
+  }): Promise<{ readonly credentialGeneration: number }> {
+    const result = await this.#request<{
+      credentialGeneration: number;
+      csrfToken: string;
+    }>('/api/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    this.setCsrfToken(result.csrfToken);
+    return { credentialGeneration: result.credentialGeneration };
+  }
+
+  public logout() {
+    return this.#request<{ authenticated: false }>('/api/session', {
+      method: 'DELETE',
+    });
   }
 
   public workspaces() {

@@ -104,6 +104,27 @@ body::before {
   background: transparent;
   outline: none;
 }
+.setup-notice {
+  margin: 1.5rem 0 1rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: #eee9dc;
+  line-height: 1.5;
+}
+.setup-notice p {
+  margin: 0.55rem 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.setup-notice code {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.72rem;
+}
+.primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .primary-button,
 .preview-button,
 .publish-button {
@@ -132,7 +153,7 @@ body::before {
   background: var(--ink);
   color: #f7f2e6;
   display: grid;
-  grid-template-columns: 250px 1fr auto auto auto;
+  grid-template-columns: 250px 1fr auto auto auto auto;
   align-items: center;
   gap: 1.4rem;
   padding: 0 1.2rem 0 1.6rem;
@@ -194,6 +215,49 @@ body::before {
 .save-error i,
 .save-conflict i {
   background: var(--accent);
+}
+.security-menu {
+  position: relative;
+  font-size: 0.72rem;
+}
+.security-menu summary {
+  cursor: pointer;
+  color: #bfc5be;
+}
+.security-menu form {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 1.3rem);
+  right: 0;
+  width: min(21rem, calc(100vw - 2rem));
+  padding: 1rem;
+  display: grid;
+  gap: 0.7rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 36px #1116;
+}
+.security-menu label {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 700;
+}
+.security-menu input {
+  min-width: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  background: white;
+}
+.security-menu button {
+  padding: 0.6rem;
+  border: 1px solid var(--ink);
+  background: transparent;
+  cursor: pointer;
+}
+.security-menu p {
+  margin: 0;
+  color: var(--muted);
 }
 .preview-button {
   clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
@@ -781,7 +845,7 @@ body::before {
     display: none;
   }
   .topbar {
-    grid-template-columns: 220px 1fr auto auto;
+    grid-template-columns: 220px 1fr auto auto auto;
   }
   .save-badge {
     display: none;
@@ -790,7 +854,7 @@ body::before {
 @media (max-width: 720px) {
   .topbar {
     height: 58px;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto auto auto;
     padding: 0 1rem;
   }
   .workspace-switcher,

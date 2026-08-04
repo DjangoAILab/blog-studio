@@ -7,16 +7,26 @@ import { AssetPolicyError } from '@blog-studio/assets';
 import { BlogStudioError } from '@blog-studio/core';
 import {
   ActiveReleaseConflictError,
+  OwnerNotInitializedError,
   RevisionConflictError,
+  SqliteOwnerCredentialRepository,
+  SqliteOwnerSessionRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
   openStudioDatabase,
 } from '@blog-studio/persistence';
 import Fastify, {
   type FastifyInstance,
+  type FastifyReply,
   type FastifyServerOptions,
 } from 'fastify';
 
+import {
+  OwnerAuthenticationFailedError,
+  OwnerAuthService,
+  OwnerSessionInvalidError,
+} from './auth/owner-auth.js';
+import { PasswordPolicyError } from './auth/passwords.js';
 import { registerApiRoutes } from './routes/api.js';
 import { PreviewService } from './services/previews.js';
 import {
@@ -39,7 +49,7 @@ export interface StudioServerOptions {
   readonly allowedWorkspaceRoot: string;
   readonly databasePath: string;
   readonly releaseStateDirectory?: string;
-  readonly authToken: string;
+  readonly authToken?: string;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
   readonly secureCookies?: boolean;
@@ -60,7 +70,7 @@ function equalSecret(left: string, right: string): boolean {
 export async function createStudioServer(
   options: StudioServerOptions,
 ): Promise<FastifyInstance> {
-  if (options.authToken.length < 16)
+  if (options.authToken !== undefined && options.authToken.length < 16)
     throw new Error('Authentication token must contain at least 16 characters');
   if (options.cookieSecret.length < 32)
     throw new Error('Cookie secret must contain at least 32 characters');
@@ -78,8 +88,20 @@ export async function createStudioServer(
               'req.headers.cookie',
               'req.headers.x-csrf-token',
               'req.body.token',
+              'req.body.password',
+              'req.body.currentPassword',
+              'req.body.newPassword',
               'res.headers.set-cookie',
               'body.token',
+              'body.password',
+              'body.currentPassword',
+              'body.newPassword',
+              'body.verifier',
+              'body.sessionToken',
+              'body.authorization',
+              'body.cookie',
+              'body.csrf',
+              'body.csrfToken',
             ],
             censor: '[REDACTED]',
           },
@@ -104,6 +126,10 @@ export async function createStudioServer(
       : {}),
   });
   const database = openStudioDatabase(options.databasePath);
+  const ownerAuth = new OwnerAuthService(
+    new SqliteOwnerCredentialRepository(database),
+    new SqliteOwnerSessionRepository(database),
+  );
   const drafts = new SqliteDraftRepository(database);
   const previews = new PreviewService(workspaces);
   const releases = new ReleaseService({
@@ -137,15 +163,65 @@ export async function createStudioServer(
     database.close();
   });
 
-  app.post<{ Body: { token: string } }>(
+  const cookieOptions = {
+    path: '/',
+    sameSite: 'strict' as const,
+    secure: options.secureCookies ?? true,
+    signed: true,
+  };
+  function setAuthenticatedCookies(
+    reply: FastifyReply,
+    sessionValue: string,
+  ): string {
+    const csrf = randomBytes(32).toString('base64url');
+    reply.setCookie(SESSION_COOKIE, sessionValue, {
+      ...cookieOptions,
+      httpOnly: true,
+    });
+    reply.setCookie(CSRF_COOKIE, csrf, {
+      ...cookieOptions,
+      httpOnly: false,
+    });
+    return csrf;
+  }
+
+  const loginFailures = new Map<
+    string,
+    { readonly count: number; readonly resetAt: number }
+  >();
+  const loginFailureWindowMs = 5 * 60_000;
+  const maximumLoginFailures = 5;
+  function currentLoginFailures(ip: string, now = Date.now()): number {
+    const attempt = loginFailures.get(ip);
+    if (!attempt || attempt.resetAt <= now) {
+      loginFailures.delete(ip);
+      return 0;
+    }
+    return attempt.count;
+  }
+  function recordLoginFailure(ip: string, now = Date.now()): void {
+    const current = currentLoginFailures(ip, now);
+    const existing = loginFailures.get(ip);
+    loginFailures.set(ip, {
+      count: current + 1,
+      resetAt: existing?.resetAt ?? now + loginFailureWindowMs,
+    });
+  }
+
+  app.get('/api/auth/status', () => ownerAuth.status());
+
+  app.post<{ Body: { password?: string; token?: string } }>(
     '/api/session',
     {
       schema: {
         body: {
           type: 'object',
           additionalProperties: false,
-          required: ['token'],
-          properties: { token: { type: 'string', maxLength: 1024 } },
+          anyOf: [{ required: ['password'] }, { required: ['token'] }],
+          properties: {
+            password: { type: 'string', maxLength: 1024 },
+            token: { type: 'string', maxLength: 1024 },
+          },
         },
       },
     },
@@ -158,7 +234,53 @@ export async function createStudioServer(
           status: 403,
         });
       }
-      if (!equalSecret(request.body.token, options.authToken)) {
+      if (currentLoginFailures(request.ip) >= maximumLoginFailures) {
+        return reply
+          .header('retry-after', Math.ceil(loginFailureWindowMs / 1000))
+          .code(429)
+          .send({
+            type: 'about:blank',
+            title: 'Too many authentication attempts',
+            status: 429,
+          });
+      }
+
+      let sessionValue: string;
+      if (ownerAuth.status().initialized) {
+        if (request.body.password === undefined) {
+          recordLoginFailure(request.ip);
+          return reply.code(401).send({
+            type: 'about:blank',
+            title: 'Authentication failed',
+            status: 401,
+          });
+        }
+        try {
+          sessionValue = (await ownerAuth.login(request.body.password)).token;
+        } catch (error) {
+          if (!(error instanceof OwnerAuthenticationFailedError)) throw error;
+          recordLoginFailure(request.ip);
+          return reply.code(401).send({
+            type: 'about:blank',
+            title: 'Authentication failed',
+            status: 401,
+          });
+        }
+      } else if (
+        options.authToken !== undefined &&
+        request.body.token !== undefined &&
+        equalSecret(request.body.token, options.authToken)
+      ) {
+        sessionValue = 'legacy-authenticated';
+      } else if (options.authToken === undefined) {
+        return reply.code(503).send({
+          type: 'about:blank',
+          title: 'Owner credentials are not initialized',
+          status: 503,
+          code: 'OWNER_NOT_INITIALIZED',
+        });
+      } else {
+        recordLoginFailure(request.ip);
         return reply.code(401).send({
           type: 'about:blank',
           title: 'Authentication failed',
@@ -166,21 +288,8 @@ export async function createStudioServer(
         });
       }
 
-      const cookieOptions = {
-        path: '/',
-        sameSite: 'strict' as const,
-        secure: options.secureCookies ?? true,
-        signed: true,
-      };
-      const csrf = randomBytes(32).toString('base64url');
-      reply.setCookie(SESSION_COOKIE, 'authenticated', {
-        ...cookieOptions,
-        httpOnly: true,
-      });
-      reply.setCookie(CSRF_COOKIE, csrf, {
-        ...cookieOptions,
-        httpOnly: false,
-      });
+      loginFailures.delete(request.ip);
+      const csrf = setAuthenticatedCookies(reply, sessionValue);
       return { authenticated: true, csrfToken: csrf };
     },
   );
@@ -188,7 +297,12 @@ export async function createStudioServer(
   app.addHook('onRequest', async (request, reply) => {
     const path = request.url.split('?')[0];
     if (!path?.startsWith('/api/')) return;
-    if (path === '/api/health' || path === '/api/session') return;
+    if (
+      path === '/api/health' ||
+      path === '/api/session' ||
+      path === '/api/auth/status'
+    )
+      return;
     if (request.method === 'GET' && path.startsWith('/api/previews/')) return;
 
     const session = request.cookies[SESSION_COOKIE];
@@ -201,7 +315,16 @@ export async function createStudioServer(
       return;
     }
     const unsignedSession = request.unsignCookie(session);
-    if (!unsignedSession.valid || unsignedSession.value !== 'authenticated') {
+    const sessionValue = unsignedSession.value;
+    const validSession =
+      unsignedSession.valid &&
+      sessionValue !== null &&
+      ((sessionValue === 'legacy-authenticated' &&
+        !ownerAuth.status().initialized &&
+        options.authToken !== undefined) ||
+        (sessionValue !== 'legacy-authenticated' &&
+          ownerAuth.validateSession(sessionValue)));
+    if (!validSession) {
       await reply.code(401).send({
         type: 'about:blank',
         title: 'Authentication required',
@@ -230,6 +353,62 @@ export async function createStudioServer(
     }
   });
 
+  app.patch<{
+    Body: { currentPassword: string; newPassword: string };
+  }>(
+    '/api/auth/password',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['currentPassword', 'newPassword'],
+          properties: {
+            currentPassword: { type: 'string', maxLength: 1024 },
+            newPassword: { type: 'string', maxLength: 1024 },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const signed = request.cookies[SESSION_COOKIE];
+      const unsigned = signed ? request.unsignCookie(signed) : undefined;
+      if (!unsigned?.valid || !unsigned.value) {
+        return reply.code(401).send({
+          type: 'about:blank',
+          title: 'Authentication required',
+          status: 401,
+        });
+      }
+      const session = await ownerAuth.changePassword({
+        sessionToken: unsigned.value,
+        currentPassword: request.body.currentPassword,
+        newPassword: request.body.newPassword,
+      });
+      const csrfToken = setAuthenticatedCookies(reply, session.token);
+      return {
+        changed: true,
+        credentialGeneration: session.credentialGeneration,
+        csrfToken,
+      };
+    },
+  );
+
+  app.delete('/api/session', async (request, reply) => {
+    const signed = request.cookies[SESSION_COOKIE];
+    const unsigned = signed ? request.unsignCookie(signed) : undefined;
+    if (
+      unsigned?.valid &&
+      unsigned.value &&
+      unsigned.value !== 'legacy-authenticated'
+    ) {
+      ownerAuth.logout(unsigned.value);
+    }
+    reply.clearCookie(SESSION_COOKIE, cookieOptions);
+    reply.clearCookie(CSRF_COOKIE, cookieOptions);
+    return { authenticated: false };
+  });
+
   app.setErrorHandler((error, request, reply) => {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const validationError =
@@ -244,33 +423,41 @@ export async function createStudioServer(
         ? error.statusCode
         : undefined;
     const status =
-      error instanceof RevisionConflictError
-        ? 409
-        : error instanceof BlogStudioError && error.code === 'DOCUMENT_CONFLICT'
-          ? 409
-          : error instanceof ActiveReleaseConflictError
+      error instanceof OwnerAuthenticationFailedError ||
+      error instanceof OwnerSessionInvalidError
+        ? 401
+        : error instanceof PasswordPolicyError
+          ? 422
+          : error instanceof OwnerNotInitializedError
             ? 409
-            : error instanceof BaselineAdoptionRequiredError ||
-                error instanceof BaselineAlreadyAdoptedError ||
-                message ===
-                  'Existing deployment baseline must be adopted before publishing' ||
-                message === 'A verified baseline already exists'
+            : error instanceof RevisionConflictError
               ? 409
-              : error instanceof AssetPolicyError
-                ? error.code === 'ASSET_TOO_LARGE'
-                  ? 413
-                  : 422
-                : message === 'Draft source revision conflict'
+              : error instanceof BlogStudioError &&
+                  error.code === 'DOCUMENT_CONFLICT'
+                ? 409
+                : error instanceof ActiveReleaseConflictError
                   ? 409
-                  : message.startsWith('Invalid Hexo document date:')
-                    ? 422
-                    : validationError
-                      ? 400
-                      : declaredStatus !== undefined
-                        ? declaredStatus
-                        : /^(Unknown|Unsupported)/.test(message)
-                          ? 404
-                          : 500;
+                  : error instanceof BaselineAdoptionRequiredError ||
+                      error instanceof BaselineAlreadyAdoptedError ||
+                      message ===
+                        'Existing deployment baseline must be adopted before publishing' ||
+                      message === 'A verified baseline already exists'
+                    ? 409
+                    : error instanceof AssetPolicyError
+                      ? error.code === 'ASSET_TOO_LARGE'
+                        ? 413
+                        : 422
+                      : message === 'Draft source revision conflict'
+                        ? 409
+                        : message.startsWith('Invalid Hexo document date:')
+                          ? 422
+                          : validationError
+                            ? 400
+                            : declaredStatus !== undefined
+                              ? declaredStatus
+                              : /^(Unknown|Unsupported)/.test(message)
+                                ? 404
+                                : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({

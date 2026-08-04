@@ -66,10 +66,14 @@ verification:
   baseUrl: http://example.invalid/
 YAML
 
+studio_database="$fixture/data/studio.sqlite"
+printf '%s' 'browser-test-owner-password' | \
+  node "$studio_directory/dist/server/cli.js" auth init \
+    --database "$studio_database" --password-stdin >/dev/null
+
 BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
-BLOG_STUDIO_DATABASE_PATH="$fixture/data/studio.sqlite" \
-BLOG_STUDIO_AUTH_TOKEN='browser-test-auth-token' \
+BLOG_STUDIO_DATABASE_PATH="$studio_database" \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-cookie-secret-with-at-least-thirty-two-characters' \
 BLOG_STUDIO_ALLOWED_ORIGINS='http://127.0.0.1:14311' \
 BLOG_STUDIO_SECURE_COOKIES=false \

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "auth": "node dist/server/cli.js auth",
     "build": "vite build && tsc -p tsconfig.server.json",
     "dev": "vite",
     "e2e": "corepack pnpm build && playwright test",

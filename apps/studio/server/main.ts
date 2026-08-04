@@ -21,6 +21,16 @@ function requiredSecret(name: string): string {
   return value;
 }
 
+function optionalSecret(name: string): string | undefined {
+  const direct = process.env[name]?.trim();
+  if (direct) return direct;
+  const file = process.env[`${name}_FILE`]?.trim();
+  if (!file) return undefined;
+  const value = readFileSync(file, 'utf8').trim();
+  if (!value) throw new Error(`${name}_FILE must not be empty`);
+  return value;
+}
+
 function listEnvironment(name: string): readonly string[] {
   const values = requiredEnvironment(name)
     .split(',')
@@ -38,11 +48,12 @@ function portEnvironment(): number {
 }
 
 const providerFactories = createTencentProviderFactories();
+const legacyAuthToken = optionalSecret('BLOG_STUDIO_AUTH_TOKEN');
 const app = await createStudioServer({
   configurationPaths: listEnvironment('BLOG_STUDIO_CONFIG_PATHS'),
   allowedWorkspaceRoot: requiredEnvironment('BLOG_STUDIO_WORKSPACE_ROOT'),
   databasePath: requiredEnvironment('BLOG_STUDIO_DATABASE_PATH'),
-  authToken: requiredSecret('BLOG_STUDIO_AUTH_TOKEN'),
+  ...(legacyAuthToken ? { authToken: legacyAuthToken } : {}),
   cookieSecret: requiredSecret('BLOG_STUDIO_COOKIE_SECRET'),
   allowedOrigins: listEnvironment('BLOG_STUDIO_ALLOWED_ORIGINS'),
   secureCookies: process.env.BLOG_STUDIO_SECURE_COOKIES !== 'false',

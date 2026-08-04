@@ -5,6 +5,27 @@ import { StudioApi } from '../src/app/api.js';
 describe('StudioApi', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('sends owner passwords without the legacy token field', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ csrfToken: 'rotated-csrf' }), {
+        headers: { 'content-type': 'application/json' },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StudioApi('').login('owner browser passphrase');
+
+    const [url, request] = fetchMock.mock.calls[0] ?? [];
+    expect(url).toBe('/api/session');
+    if (typeof request?.body !== 'string')
+      throw new Error('Expected a JSON string request body');
+    expect(JSON.parse(request.body)).toEqual({
+      password: 'owner browser passphrase',
+    });
+    expect(request.body).not.toContain('token');
+  });
+
   it('sends only the versioned draft contract to the server', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ draft: { version: 4 } }), {

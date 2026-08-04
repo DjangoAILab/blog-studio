@@ -52,10 +52,12 @@ const releaseLabels: Readonly<Record<ReleaseStatus, string>> = {
 
 function Login({
   onLogin,
+  initialized,
 }: {
-  readonly onLogin: (token: string) => Promise<void>;
+  readonly onLogin: (password: string) => Promise<void>;
+  readonly initialized: boolean;
 }) {
-  const [token, setToken] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   return (
     <main className="login-shell">
@@ -67,7 +69,8 @@ function Login({
         onSubmit={(event) => {
           event.preventDefault();
           setError('');
-          void onLogin(token).catch((reason: unknown) => {
+          if (!initialized) return;
+          void onLogin(password).catch((reason: unknown) => {
             setError(reason instanceof Error ? reason.message : '登录失败');
           });
         }}
@@ -75,22 +78,35 @@ function Login({
         <p className="eyebrow">SELF-HOSTED WRITING ROOM</p>
         <h1>回到文章本身。</h1>
         <p>一个安静、可靠的发布工作台。你的内容仍然属于文件与 Git。</p>
-        <label>
-          访问口令
-          <input
-            autoComplete="current-password"
-            autoFocus
-            type="password"
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-          />
-        </label>
+        {initialized ? (
+          <label>
+            Owner 密码
+            <input
+              autoComplete="current-password"
+              autoFocus
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+        ) : (
+          <div className="setup-notice" role="status">
+            <b>需要先在可信终端设置 Owner 密码</b>
+            <p>浏览器不能领取首次所有权。请在部署主机运行：</p>
+            <code>pnpm --filter @blog-studio/studio auth init</code>
+            <p>完成后刷新此页面。</p>
+          </div>
+        )}
         {error ? (
           <p className="form-error" role="alert">
             {error}
           </p>
         ) : null}
-        <button className="primary-button" type="submit">
+        <button
+          className="primary-button"
+          disabled={!initialized}
+          type="submit"
+        >
           进入 Studio →
         </button>
       </form>
@@ -118,6 +134,9 @@ function SaveBadge({ state }: { readonly state: SaveState }) {
 export function StudioApp() {
   const api = useMemo(() => new StudioApi(csrfFromCookie()), []);
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
+  const [ownerInitialized, setOwnerInitialized] = useState<boolean | null>(
+    null,
+  );
   const [workspaces, setWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
   const [workspace, setWorkspace] = useState<WorkspaceSummary>();
   const [documents, setDocuments] = useState<readonly DocumentSummary[]>([]);
@@ -148,6 +167,13 @@ export function StudioApp() {
     'idle' | 'loading' | 'ready' | 'deleting' | 'deleted' | 'error'
   >('idle');
   const [orphanError, setOrphanError] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [securityState, setSecurityState] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle');
+  const [securityMessage, setSecurityMessage] = useState('');
   const assetInput = useRef<HTMLInputElement>(null);
 
   function uploadAsset(file: File): void {
@@ -209,8 +235,18 @@ export function StudioApp() {
   }
 
   useEffect(() => {
-    void loadWorkspaces();
-  }, []);
+    void api
+      .authStatus()
+      .then(async (status) => {
+        setOwnerInitialized(status.initialized);
+        if (status.initialized) await loadWorkspaces();
+        else setAuthenticated(false);
+      })
+      .catch(() => {
+        setOwnerInitialized(false);
+        setAuthenticated(false);
+      });
+  }, [api]);
   useEffect(() => {
     if (!workspace) return;
     void Promise.all([
@@ -356,13 +392,14 @@ export function StudioApp() {
     workspace,
   ]);
 
-  if (authenticated === null)
+  if (authenticated === null || ownerInitialized === null)
     return <div className="boot-screen">BLOG / STUDIO</div>;
   if (!authenticated)
     return (
       <Login
-        onLogin={async (token) => {
-          await api.login(token);
+        initialized={ownerInitialized}
+        onLogin={async (password) => {
+          await api.login(password);
           await loadWorkspaces();
         }}
       />
@@ -393,6 +430,88 @@ export function StudioApp() {
           <small>{workspace?.generator}</small>
         </div>
         <SaveBadge state={saveState} />
+        <details className="security-menu">
+          <summary>安全</summary>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSecurityMessage('');
+              if (newPassword !== confirmPassword) {
+                setSecurityState('error');
+                setSecurityMessage('两次输入的新密码不一致');
+                return;
+              }
+              setSecurityState('saving');
+              void api
+                .changePassword({ currentPassword, newPassword })
+                .then(({ credentialGeneration }) => {
+                  setCurrentPassword('');
+                  setNewPassword('');
+                  setConfirmPassword('');
+                  setSecurityState('saved');
+                  setSecurityMessage(
+                    `密码已更新（凭据版本 ${credentialGeneration}），其他会话已退出`,
+                  );
+                })
+                .catch((reason: unknown) => {
+                  setSecurityState('error');
+                  setSecurityMessage(
+                    reason instanceof Error ? reason.message : '密码更新失败',
+                  );
+                });
+            }}
+          >
+            <label>
+              当前密码
+              <input
+                autoComplete="current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+            </label>
+            <label>
+              新密码
+              <input
+                autoComplete="new-password"
+                minLength={12}
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+            </label>
+            <label>
+              确认新密码
+              <input
+                autoComplete="new-password"
+                minLength={12}
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </label>
+            {securityMessage ? (
+              <p role={securityState === 'error' ? 'alert' : 'status'}>
+                {securityMessage}
+              </p>
+            ) : null}
+            <button disabled={securityState === 'saving'} type="submit">
+              {securityState === 'saving' ? '正在更新…' : '更新密码'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void api.logout().finally(() => {
+                  setAuthenticated(false);
+                  setWorkspace(undefined);
+                  setWorkspaces([]);
+                });
+              }}
+            >
+              退出登录
+            </button>
+          </form>
+        </details>
         <button
           className="publish-button"
           disabled={

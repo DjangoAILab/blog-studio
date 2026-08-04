@@ -11,13 +11,19 @@ import { join } from 'node:path';
 
 import type { FastifyInstance } from 'fastify';
 import {
+  openStudioDatabase,
+  SqliteOwnerCredentialRepository,
+  SqliteOwnerSessionRepository,
+} from '@blog-studio/persistence';
+import {
   TencentCosPublisher,
   type CosPublisherClient,
 } from '@blog-studio/publisher-cos';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createStudioServer } from '../app.js';
+import { createStudioServer, type StudioServerOptions } from '../app.js';
+import { OwnerAuthService } from '../auth/owner-auth.js';
 
 const origin = 'https://studio.example.test';
 const authToken = 'test-auth-token-at-least-sixteen';
@@ -26,6 +32,9 @@ const apps: FastifyInstance[] = [];
 
 interface FixtureOptions {
   readonly existingCosObjects?: Map<string, Uint8Array>;
+  readonly ownerPassword?: string;
+  readonly omitLegacyAuthToken?: boolean;
+  readonly logger?: StudioServerOptions['logger'];
 }
 
 async function fixture(options: FixtureOptions = {}): Promise<{
@@ -156,15 +165,25 @@ verification:
       }
     : undefined;
 
+  const databasePath = join(parent, 'studio.sqlite');
+  if (options.ownerPassword) {
+    const database = openStudioDatabase(databasePath);
+    await new OwnerAuthService(
+      new SqliteOwnerCredentialRepository(database),
+      new SqliteOwnerSessionRepository(database),
+    ).initialize(options.ownerPassword);
+    database.close();
+  }
   const app = await createStudioServer({
     configurationPaths: [configPath],
     allowedWorkspaceRoot: parent,
-    databasePath: join(parent, 'studio.sqlite'),
-    authToken,
+    databasePath,
+    ...(options.omitLegacyAuthToken ? {} : { authToken }),
     cookieSecret,
     allowedOrigins: [origin],
     secureCookies: false,
     clientDirectory: client,
+    ...(options.logger ? { logger: options.logger } : {}),
     releaseVerifierFactory: () => ({
       verify: () => Promise.resolve(true),
     }),
@@ -214,6 +233,31 @@ async function login(app: FastifyInstance): Promise<{
   };
 }
 
+function cookies(
+  response: Awaited<ReturnType<FastifyInstance['inject']>>,
+): string {
+  const setCookie = response.headers['set-cookie'];
+  const values = Array.isArray(setCookie) ? setCookie : [setCookie ?? ''];
+  return values.map((value) => value.split(';')[0]).join('; ');
+}
+
+async function loginWithPassword(
+  app: FastifyInstance,
+  password: string,
+): Promise<{ readonly cookie: string; readonly csrfToken: string }> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/session',
+    headers: { origin },
+    payload: { password },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  return {
+    cookie: cookies(response),
+    csrfToken: response.json<{ csrfToken: string }>().csrfToken,
+  };
+}
+
 interface ReleaseDetails {
   readonly release: {
     readonly id: string;
@@ -251,6 +295,178 @@ afterEach(async () => {
 });
 
 describe('Studio workspace API', () => {
+  it('reports uninitialized owner state without allowing browser ownership claim', async () => {
+    const { app } = await fixture({ omitLegacyAuthToken: true });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: false,
+    });
+    const attemptedClaim = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: 'browser selected password' },
+    });
+    expect(attemptedClaim.statusCode).toBe(503);
+    expect(attemptedClaim.json()).toMatchObject({
+      code: 'OWNER_NOT_INITIALIZED',
+    });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: false,
+    });
+  });
+
+  it('redacts credential, session, cookie, CSRF, and authorization log fields', async () => {
+    const lines: string[] = [];
+    const secrets = {
+      authorization: 'Bearer authorization-secret',
+      cookie: 'cookie-secret',
+      csrf: 'csrf-secret',
+      password: 'password-secret',
+      currentPassword: 'current-password-secret',
+      newPassword: 'new-password-secret',
+      token: 'legacy-token-secret',
+      verifier: 'stored-verifier-secret',
+      sessionToken: 'session-token-secret',
+    };
+    const { app } = await fixture({
+      logger: {
+        level: 'info',
+        stream: { write: (line: string) => lines.push(line) },
+      },
+    });
+    app.log.info(
+      {
+        req: {
+          headers: {
+            authorization: secrets.authorization,
+            cookie: secrets.cookie,
+            'x-csrf-token': secrets.csrf,
+          },
+          body: {
+            password: secrets.password,
+            currentPassword: secrets.currentPassword,
+            newPassword: secrets.newPassword,
+            token: secrets.token,
+          },
+        },
+        body: secrets,
+        res: { headers: { 'set-cookie': 'response-cookie-secret' } },
+      },
+      'credential redaction probe',
+    );
+    const output = lines.join('\n');
+    for (const secret of [
+      ...Object.values(secrets),
+      'response-cookie-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(output).toContain('[REDACTED]');
+  });
+
+  it('disables the legacy token after CLI-equivalent password initialization', async () => {
+    const ownerPassword = 'owner initialized passphrase';
+    const { app } = await fixture({ ownerPassword });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: true,
+      generation: 1,
+    });
+    const legacy = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { token: authToken },
+    });
+    expect(legacy.statusCode).toBe(401);
+    const session = await loginWithPassword(app, ownerPassword);
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces',
+          headers: { cookie: session.cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('rate limits repeated owner password failures', async () => {
+    const { app } = await fixture({
+      ownerPassword: 'owner rate limit passphrase',
+    });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/session',
+        headers: { origin },
+        payload: { password: 'incorrect owner passphrase' },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+    const limited = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: 'owner rate limit passphrase' },
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBeDefined();
+  });
+
+  it('changes the owner password and revokes every prior browser session', async () => {
+    const initialPassword = 'initial browser passphrase';
+    const replacementPassword = 'replacement browser passphrase';
+    const { app } = await fixture({ ownerPassword: initialPassword });
+    const first = await loginWithPassword(app, initialPassword);
+    const second = await loginWithPassword(app, initialPassword);
+    const changed = await app.inject({
+      method: 'PATCH',
+      url: '/api/auth/password',
+      headers: {
+        cookie: first.cookie,
+        origin,
+        'x-csrf-token': first.csrfToken,
+      },
+      payload: {
+        currentPassword: initialPassword,
+        newPassword: replacementPassword,
+      },
+    });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.json()).toMatchObject({
+      changed: true,
+      credentialGeneration: 2,
+    });
+    const replacementCookie = cookies(changed);
+    for (const old of [first.cookie, second.cookie]) {
+      expect(
+        (
+          await app.inject({
+            url: '/api/workspaces',
+            headers: { cookie: old },
+          })
+        ).statusCode,
+      ).toBe(401);
+    }
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces',
+          headers: { cookie: replacementCookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const oldLogin = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: initialPassword },
+    });
+    expect(oldLogin.statusCode).toBe(401);
+    await expect(
+      loginWithPassword(app, replacementPassword),
+    ).resolves.toBeDefined();
+  });
+
   it('keeps health public and requires a signed session elsewhere', async () => {
     const { app } = await fixture();
     expect((await app.inject('/api/health')).statusCode).toBe(200);
