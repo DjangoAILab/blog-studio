@@ -110,6 +110,7 @@ final container image for unaccepted critical findings.
 - [Upgrade and rollback](docs/guides/upgrading.md)
 - [v0.1.0 release notes](docs/releases/v0.1.0.md)
 - [v0.2 operations evidence](docs/verification/v0.2-operations.md)
+- [v0.2 real reference Site evidence](docs/verification/v0.2-reference-site.md)
 - [Verification evidence](artifacts/verification/release-readiness.md)
 
 ## License
