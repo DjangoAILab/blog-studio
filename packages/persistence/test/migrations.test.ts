@@ -49,6 +49,7 @@ describe('Studio database migrations', () => {
         'owner_credentials',
         'owner_sessions',
         'schema_migrations',
+        'site_audit_events',
         'sites',
       ]),
     );
@@ -56,12 +57,11 @@ describe('Studio database migrations', () => {
       first
         .prepare('SELECT version FROM schema_migrations ORDER BY version')
         .all(),
-    ).toEqual([
-      { version: 1 },
-      { version: 2 },
-      { version: 3 },
-      { version: STUDIO_SCHEMA_VERSION },
-    ]);
+    ).toEqual(
+      Array.from({ length: STUDIO_SCHEMA_VERSION }, (_, index) => ({
+        version: index + 1,
+      })),
+    );
     first.close();
 
     const second = openStudioDatabase(path);
@@ -130,6 +130,57 @@ describe('Studio database migrations', () => {
     expect(() => openStudioDatabase(path)).toThrow(
       UnsupportedDatabaseVersionError,
     );
+  });
+
+  it('backfills an immutable registration event for an existing v0.2 Site', () => {
+    const path = databasePath();
+    const previous = new DatabaseSync(path);
+    previous.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY CHECK (version > 0),
+        name TEXT NOT NULL UNIQUE,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO schema_migrations VALUES
+        (1, 'v0.1-baseline', '2026-08-04T00:00:00.000Z'),
+        (2, 'site-first-foundation', '2026-08-04T00:00:01.000Z'),
+        (3, 'change-set-apply-journal', '2026-08-04T00:00:02.000Z'),
+        (4, 'immutable-release-source', '2026-08-04T00:00:03.000Z');
+      CREATE TABLE sites (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        canonical_url TEXT,
+        configuration_path TEXT NOT NULL UNIQUE,
+        capabilities_json TEXT NOT NULL CHECK (json_valid(capabilities_json)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+      INSERT INTO sites VALUES (
+        'site-existing', 'existing-blog', 'Existing Blog',
+        'https://example.test/', '/config/existing.yml', '{}',
+        '2026-08-04T00:00:00.000Z', '2026-08-04T00:00:00.000Z'
+      );
+    `);
+    previous.close();
+
+    const upgraded = openStudioDatabase(path);
+    expect(
+      upgraded
+        .prepare(
+          `SELECT event_type, actor, at, before_json, after_json
+             FROM site_audit_events WHERE site_id = 'site-existing'`,
+        )
+        .get(),
+    ).toEqual({
+      event_type: 'registered',
+      actor: 'migration',
+      at: '2026-08-04T00:00:00.000Z',
+      before_json: null,
+      after_json:
+        '{"displayName":"Existing Blog","canonicalUrl":"https://example.test/"}',
+    });
+    upgraded.close();
   });
 
   it('rolls back every statement when a migration is interrupted', () => {

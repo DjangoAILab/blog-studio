@@ -173,6 +173,42 @@ const migrations: readonly Migration[] = [
       ALTER TABLE releases ADD COLUMN source_commit_id TEXT;
     `,
   },
+  {
+    version: 5,
+    name: 'site-audit-events',
+    sql: `
+      CREATE TABLE site_audit_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        event_type TEXT NOT NULL CHECK (
+          event_type IN ('registered', 'settings-updated')
+        ),
+        actor TEXT NOT NULL CHECK (actor IN ('owner', 'migration')),
+        at TEXT NOT NULL,
+        before_json TEXT CHECK (
+          before_json IS NULL OR json_valid(before_json)
+        ),
+        after_json TEXT NOT NULL CHECK (json_valid(after_json))
+      ) STRICT;
+
+      CREATE INDEX site_audit_events_site_sequence
+        ON site_audit_events(site_id, sequence DESC);
+
+      INSERT INTO site_audit_events (
+        site_id, event_type, actor, at, before_json, after_json
+      )
+      SELECT id,
+             'registered',
+             'migration',
+             created_at,
+             NULL,
+             json_object(
+               'displayName', display_name,
+               'canonicalUrl', canonical_url
+             )
+        FROM sites;
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

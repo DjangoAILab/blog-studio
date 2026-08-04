@@ -38,5 +38,6 @@ export {
   SqliteSiteRepository,
   type CreateSiteInput,
   type SiteRecord,
+  type SiteAuditEventRecord,
   type SiteUniqueField,
 } from './sites.js';

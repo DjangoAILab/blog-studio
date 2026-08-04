@@ -4,6 +4,7 @@ import {
   createSiteId,
   createWorkspaceId,
   type Site,
+  type SiteAuditEvent,
   type SiteCapabilities,
   type SiteDiscoveryCandidate,
 } from '@blog-studio/core';
@@ -156,6 +157,14 @@ export class SiteService {
     return site.workspaceId;
   }
 
+  public events(siteId: string): readonly SiteAuditEvent[] {
+    this.get(siteId);
+    return this.repository.events(siteId).map((event) => ({
+      ...event,
+      siteId: createSiteId(event.siteId),
+    }));
+  }
+
   public async discover(): Promise<readonly SiteDiscoveryCandidate[]> {
     const registered = new Set(
       this.repository.list().map((site) => site.workspaceId),
@@ -270,6 +279,14 @@ export class SiteService {
       );
     }
     const nextUrl = canonicalUrl(input.canonicalUrl);
+    const requestedAt = input.at ?? new Date().toISOString();
+    const requestedTime = Date.parse(requestedAt);
+    const existingTime = Date.parse(existing.updatedAt);
+    if (!Number.isFinite(requestedTime) || !Number.isFinite(existingTime))
+      throw new SiteValidationError('Site revision timestamp is invalid');
+    const updatedAt = new Date(
+      Math.max(requestedTime, existingTime + 1),
+    ).toISOString();
     return publicSite(
       this.repository.update({
         id: input.siteId,
@@ -277,7 +294,7 @@ export class SiteService {
         displayName,
         ...(nextUrl ? { canonicalUrl: nextUrl } : {}),
         capabilities: existing.capabilities,
-        updatedAt: input.at ?? new Date().toISOString(),
+        updatedAt,
       }),
     );
   }

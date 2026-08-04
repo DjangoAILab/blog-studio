@@ -43,6 +43,19 @@ describe('SQLite Site repository', () => {
     expect(created.displayName).toBe('王二的博客');
     expect(created.workspaceId).toBe('wj2015-blog');
     expect(sites.getByWorkspaceId('wj2015-blog')).toEqual(created);
+    expect(sites.events('site-wj2015')).toEqual([
+      {
+        sequence: 1,
+        siteId: 'site-wj2015',
+        type: 'registered',
+        actor: 'owner',
+        at: '2026-08-04T00:00:00.000Z',
+        after: {
+          displayName: '王二的博客',
+          canonicalUrl: 'https://blog.wj2015.com',
+        },
+      },
+    ]);
     database.close();
 
     const reopened = openStudioDatabase(path);
@@ -119,6 +132,23 @@ describe('SQLite Site repository', () => {
       }),
     ).toThrow(SiteRevisionConflictError);
     expect(sites.get('site-one')?.displayName).toBe('After');
+    expect(sites.events('site-one')).toMatchObject([
+      {
+        type: 'registered',
+        actor: 'owner',
+        after: { displayName: 'Before' },
+      },
+      {
+        type: 'settings-updated',
+        actor: 'owner',
+        before: { displayName: 'Before' },
+        after: {
+          displayName: 'After',
+          canonicalUrl: 'https://example.com',
+        },
+      },
+    ]);
+    expect(sites.events('site-one')).toHaveLength(2);
     database.close();
   });
 });

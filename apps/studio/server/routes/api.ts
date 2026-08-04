@@ -437,6 +437,12 @@ export function registerApiRoutes(
     (request) => ({ site: dependencies.sites.get(request.params.siteId) }),
   );
 
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/events',
+    { schema: { params: siteParams } },
+    (request) => ({ events: dependencies.sites.events(request.params.siteId) }),
+  );
+
   app.patch<{
     Params: { siteId: string };
     Body: {

@@ -144,6 +144,61 @@ describe('StudioApi', () => {
     });
   });
 
+  it('uses the Site-first onboarding, settings, and audit contracts', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({ sites: [], candidates: [], events: [] }),
+          {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new StudioApi('csrf-token');
+
+    await api.sites();
+    await api.discoverSites();
+    await api.site('site-one');
+    await api.registerSite({
+      candidateId: 'workspace-one',
+      displayName: 'My Site',
+      canonicalUrl: 'https://example.test',
+    });
+    await api.updateSite({
+      siteId: 'site-one',
+      expectedUpdatedAt: '2026-08-04T00:00:00.000Z',
+      displayName: 'Renamed Site',
+    });
+    await api.siteEvents('site-one');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/sites',
+      '/api/sites/discover',
+      '/api/sites/site-one',
+      '/api/sites',
+      '/api/sites/site-one',
+      '/api/sites/site-one/events',
+    ]);
+    expect(fetchMock.mock.calls[3]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        candidateId: 'workspace-one',
+        displayName: 'My Site',
+        canonicalUrl: 'https://example.test',
+      }),
+    });
+    expect(fetchMock.mock.calls[4]?.[1]).toMatchObject({
+      method: 'PATCH',
+      body: JSON.stringify({
+        expectedUpdatedAt: '2026-08-04T00:00:00.000Z',
+        displayName: 'Renamed Site',
+      }),
+    });
+  });
+
   it('starts a release with the exact saved draft version', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

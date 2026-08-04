@@ -1,3 +1,5 @@
+import type { SiteSettingsSnapshot } from '@blog-studio/core';
+
 import type { StudioDatabase } from './database.js';
 
 export interface SiteRecord {
@@ -22,6 +24,26 @@ interface SiteRow {
   readonly capabilities_json: string;
   readonly created_at: string;
   readonly updated_at: string;
+}
+
+interface SiteAuditEventRow {
+  readonly sequence: number;
+  readonly site_id: string;
+  readonly event_type: 'registered' | 'settings-updated';
+  readonly actor: 'owner' | 'migration';
+  readonly at: string;
+  readonly before_json: string | null;
+  readonly after_json: string;
+}
+
+export interface SiteAuditEventRecord {
+  readonly sequence: number;
+  readonly siteId: string;
+  readonly type: 'registered' | 'settings-updated';
+  readonly actor: 'owner' | 'migration';
+  readonly at: string;
+  readonly before?: SiteSettingsSnapshot;
+  readonly after: SiteSettingsSnapshot;
 }
 
 export type SiteUniqueField =
@@ -62,6 +84,52 @@ function siteFromRow(row: SiteRow): SiteRecord {
   };
 }
 
+function settingsSnapshot(input: {
+  readonly displayName: string;
+  readonly canonicalUrl?: string;
+}): SiteSettingsSnapshot {
+  return {
+    displayName: input.displayName,
+    ...(input.canonicalUrl ? { canonicalUrl: input.canonicalUrl } : {}),
+  };
+}
+
+function parseSettingsSnapshot(value: string): SiteSettingsSnapshot {
+  const parsed: unknown = JSON.parse(value);
+  if (
+    parsed === null ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    typeof (parsed as { displayName?: unknown }).displayName !== 'string'
+  ) {
+    throw new Error('Stored Site settings audit snapshot is invalid');
+  }
+  const canonicalUrl = (parsed as { canonicalUrl?: unknown }).canonicalUrl;
+  if (canonicalUrl !== undefined && canonicalUrl !== null) {
+    if (typeof canonicalUrl !== 'string')
+      throw new Error('Stored Site settings audit snapshot is invalid');
+    return {
+      displayName: (parsed as { displayName: string }).displayName,
+      canonicalUrl,
+    };
+  }
+  return { displayName: (parsed as { displayName: string }).displayName };
+}
+
+function auditEventFromRow(row: SiteAuditEventRow): SiteAuditEventRecord {
+  return {
+    sequence: row.sequence,
+    siteId: row.site_id,
+    type: row.event_type,
+    actor: row.actor,
+    at: row.at,
+    ...(row.before_json === null
+      ? {}
+      : { before: parseSettingsSnapshot(row.before_json) }),
+    after: parseSettingsSnapshot(row.after_json),
+  };
+}
+
 function uniqueField(error: Error): SiteUniqueField | undefined {
   if (/sites_display_name_unique/.test(error.message)) return 'displayName';
   if (/sites\.workspace_id/.test(error.message)) return 'workspaceId';
@@ -80,6 +148,7 @@ export class SqliteSiteRepository {
   public constructor(private readonly database: StudioDatabase) {}
 
   public create(input: CreateSiteInput): SiteRecord {
+    this.database.exec('BEGIN IMMEDIATE');
     try {
       this.database
         .prepare(
@@ -98,7 +167,20 @@ export class SqliteSiteRepository {
           input.createdAt,
           input.updatedAt,
         );
+      this.database
+        .prepare(
+          `INSERT INTO site_audit_events (
+             site_id, event_type, actor, at, before_json, after_json
+           ) VALUES (?, 'registered', 'owner', ?, NULL, ?)`,
+        )
+        .run(
+          input.id,
+          input.createdAt,
+          JSON.stringify(settingsSnapshot(input)),
+        );
+      this.database.exec('COMMIT');
     } catch (error) {
+      this.database.exec('ROLLBACK');
       if (error instanceof Error) {
         const field = uniqueField(error);
         if (field) throw new SiteAlreadyExistsError(field);
@@ -129,6 +211,20 @@ export class SqliteSiteRepository {
     ).map(siteFromRow);
   }
 
+  public events(siteId: string): readonly SiteAuditEventRecord[] {
+    return (
+      this.database
+        .prepare(
+          `SELECT sequence, site_id, event_type, actor, at,
+                  before_json, after_json
+             FROM site_audit_events
+            WHERE site_id = ?
+            ORDER BY sequence`,
+        )
+        .all(siteId) as unknown as SiteAuditEventRow[]
+    ).map(auditEventFromRow);
+  }
+
   public update(input: {
     readonly id: string;
     readonly expectedUpdatedAt: string;
@@ -137,7 +233,11 @@ export class SqliteSiteRepository {
     readonly capabilities: Readonly<Record<string, unknown>>;
     readonly updatedAt: string;
   }): SiteRecord {
+    this.database.exec('BEGIN IMMEDIATE');
     try {
+      const existing = this.get(input.id);
+      if (!existing || existing.updatedAt !== input.expectedUpdatedAt)
+        throw new SiteRevisionConflictError(input.id);
       const result = this.database
         .prepare(
           `UPDATE sites
@@ -154,7 +254,21 @@ export class SqliteSiteRepository {
           input.expectedUpdatedAt,
         );
       if (result.changes !== 1) throw new SiteRevisionConflictError(input.id);
+      this.database
+        .prepare(
+          `INSERT INTO site_audit_events (
+             site_id, event_type, actor, at, before_json, after_json
+           ) VALUES (?, 'settings-updated', 'owner', ?, ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.updatedAt,
+          JSON.stringify(settingsSnapshot(existing)),
+          JSON.stringify(settingsSnapshot(input)),
+        );
+      this.database.exec('COMMIT');
     } catch (error) {
+      this.database.exec('ROLLBACK');
       if (error instanceof Error) {
         const field = uniqueField(error);
         if (field) throw new SiteAlreadyExistsError(field);

@@ -647,6 +647,38 @@ describe('Studio workspace API', () => {
       },
     });
     expect(stale.statusCode).toBe(409);
+    const audit = await app.inject({
+      url: `/api/sites/${site.id}/events`,
+      headers,
+    });
+    expect(audit.statusCode, audit.body).toBe(200);
+    expect(audit.json()).toMatchObject({
+      events: [
+        {
+          siteId: site.id,
+          type: 'registered',
+          actor: 'owner',
+          after: {
+            displayName: '测试博客',
+            canonicalUrl: 'https://blog.example.test/',
+          },
+        },
+        {
+          siteId: site.id,
+          type: 'settings-updated',
+          actor: 'owner',
+          before: {
+            displayName: '测试博客',
+            canonicalUrl: 'https://blog.example.test/',
+          },
+          after: {
+            displayName: '测试博客 Studio',
+            canonicalUrl: 'https://writing.example.test/',
+          },
+        },
+      ],
+    });
+    expect(audit.json<{ events: unknown[] }>().events).toHaveLength(2);
     expect(
       await readFile(join(workspace, '..', 'blog-studio.yml'), 'utf8'),
     ).not.toContain('测试博客 Studio');

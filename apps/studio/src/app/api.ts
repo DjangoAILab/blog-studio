@@ -1,3 +1,9 @@
+import type {
+  Site,
+  SiteAuditEvent,
+  SiteDiscoveryCandidate,
+} from '@blog-studio/core';
+
 export interface WorkspaceSummary {
   readonly id: string;
   readonly generator: string;
@@ -199,6 +205,50 @@ export class StudioApi {
   public workspaces() {
     return this.#request<{ workspaces: readonly WorkspaceSummary[] }>(
       '/api/workspaces',
+    );
+  }
+
+  public sites() {
+    return this.#request<{ sites: readonly Site[] }>('/api/sites');
+  }
+
+  public discoverSites() {
+    return this.#request<{
+      candidates: readonly SiteDiscoveryCandidate[];
+    }>('/api/sites/discover');
+  }
+
+  public site(siteId: string) {
+    return this.#request<{ site: Site }>(`/api/sites/${siteId}`);
+  }
+
+  public registerSite(input: {
+    readonly candidateId: string;
+    readonly displayName: string;
+    readonly canonicalUrl?: string;
+  }) {
+    return this.#request<{ site: Site }>('/api/sites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  public updateSite(input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly displayName: string;
+    readonly canonicalUrl?: string;
+  }) {
+    const { siteId, ...body } = input;
+    return this.#request<{ site: Site }>(`/api/sites/${siteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  public siteEvents(siteId: string) {
+    return this.#request<{ events: readonly SiteAuditEvent[] }>(
+      `/api/sites/${siteId}/events`,
     );
   }
 

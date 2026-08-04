@@ -23,6 +23,21 @@ export interface Site {
   readonly updatedAt: string;
 }
 
+export interface SiteSettingsSnapshot {
+  readonly displayName: string;
+  readonly canonicalUrl?: string;
+}
+
+export interface SiteAuditEvent {
+  readonly sequence: number;
+  readonly siteId: SiteId;
+  readonly type: 'registered' | 'settings-updated';
+  readonly actor: 'owner' | 'migration';
+  readonly at: string;
+  readonly before?: SiteSettingsSnapshot;
+  readonly after: SiteSettingsSnapshot;
+}
+
 export interface SiteDiscoveryCandidate {
   readonly candidateId: WorkspaceId;
   readonly proposedDisplayName: string;
