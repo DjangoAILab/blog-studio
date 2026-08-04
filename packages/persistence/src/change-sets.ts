@@ -16,6 +16,16 @@ export interface ChangeSetRecord {
   readonly commitId?: string;
 }
 
+export interface ChangeSetApplyAttempt {
+  readonly id: string;
+  readonly changeSetId: string;
+  readonly status:
+    'applying' | 'succeeded' | 'rolled-back' | 'recovery-required';
+  readonly journal: unknown;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 interface ChangeSetRow {
   readonly id: string;
   readonly site_id: string;
@@ -161,6 +171,132 @@ export class SqliteChangeSetRepository {
       to: 'invalidated',
       updatedAt: at,
     });
+  }
+
+  public beginApply(input: {
+    readonly id: string;
+    readonly changeSetId: string;
+    readonly journal: unknown;
+    readonly at: string;
+  }): ChangeSetApplyAttempt {
+    const record = this.get(input.changeSetId);
+    if (!record || record.status !== 'prepared')
+      throw new ChangeSetStateConflictError(input.changeSetId, 'prepared');
+    this.database
+      .prepare(
+        `INSERT INTO change_set_apply_attempts (
+           id, change_set_id, status, journal_json, created_at, updated_at
+         ) VALUES (?, ?, 'applying', ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.changeSetId,
+        JSON.stringify(input.journal),
+        input.at,
+        input.at,
+      );
+    return this.applyAttempt(input.id)!;
+  }
+
+  public finishApply(
+    attemptId: string,
+    changeSetId: string,
+    at: string,
+  ): ChangeSetRecord {
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      const attempt = this.database
+        .prepare(
+          `UPDATE change_set_apply_attempts
+              SET status = 'succeeded', updated_at = ?
+            WHERE id = ? AND change_set_id = ? AND status = 'applying'`,
+        )
+        .run(at, attemptId, changeSetId);
+      const changeSet = this.database
+        .prepare(
+          `UPDATE change_sets
+              SET status = 'applied', applied_at = ?, updated_at = ?
+            WHERE id = ? AND status = 'prepared'`,
+        )
+        .run(at, at, changeSetId);
+      if (attempt.changes !== 1 || changeSet.changes !== 1)
+        throw new ChangeSetStateConflictError(changeSetId, 'prepared');
+      this.database.exec('COMMIT');
+      return this.get(changeSetId)!;
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  public markApplyRecovery(
+    attemptId: string,
+    status: 'rolled-back' | 'recovery-required',
+    at: string,
+  ): ChangeSetApplyAttempt {
+    const result = this.database
+      .prepare(
+        `UPDATE change_set_apply_attempts SET status = ?, updated_at = ?
+          WHERE id = ? AND status = 'applying'`,
+      )
+      .run(status, at, attemptId);
+    if (result.changes !== 1)
+      throw new Error(`Apply attempt is not active: ${attemptId}`);
+    return this.applyAttempt(attemptId)!;
+  }
+
+  public applying(): readonly ChangeSetApplyAttempt[] {
+    return (
+      this.database
+        .prepare(
+          `SELECT id, change_set_id, status, journal_json, created_at, updated_at
+             FROM change_set_apply_attempts WHERE status = 'applying'
+             ORDER BY created_at, id`,
+        )
+        .all() as unknown as Array<{
+        id: string;
+        change_set_id: string;
+        status: ChangeSetApplyAttempt['status'];
+        journal_json: string;
+        created_at: string;
+        updated_at: string;
+      }>
+    ).map((row) => ({
+      id: row.id,
+      changeSetId: row.change_set_id,
+      status: row.status,
+      journal: JSON.parse(row.journal_json) as unknown,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  private applyAttempt(id: string): ChangeSetApplyAttempt | null {
+    const row = this.database
+      .prepare(
+        `SELECT id, change_set_id, status, journal_json, created_at, updated_at
+           FROM change_set_apply_attempts WHERE id = ?`,
+      )
+      .get(id) as
+      | {
+          id: string;
+          change_set_id: string;
+          status: ChangeSetApplyAttempt['status'];
+          journal_json: string;
+          created_at: string;
+          updated_at: string;
+        }
+      | undefined;
+    return row
+      ? {
+          id: row.id,
+          changeSetId: row.change_set_id,
+          status: row.status,
+          journal: JSON.parse(row.journal_json) as unknown,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        }
+      : null;
   }
 
   private transition(input: {

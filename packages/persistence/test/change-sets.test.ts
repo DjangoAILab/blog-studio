@@ -134,4 +134,30 @@ describe('SQLite ChangeSet repository', () => {
     ).toThrow(/FOREIGN KEY constraint failed/);
     database.close();
   });
+
+  it('journals apply before atomically completing the ChangeSet transition', () => {
+    const { database, changes } = repositories();
+    changes.prepare({
+      id: 'change-one',
+      siteId: 'site-one',
+      fingerprint: 'sha256:first',
+      baseRevision: 'commit-one',
+      payload: { files: ['one'] },
+      at: '2026-08-04T00:00:01.000Z',
+    });
+    const attempt = changes.beginApply({
+      id: 'apply-one',
+      changeSetId: 'change-one',
+      journal: { originals: ['one'] },
+      at: '2026-08-04T00:00:02.000Z',
+    });
+    expect(attempt.status).toBe('applying');
+    expect(changes.applying()).toEqual([attempt]);
+    expect(
+      changes.finishApply('apply-one', 'change-one', '2026-08-04T00:00:03.000Z')
+        .status,
+    ).toBe('applied');
+    expect(changes.applying()).toEqual([]);
+    database.close();
+  });
 });

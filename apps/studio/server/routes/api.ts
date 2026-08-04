@@ -22,6 +22,7 @@ import {
   SourceRevisionConflictError,
   type ContentService,
 } from '../services/content.js';
+import type { ChangeSetService } from '../services/change-sets.js';
 import type { MarkdownPreviewService } from '../services/markdown-previews.js';
 import {
   PreviewReadinessError,
@@ -38,6 +39,7 @@ interface ApiDependencies {
   readonly workspaces: WorkspaceService;
   readonly sites: SiteService;
   readonly content: ContentService;
+  readonly changeSets: ChangeSetService;
   readonly drafts: SqliteDraftRepository;
   readonly markdownPreviews: MarkdownPreviewService;
   readonly previews: PreviewService;
@@ -59,6 +61,16 @@ const siteParams = {
   required: ['siteId'],
   properties: {
     siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
+  },
+} as const;
+
+const changeSetParams = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['siteId', 'changeSetId'],
+  properties: {
+    siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
+    changeSetId: { type: 'string', pattern: '^change-[a-z0-9-]+$' },
   },
 } as const;
 
@@ -271,6 +283,79 @@ export function registerApiRoutes(
   app.get('/api/sites/discover', async () => ({
     candidates: await dependencies.sites.discover(),
   }));
+
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/change-sets',
+    { schema: { params: siteParams } },
+    (request) => ({
+      changeSets: dependencies.changeSets.list(request.params.siteId),
+    }),
+  );
+
+  app.get<{ Params: { siteId: string; changeSetId: string } }>(
+    '/api/sites/:siteId/change-sets/:changeSetId',
+    { schema: { params: changeSetParams } },
+    (request) => ({
+      changeSet: dependencies.changeSets.get(
+        request.params.siteId,
+        request.params.changeSetId,
+      ),
+    }),
+  );
+
+  app.post<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/change-sets/prepare',
+    { schema: { params: siteParams } },
+    async (request, reply) =>
+      reply.code(201).send({
+        changeSet: await dependencies.changeSets.prepare(request.params.siteId),
+      }),
+  );
+
+  app.post<{ Params: { siteId: string; changeSetId: string } }>(
+    '/api/sites/:siteId/change-sets/:changeSetId/apply',
+    { schema: { params: changeSetParams } },
+    async (request) => ({
+      changeSet: await dependencies.changeSets.apply(
+        request.params.siteId,
+        request.params.changeSetId,
+      ),
+    }),
+  );
+
+  app.post<{
+    Params: { siteId: string; changeSetId: string };
+    Body: { message: string; paths: string[] };
+  }>(
+    '/api/sites/:siteId/change-sets/:changeSetId/commit',
+    {
+      schema: {
+        params: changeSetParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['message', 'paths'],
+          properties: {
+            message: { type: 'string', minLength: 1, maxLength: 200 },
+            paths: {
+              type: 'array',
+              minItems: 1,
+              uniqueItems: true,
+              items: { type: 'string', minLength: 1, maxLength: 2048 },
+            },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      changeSet: await dependencies.changeSets.commit({
+        siteId: request.params.siteId,
+        changeSetId: request.params.changeSetId,
+        message: request.body.message,
+        paths: request.body.paths,
+      }),
+    }),
+  );
 
   app.post<{
     Body: {

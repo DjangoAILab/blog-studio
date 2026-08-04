@@ -145,6 +145,26 @@ const migrations: readonly Migration[] = [
         WHERE status = 'prepared';
     `,
   },
+  {
+    version: 3,
+    name: 'change-set-apply-journal',
+    sql: `
+      CREATE TABLE IF NOT EXISTS change_set_apply_attempts (
+        id TEXT PRIMARY KEY,
+        change_set_id TEXT NOT NULL REFERENCES change_sets(id) ON DELETE RESTRICT,
+        status TEXT NOT NULL CHECK (
+          status IN ('applying', 'succeeded', 'rolled-back', 'recovery-required')
+        ),
+        journal_json TEXT NOT NULL CHECK (json_valid(journal_json)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS change_set_one_active_apply
+        ON change_set_apply_attempts(change_set_id)
+        WHERE status = 'applying';
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

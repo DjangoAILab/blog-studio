@@ -16,6 +16,7 @@
   "dependencies": {
     "@blog-studio/adapter-command": "workspace:*",
     "@blog-studio/adapter-hexo": "workspace:*",
+    "@blog-studio/adapter-local-git": "workspace:*",
     "@blog-studio/assets": "workspace:*",
     "@blog-studio/cache-tencent": "workspace:*",
     "@blog-studio/config": "workspace:*",

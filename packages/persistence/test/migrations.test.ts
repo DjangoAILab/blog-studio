@@ -56,7 +56,11 @@ describe('Studio database migrations', () => {
       first
         .prepare('SELECT version FROM schema_migrations ORDER BY version')
         .all(),
-    ).toEqual([{ version: 1 }, { version: STUDIO_SCHEMA_VERSION }]);
+    ).toEqual([
+      { version: 1 },
+      { version: 2 },
+      { version: STUDIO_SCHEMA_VERSION },
+    ]);
     first.close();
 
     const second = openStudioDatabase(path);

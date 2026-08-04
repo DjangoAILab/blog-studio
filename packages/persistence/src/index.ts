@@ -3,6 +3,7 @@ export {
   ChangeSetStateConflictError,
   SqliteChangeSetRepository,
   type ChangeSetRecord,
+  type ChangeSetApplyAttempt,
   type ChangeSetStatus,
 } from './change-sets.js';
 export {

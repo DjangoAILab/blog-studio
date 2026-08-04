@@ -6,6 +6,7 @@ import {
   stat,
   writeFile,
 } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -1083,6 +1084,272 @@ describe('Studio workspace API', () => {
     expect(executable.json()).toMatchObject({
       title: 'Executable resources are not accepted',
     });
+  });
+
+  it('prepares immutable idempotent ChangeSets without applying or publishing', async () => {
+    const { app, workspace } = await fixture();
+    execFileSync('git', ['-C', workspace, 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.name',
+      'Blog Studio Test',
+    ]);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.email',
+      'studio@example.invalid',
+    ]);
+    execFileSync('git', ['-C', workspace, 'add', '.']);
+    execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
+
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'ChangeSet Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+      };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: { ...source.frontMatter, title: 'Prepared title' },
+        body: 'Prepared body\n',
+      },
+    });
+    const canonicalBefore = await readFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      'utf8',
+    );
+    const gitBefore = execFileSync(
+      'git',
+      ['-C', workspace, 'status', '--porcelain=v1'],
+      { encoding: 'utf8' },
+    );
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    expect(first.statusCode, first.body).toBe(201);
+    const firstChangeSet = first.json<{
+      changeSet: {
+        id: string;
+        status: string;
+        fingerprint: string;
+        payload: {
+          documents: Array<Record<string, unknown>>;
+          repositoryChanges: unknown[];
+        };
+      };
+    }>().changeSet;
+    expect(firstChangeSet).toMatchObject({
+      status: 'prepared',
+      payload: {
+        documents: [
+          expect.objectContaining({
+            documentId,
+            draftVersion: 1,
+            state: 'modified',
+            body: 'Prepared body\n',
+          }),
+        ],
+        repositoryChanges: [],
+      },
+    });
+    expect(firstChangeSet.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+    const repeated = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    expect(repeated.json<{ changeSet: { id: string } }>().changeSet.id).toBe(
+      firstChangeSet.id,
+    );
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toBe(canonicalBefore);
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toBe(gitBefore);
+    await mkdir(join(workspace, 'source', 'media'), { recursive: true });
+    await writeFile(
+      join(workspace, 'source', 'media', 'guide.pdf'),
+      '%PDF-1.7',
+    );
+    const changed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    const changedSet = changed.json<{
+      changeSet: {
+        id: string;
+        payload: { repositoryChanges: Array<Record<string, unknown>> };
+      };
+    }>().changeSet;
+    expect(changedSet.id).not.toBe(firstChangeSet.id);
+    expect(changedSet.payload.repositoryChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'source/media/guide.pdf',
+          state: 'unmanaged',
+        }),
+      ]),
+    );
+    const history = await app.inject({
+      url: `/api/sites/${siteId}/change-sets`,
+      headers,
+    });
+    const changeSetHistory = history.json<{
+      changeSets: Array<{ id: string; status: string }>;
+    }>().changeSets;
+    expect(
+      changeSetHistory.find((item) => item.id === firstChangeSet.id)?.status,
+    ).toBe('superseded');
+    expect(
+      changeSetHistory.find((item) => item.id === changedSet.id)?.status,
+    ).toBe('prepared');
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/apply`,
+      headers,
+    });
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect(applied.json()).toMatchObject({
+      changeSet: { id: changedSet.id, status: 'applied' },
+    });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Prepared body');
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?state=published`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 1 } });
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toContain('source/media/');
+    await expect(stat(join(workspace, 'public'))).rejects.toThrow();
+
+    const committed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/commit`,
+      headers,
+      payload: {
+        message: 'Apply reviewed article',
+        paths: ['source/_posts/hello.md'],
+      },
+    });
+    expect(committed.statusCode, committed.body).toBe(200);
+    const committedChangeSet = committed.json<{
+      changeSet: { status: string; commitId: string };
+    }>().changeSet;
+    expect(committedChangeSet.status).toBe('committed');
+    expect(committedChangeSet.commitId).toMatch(/^[a-f0-9]{40,64}$/);
+    expect(
+      execFileSync(
+        'git',
+        ['-C', workspace, 'show', '--pretty=', '--name-only', 'HEAD'],
+        { encoding: 'utf8' },
+      ).trim(),
+    ).toBe('source/_posts/hello.md');
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toContain('source/media/');
+
+    const reopened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const currentSource = reopened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+        body: string;
+      };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: currentSource.revision,
+        frontMatter: currentSource.frontMatter,
+        body: `${currentSource.body}second edit\n`,
+      },
+    });
+    const stalePrepared = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    const staleId = stalePrepared.json<{ changeSet: { id: string } }>()
+      .changeSet.id;
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      `${await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8')}external edit\n`,
+    );
+    const rejected = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${staleId}/apply`,
+      headers,
+    });
+    expect(rejected.statusCode, rejected.body).toBe(409);
+    expect(rejected.json()).toMatchObject({ code: 'CHANGE_SET_CONFLICT' });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/change-sets/${staleId}`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ changeSet: { status: 'invalidated' } });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('external edit');
   });
 
   it.each([

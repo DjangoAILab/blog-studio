@@ -6,6 +6,7 @@ export * from './adapters/publishing.js';
 export * from './adapters/repository.js';
 export * from './adapters/resources.js';
 export * from './domain/assets.js';
+export * from './domain/change-sets.js';
 export * from './domain/documents.js';
 export * from './domain/errors.js';
 export * from './domain/identifiers.js';

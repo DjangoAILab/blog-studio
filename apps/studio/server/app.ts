@@ -13,6 +13,7 @@ import {
   SqliteOwnerSessionRepository,
   SiteAlreadyExistsError,
   SiteRevisionConflictError,
+  SqliteChangeSetRepository,
   SqliteSiteRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
@@ -32,6 +33,10 @@ import {
 import { PasswordPolicyError } from './auth/passwords.js';
 import { registerApiRoutes } from './routes/api.js';
 import { ContentService } from './services/content.js';
+import {
+  ChangeSetConflictError,
+  ChangeSetService,
+} from './services/change-sets.js';
 import { MarkdownPreviewService } from './services/markdown-previews.js';
 import { PreviewService } from './services/previews.js';
 import {
@@ -140,8 +145,15 @@ export async function createStudioServer(
   const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
   const drafts = new SqliteDraftRepository(database);
   const content = new ContentService(sites, workspaces, drafts);
+  const changeSets = new ChangeSetService(
+    sites,
+    workspaces,
+    drafts,
+    new SqliteChangeSetRepository(database),
+  );
   const markdownPreviews = new MarkdownPreviewService();
   const previews = new PreviewService(workspaces);
+  await changeSets.recover();
   const releases = new ReleaseService({
     workspaces,
     repository: new SqliteReleaseRepository(database),
@@ -440,41 +452,45 @@ export async function createStudioServer(
         ? 401
         : error instanceof PasswordPolicyError
           ? 422
-          : error instanceof OwnerNotInitializedError
+          : error instanceof ChangeSetConflictError
             ? 409
-            : error instanceof SiteAlreadyExistsError ||
-                error instanceof SiteRevisionConflictError
+            : error instanceof OwnerNotInitializedError
               ? 409
-              : error instanceof SiteValidationError
-                ? 422
-                : error instanceof RevisionConflictError
-                  ? 409
-                  : error instanceof BlogStudioError &&
-                      error.code === 'DOCUMENT_CONFLICT'
+              : error instanceof SiteAlreadyExistsError ||
+                  error instanceof SiteRevisionConflictError
+                ? 409
+                : error instanceof SiteValidationError
+                  ? 422
+                  : error instanceof RevisionConflictError
                     ? 409
-                    : error instanceof ActiveReleaseConflictError
+                    : error instanceof BlogStudioError &&
+                        error.code === 'DOCUMENT_CONFLICT'
                       ? 409
-                      : error instanceof BaselineAdoptionRequiredError ||
-                          error instanceof BaselineAlreadyAdoptedError ||
-                          message ===
-                            'Existing deployment baseline must be adopted before publishing' ||
-                          message === 'A verified baseline already exists'
+                      : error instanceof ActiveReleaseConflictError
                         ? 409
-                        : error instanceof AssetPolicyError
-                          ? error.code === 'ASSET_TOO_LARGE'
-                            ? 413
-                            : 422
-                          : message === 'Draft source revision conflict'
-                            ? 409
-                            : message.startsWith('Invalid Hexo document date:')
-                              ? 422
-                              : validationError
-                                ? 400
-                                : declaredStatus !== undefined
-                                  ? declaredStatus
-                                  : /^(Unknown|Unsupported)/.test(message)
-                                    ? 404
-                                    : 500;
+                        : error instanceof BaselineAdoptionRequiredError ||
+                            error instanceof BaselineAlreadyAdoptedError ||
+                            message ===
+                              'Existing deployment baseline must be adopted before publishing' ||
+                            message === 'A verified baseline already exists'
+                          ? 409
+                          : error instanceof AssetPolicyError
+                            ? error.code === 'ASSET_TOO_LARGE'
+                              ? 413
+                              : 422
+                            : message === 'Draft source revision conflict'
+                              ? 409
+                              : message.startsWith(
+                                    'Invalid Hexo document date:',
+                                  )
+                                ? 422
+                                : validationError
+                                  ? 400
+                                  : declaredStatus !== undefined
+                                    ? declaredStatus
+                                    : /^(Unknown|Unsupported)/.test(message)
+                                      ? 404
+                                      : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
@@ -492,6 +508,7 @@ export async function createStudioServer(
     workspaces,
     sites,
     content,
+    changeSets,
     drafts,
     markdownPreviews,
     previews,

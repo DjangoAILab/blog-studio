@@ -7,6 +7,7 @@ import {
   type CommandCollectionOptions,
 } from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
+import { LocalGitRepositoryAdapter } from '@blog-studio/adapter-local-git';
 import { AssetPipeline, ResourcePipeline } from '@blog-studio/assets';
 import {
   assertKnownAdapters,
@@ -21,6 +22,7 @@ import type {
   DocumentRef,
   DocumentSummary,
   GeneratorAdapter,
+  RepositoryAdapter,
 } from '@blog-studio/core';
 import { FilesystemAssetProvider } from '@blog-studio/storage-filesystem';
 
@@ -28,6 +30,7 @@ export interface WorkspaceHandle {
   readonly configurationPath: string;
   readonly config: BlogStudioConfig;
   readonly generator: GeneratorAdapter;
+  readonly repository: RepositoryAdapter;
   readonly assetProvider: AssetProvider;
   readonly assetRootPrefix: string;
   readonly assets: AssetPipeline;
@@ -338,6 +341,7 @@ export class WorkspaceService {
         configurationPath,
         config,
         generator,
+        repository: new LocalGitRepositoryAdapter(),
         assetProvider: assets.provider,
         assetRootPrefix: assets.rootPrefix,
         assets: assets.pipeline,

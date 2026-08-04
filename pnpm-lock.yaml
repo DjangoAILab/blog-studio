@@ -47,6 +47,9 @@ importers:
       '@blog-studio/adapter-hexo':
         specifier: workspace:*
         version: link:../../packages/adapter-hexo
+      '@blog-studio/adapter-local-git':
+        specifier: workspace:*
+        version: link:../../packages/adapter-local-git
       '@blog-studio/assets':
         specifier: workspace:*
         version: link:../../packages/assets
@@ -195,6 +198,12 @@ importers:
       '@blog-studio/adapter-testkit':
         specifier: workspace:*
         version: link:../adapter-testkit
+
+  packages/adapter-local-git:
+    dependencies:
+      '@blog-studio/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/adapter-testkit:
     dependencies:
