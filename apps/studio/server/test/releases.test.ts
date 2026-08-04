@@ -7,6 +7,7 @@ import {
 } from '@blog-studio/core';
 import {
   openStudioDatabase,
+  SqliteChangeSetRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
 } from '@blog-studio/persistence';
@@ -89,6 +90,8 @@ function serviceWith(recoveryOutcome: 'not-started' | 'rolled-back') {
     workspaces,
     repository,
     drafts: new SqliteDraftRepository(database),
+    sites: {} as never,
+    changeSets: new SqliteChangeSetRepository(database),
     stateDirectory: '/unused',
     publisherFactories: {
       filesystem: () => publisher(recoveryOutcome),

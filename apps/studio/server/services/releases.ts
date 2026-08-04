@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import {
@@ -15,6 +15,7 @@ import {
 } from '@blog-studio/core';
 import type {
   DraftSnapshot,
+  SqliteChangeSetRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
   StoredRelease,
@@ -30,6 +31,7 @@ import {
 } from '@blog-studio/release';
 
 import type { WorkspaceHandle, WorkspaceService } from './workspaces.js';
+import type { SiteService } from './sites.js';
 import { createWorkspaceSandbox } from './workspace-sandbox.js';
 
 export interface ReleaseDetails extends StoredRelease {
@@ -56,6 +58,8 @@ export interface ReleaseServiceOptions {
   readonly workspaces: WorkspaceService;
   readonly repository: SqliteReleaseRepository;
   readonly drafts: SqliteDraftRepository;
+  readonly sites: SiteService;
+  readonly changeSets: SqliteChangeSetRepository;
   readonly stateDirectory: string;
   readonly verifierFactory?: (workspace: WorkspaceHandle) => ReleaseVerifier;
   readonly publisherFactories?: Readonly<
@@ -244,6 +248,7 @@ export class ReleaseService {
       readonly documentId: string;
       readonly version: number;
     },
+    source?: { readonly changeSetId: string; readonly commitId: string },
   ): Promise<ReleaseDetails> {
     const workspace = this.options.workspaces.get(workspaceId);
     const configuredTarget = releaseTarget(workspace);
@@ -292,6 +297,12 @@ export class ReleaseService {
       updatedAt: now,
       stages: [],
       ...(previous ? { previousReleaseId: previous.release.id } : {}),
+      ...(source
+        ? {
+            sourceChangeSetId: source.changeSetId,
+            sourceCommitId: source.commitId,
+          }
+        : {}),
     };
     const stored = this.options.repository.create(release);
     const controller = new AbortController();
@@ -310,6 +321,40 @@ export class ReleaseService {
       () => this.#runs.delete(run),
     );
     return { ...stored, events: [] };
+  }
+
+  public async startCommittedChangeSet(input: {
+    readonly siteId: string;
+    readonly changeSetId: string;
+    readonly targetId?: string;
+    readonly confirmation: string;
+  }): Promise<ReleaseDetails> {
+    if (input.confirmation !== 'RELEASE COMMITTED CHANGESET')
+      throw new Error('Remote release confirmation did not match');
+    const site = this.options.sites.get(input.siteId);
+    const record = this.options.changeSets.get(input.changeSetId);
+    if (
+      !record ||
+      record.siteId !== site.id ||
+      record.status !== 'committed' ||
+      !record.commitId
+    )
+      throw new Error('Remote release requires a committed ChangeSet');
+    const workspaceId = this.options.sites.workspaceId(input.siteId);
+    const workspace = this.options.workspaces.get(workspaceId);
+    const repositoryStatus = await workspace.repository.status(
+      createWorkspaceId(workspaceId),
+      workspace.config.workspace.root,
+    );
+    const expectedHead = createHash('sha256')
+      .update(record.commitId)
+      .digest('hex');
+    if (repositoryStatus.head !== `sha256:${expectedHead}`)
+      throw new Error('Committed ChangeSet is not the current Site revision');
+    return await this.start(workspaceId, input.targetId, undefined, {
+      changeSetId: record.id,
+      commitId: record.commitId,
+    });
   }
 
   public adoptBaseline(
@@ -384,9 +429,14 @@ export class ReleaseService {
       release.targetId,
     );
     const cache = this.#cache(workspace);
-    const sandbox = draft
-      ? await createWorkspaceSandbox(workspace, 'release')
-      : undefined;
+    const sandbox =
+      draft || release.sourceCommitId
+        ? await createWorkspaceSandbox(
+            workspace,
+            'release',
+            release.sourceCommitId,
+          )
+        : undefined;
     try {
       const prepareDraft = async (workspaceRoot: string) => {
         if (!draft) return;

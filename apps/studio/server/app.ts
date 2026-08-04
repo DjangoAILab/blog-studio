@@ -145,11 +145,12 @@ export async function createStudioServer(
   const sites = new SiteService(workspaces, new SqliteSiteRepository(database));
   const drafts = new SqliteDraftRepository(database);
   const content = new ContentService(sites, workspaces, drafts);
+  const changeSetRepository = new SqliteChangeSetRepository(database);
   const changeSets = new ChangeSetService(
     sites,
     workspaces,
     drafts,
-    new SqliteChangeSetRepository(database),
+    changeSetRepository,
   );
   const markdownPreviews = new MarkdownPreviewService();
   const previews = new PreviewService(workspaces);
@@ -158,6 +159,8 @@ export async function createStudioServer(
     workspaces,
     repository: new SqliteReleaseRepository(database),
     drafts,
+    sites,
+    changeSets: changeSetRepository,
     stateDirectory:
       options.releaseStateDirectory ??
       join(dirname(options.databasePath), 'release-state'),

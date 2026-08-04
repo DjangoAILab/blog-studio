@@ -1087,7 +1087,7 @@ describe('Studio workspace API', () => {
   });
 
   it('prepares immutable idempotent ChangeSets without applying or publishing', async () => {
-    const { app, workspace } = await fixture();
+    const { app, workspace, publishTarget } = await fixture();
     execFileSync('git', ['-C', workspace, 'init', '-q']);
     execFileSync('git', [
       '-C',
@@ -1298,6 +1298,49 @@ describe('Studio workspace API', () => {
         encoding: 'utf8',
       }),
     ).toContain('source/media/');
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      `${await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8')}working tree only\n`,
+    );
+    const remote = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/release`,
+      headers,
+      payload: { confirmation: 'RELEASE COMMITTED CHANGESET' },
+    });
+    expect(remote.statusCode, remote.body).toBe(202);
+    const remoteRelease = remote.json<{
+      release: {
+        release: {
+          id: string;
+          sourceChangeSetId: string;
+          sourceCommitId: string;
+        };
+      };
+    }>().release.release;
+    expect(remoteRelease).toMatchObject({
+      sourceChangeSetId: changedSet.id,
+      sourceCommitId: committedChangeSet.commitId,
+    });
+    expect(
+      (await waitForRelease(app, session.cookie, remoteRelease.id)).release
+        .status,
+    ).toBe('succeeded');
+    const releasedPage = await readFile(
+      join(publishTarget, '2026', '08', '02', 'hello', 'index.html'),
+      'utf8',
+    );
+    expect(releasedPage).toContain('Prepared body');
+    expect(releasedPage).not.toContain('working tree only');
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      execFileSync(
+        'git',
+        ['-C', workspace, 'show', 'HEAD:source/_posts/hello.md'],
+        { encoding: 'utf8' },
+      ),
+    );
 
     const reopened = await app.inject({
       url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,

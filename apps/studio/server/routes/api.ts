@@ -358,6 +358,36 @@ export function registerApiRoutes(
   );
 
   app.post<{
+    Params: { siteId: string; changeSetId: string };
+    Body: { targetId?: string; confirmation: string };
+  }>(
+    '/api/sites/:siteId/change-sets/:changeSetId/release',
+    {
+      schema: {
+        params: changeSetParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['confirmation'],
+          properties: {
+            targetId: { type: 'string', minLength: 1, maxLength: 64 },
+            confirmation: { type: 'string', maxLength: 64 },
+          },
+        },
+      },
+    },
+    async (request, reply) =>
+      reply.code(202).send({
+        release: await dependencies.releases.startCommittedChangeSet({
+          siteId: request.params.siteId,
+          changeSetId: request.params.changeSetId,
+          ...(request.body.targetId ? { targetId: request.body.targetId } : {}),
+          confirmation: request.body.confirmation,
+        }),
+      }),
+  );
+
+  app.post<{
     Body: {
       candidateId: string;
       displayName: string;

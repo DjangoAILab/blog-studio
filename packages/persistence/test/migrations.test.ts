@@ -59,6 +59,7 @@ describe('Studio database migrations', () => {
     ).toEqual([
       { version: 1 },
       { version: 2 },
+      { version: 3 },
       { version: STUDIO_SCHEMA_VERSION },
     ]);
     first.close();

@@ -38,6 +38,8 @@ interface ReleaseRow {
   readonly manifest_hash: string | null;
   readonly previous_release_id: string | null;
   readonly manifest_json: string | null;
+  readonly source_change_set_id: string | null;
+  readonly source_commit_id: string | null;
 }
 
 interface EventRow {
@@ -78,6 +80,12 @@ function decode(row: ReleaseRow): StoredRelease {
     ...(row.previous_release_id === null
       ? {}
       : { previousReleaseId: createReleaseId(row.previous_release_id) }),
+    ...(row.source_change_set_id === null
+      ? {}
+      : { sourceChangeSetId: row.source_change_set_id }),
+    ...(row.source_commit_id === null
+      ? {}
+      : { sourceCommitId: row.source_commit_id }),
   };
   return {
     release,
@@ -96,8 +104,9 @@ export class SqliteReleaseRepository {
         .prepare(
           `INSERT INTO releases (
              id, workspace_id, target_id, status, created_at, updated_at,
-             stages_json, manifest_hash, previous_release_id, manifest_json
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+             stages_json, manifest_hash, previous_release_id, manifest_json,
+             source_change_set_id, source_commit_id
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
         )
         .run(
           release.id,
@@ -109,6 +118,8 @@ export class SqliteReleaseRepository {
           JSON.stringify(release.stages),
           release.manifestHash ?? null,
           release.previousReleaseId ?? null,
+          release.sourceChangeSetId ?? null,
+          release.sourceCommitId ?? null,
         );
     } catch (error) {
       if (

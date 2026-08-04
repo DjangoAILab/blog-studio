@@ -165,6 +165,14 @@ const migrations: readonly Migration[] = [
         WHERE status = 'applying';
     `,
   },
+  {
+    version: 4,
+    name: 'immutable-release-source',
+    sql: `
+      ALTER TABLE releases ADD COLUMN source_change_set_id TEXT;
+      ALTER TABLE releases ADD COLUMN source_commit_id TEXT;
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

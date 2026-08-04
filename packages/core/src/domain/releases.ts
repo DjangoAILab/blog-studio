@@ -38,6 +38,8 @@ export interface ReleaseRecord {
   readonly stages: readonly ReleaseStage[];
   readonly manifestHash?: ContentHash;
   readonly previousReleaseId?: ReleaseId;
+  readonly sourceChangeSetId?: string;
+  readonly sourceCommitId?: string;
 }
 
 export interface ManifestEntry {
