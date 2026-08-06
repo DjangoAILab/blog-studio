@@ -64,25 +64,29 @@ only after its acceptance checklist and real-environment verification pass.
 **Outcome:** the reliable v0.1 engine becomes a complete daily product before
 statistics, AI analysis, or growth work competes for attention.
 
-- [ ] Select the first-run, library, editor/preview, and ChangeSet interaction
+Implementation and disposable production-like acceptance are complete. Phase
+acceptance remains open until the owner initializes the real home-server
+credential and the final authenticated reference-Site journey passes.
+
+- [x] Select the first-run, library, editor/preview, and ChangeSet interaction
       models plus a minimal responsive design and motion-token kernel before
       implementing their new production surfaces.
-- [ ] Trusted first-run owner-password setup, in-product change, CLI reset, and
+- [x] Trusted first-run owner-password setup, in-product change, CLI reset, and
       session revocation.
-- [ ] Site discovery, registration, display identity, settings, and capability
+- [x] Site discovery, registration, display identity, settings, and capability
       diagnostics.
-- [ ] Unified searchable library for published documents, native drafts, and
+- [x] Unified searchable library for published documents, native drafts, and
       modified working copies.
-- [ ] Published-document editing without mutating canonical files until an
+- [x] Published-document editing without mutating canonical files until an
       approved change set is applied.
-- [ ] Immediate Markdown preview plus verified generator-preview enhancement
+- [x] Immediate Markdown preview plus verified generator-preview enhancement
       and actionable fallback states.
-- [ ] Policy-controlled generic resources in addition to image processing.
-- [ ] Durable ChangeSet preparation across managed drafts, resources,
+- [x] Policy-controlled generic resources in addition to image processing.
+- [x] Durable ChangeSet preparation across managed drafts, resources,
       configuration, and repository changes.
-- [ ] Separate confirmations for preparing, creating a local Git commit, and
+- [x] Separate confirmations for preparing, creating a local Git commit, and
       releasing to a remote target.
-- [ ] Browser journeys and failure evidence for first run, daily editing,
+- [x] Browser journeys and failure evidence for first run, daily editing,
       preview, ChangeSet review, commit, and publish.
 
 ## Phase 5 — Interaction system and public distribution
@@ -90,14 +94,14 @@ statistics, AI analysis, or growth work competes for attention.
 **Outcome:** real product journeys reach a distinctive, responsive, accessible
 quality bar and can be presented honestly to external users.
 
-- [ ] Complete and apply high-fidelity desktop and mobile targets for
+- [x] Complete and apply high-fidelity desktop and mobile targets for
       onboarding, library, editor/preview, ChangeSet review, settings, and
       security.
-- [ ] Establish semantic content/material/elevation/type/spacing/motion/focus
+- [x] Establish semantic content/material/elevation/type/spacing/motion/focus
       tokens and non-glass fallbacks.
-- [ ] Apply the iOS 26-inspired “living editorial room” interaction model
+- [x] Apply the iOS 26-inspired “living editorial room” interaction model
       without putting glass or perpetual motion in the content layer.
-- [ ] Verify reduced motion, reduced transparency, increased contrast, keyboard
+- [x] Verify reduced motion, reduced transparency, increased contrast, keyboard
       access, responsive reflow, and performance budgets.
 - [ ] Rebuild `apps/website` from verified Studio journeys and current release
       evidence.

@@ -93,15 +93,32 @@ login() {
     "$origin/api/session"
 }
 
+register_site() {
+  local session csrf discovery registered
+  session="$(login)"
+  csrf="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).csrfToken)' "$session")"
+  discovery="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/discover")"
+  node -e 'const item=JSON.parse(process.argv[1]).candidates[0];if(item?.candidateId!=="operations-blog")process.exit(1)' "$discovery"
+  registered="$(curl --fail --silent --show-error \
+    --request POST \
+    --cookie "$fixture/cookies" \
+    --header "Origin: $origin" \
+    --header "x-csrf-token: $csrf" \
+    --header 'Content-Type: application/json' \
+    --data '{"candidateId":"operations-blog","displayName":"Operations Smoke Site"}' \
+    "$origin/api/sites")"
+  node -e 'const input=JSON.parse(process.argv[1]);if(!input.site?.id)process.exit(1);process.stdout.write(input.site.id)' "$registered"
+}
+
 save_draft() {
   local expected_version="$1"
   local body="$2"
   local session csrf documents document_id document revision payload
   session="$(login)"
   csrf="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).csrfToken)' "$session")"
-  documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/operations-blog/documents?collection=posts")"
-  document_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).documents[0].ref.documentId)' "$documents")"
-  document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/operations-blog/documents/$document_id?collection=posts")"
+  documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content?collection=posts")"
+  document_id="$(node -e 'const item=JSON.parse(process.argv[1]).content.items[0];if(item?.sourceState!=="published")process.exit(1);process.stdout.write(item.documentId)' "$documents")"
+  document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
   revision="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).source.revision)' "$document")"
   payload="$(node -e 'process.stdout.write(JSON.stringify({expectedVersion:Number(process.argv[1]),sourceRevision:process.argv[2],frontMatter:{title:"Operations smoke test",date:"2026-08-02 10:00:00"},body:process.argv[3]+"\n"}))' "$expected_version" "$revision" "$body")"
   curl --fail --silent --show-error \
@@ -111,7 +128,7 @@ save_draft() {
     --header "x-csrf-token: $csrf" \
     --header 'Content-Type: application/json' \
     --data "$payload" \
-    "$origin/api/workspaces/operations-blog/documents/$document_id/draft?collection=posts"
+    "$origin/api/sites/$site_id/content/$document_id/working-copy?collection=posts"
 }
 
 printf '%s\n' "$owner_password" | docker compose \
@@ -121,6 +138,7 @@ printf '%s\n' "$owner_password" | docker compose \
   --password-stdin
 docker compose -f "$project_directory/docker-compose.yml" up --detach --no-build
 wait_for_health
+site_id="$(register_site)"
 first="$(save_draft 0 'Backed up durable draft.')"
 node -e 'if(JSON.parse(process.argv[1]).draft.version!==1) process.exit(1)' "$first"
 archive="$($project_directory/scripts/backup.sh)"
@@ -135,10 +153,27 @@ docker compose -f "$project_directory/docker-compose.yml" up --detach --no-build
 wait_for_health
 
 session="$(login)"
-documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/operations-blog/documents?collection=posts")"
-document_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).documents[0].ref.documentId)' "$documents")"
-document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/operations-blog/documents/$document_id?collection=posts")"
+documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content?collection=posts")"
+document_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).content.items[0].documentId)' "$documents")"
+document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
 node -e 'const draft=JSON.parse(process.argv[1]).draft; if(draft?.version!==1 || draft.body!=="Backed up durable draft.\n") process.exit(1)' "$document"
 test "$(find "$fixture" -maxdepth 1 -type d -name '.blog-studio-pre-restore-*' | wc -l | tr -d ' ')" = '1'
 
-echo 'operations smoke passed: online SQLite backup, checksum, destructive mutation, validated restore, cold restart'
+reset_password='operations-smoke-reset-password'
+printf '%s\n' "$reset_password" | docker compose \
+  -f "$project_directory/docker-compose.yml" exec -T studio \
+  node dist/server/cli.js auth reset \
+  --database /data/blog-studio.sqlite \
+  --password-stdin
+revoked_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --cookie "$fixture/cookies" "$origin/api/sites")"
+test "$revoked_status" = '401'
+owner_password="$reset_password"
+login >/dev/null
+docker compose -f "$project_directory/docker-compose.yml" restart studio >/dev/null
+wait_for_health
+login >/dev/null
+documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content?collection=posts")"
+node -e 'if(JSON.parse(process.argv[1]).content.total!==1) process.exit(1)' "$documents"
+
+echo 'operations smoke passed: Site registration, online SQLite backup, checksum, destructive mutation, validated restore, credential reset/session revocation, cold restart'

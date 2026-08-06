@@ -5,6 +5,7 @@ import {
   readFile,
   readdir,
   stat,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
@@ -703,6 +704,9 @@ describe('Studio workspace API', () => {
       },
     });
     expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({
+      code: 'SITE_REVISION_CONFLICT',
+    });
     const audit = await app.inject({
       url: `/api/sites/${site.id}/events`,
       headers,
@@ -882,6 +886,10 @@ describe('Studio workspace API', () => {
         pageSize: number;
         total: number;
         counts: Record<string, number>;
+        facets: {
+          collections: Array<{ id: string; count: number }>;
+          tags: Array<{ name: string; count: number }>;
+        };
       };
     }>().content;
     expect(mergedContent).toMatchObject({
@@ -889,6 +897,16 @@ describe('Studio workspace API', () => {
       pageSize: 10,
       total: 2,
       counts: { all: 2, published: 0, draft: 1, modified: 1 },
+      facets: {
+        collections: [
+          { id: 'drafts', count: 1 },
+          { id: 'posts', count: 1 },
+        ],
+        tags: [
+          { name: 'Release', count: 1 },
+          { name: '中文', count: 1 },
+        ],
+      },
     });
     expect(mergedContent.items).toEqual(
       expect.arrayContaining([
@@ -983,16 +1001,83 @@ describe('Studio workspace API', () => {
     expect(staleSave.statusCode).toBe(409);
     expect(staleSave.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
 
+    const unavailableDiscardUrl = `/api/sites/${siteId}/content/${published.documentId}/unavailable-working-copy`;
+    const sourceStillAvailable = await app.inject({
+      method: 'DELETE',
+      url: unavailableDiscardUrl,
+      headers,
+      payload: { expectedVersion: 1 },
+    });
+    expect(sourceStillAvailable.statusCode).toBe(409);
+    expect(sourceStillAvailable.json()).toMatchObject({
+      code: 'DOCUMENT_CONFLICT',
+    });
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: [\n---\nincompatible front matter\n',
+    );
+    const partial = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    expect(partial.statusCode, partial.body).toBe(200);
+    const partialContent = partial.json<{
+      content: {
+        issues: Array<{ collectionId: string; kind: string }>;
+        items: Array<{
+          documentId: string;
+          title: string;
+          state: string;
+          sourceState: string;
+        }>;
+      };
+    }>().content;
+    expect(partialContent.issues).toMatchObject([
+      { collectionId: 'posts', kind: 'collection-unavailable' },
+    ]);
+    expect(partialContent.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Native idea', state: 'draft' }),
+        expect.objectContaining({
+          documentId: published.documentId,
+          sourceState: 'unavailable',
+        }),
+      ]),
+    );
+
+    await unlink(join(workspace, 'source', '_posts', 'hello.md'));
+    const unavailableList = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified`,
+      headers,
+    });
+    expect(unavailableList.statusCode, unavailableList.body).toBe(200);
+    expect(unavailableList.json()).toMatchObject({
+      content: {
+        counts: { modified: 1 },
+        items: [
+          {
+            documentId: published.documentId,
+            title: 'Edited Hello',
+            state: 'modified',
+            sourceState: 'unavailable',
+            workingCopy: { version: 1, stale: true },
+          },
+        ],
+      },
+    });
+    expect(unavailableList.body).not.toContain('SQLite working copy only');
+
     const staleDiscard = await app.inject({
       method: 'DELETE',
-      url: workingCopyUrl,
+      url: unavailableDiscardUrl,
       headers,
       payload: { expectedVersion: 2 },
     });
     expect(staleDiscard.statusCode).toBe(409);
     const discarded = await app.inject({
       method: 'DELETE',
-      url: workingCopyUrl,
+      url: unavailableDiscardUrl,
       headers,
       payload: { expectedVersion: 1 },
     });
@@ -1115,7 +1200,7 @@ describe('Studio workspace API', () => {
     });
     expect(markdownStarted.statusCode, markdownStarted.body).toBe(200);
     const markdownPreview = markdownStarted.json<{
-      preview: { mode: string; status: string; url: string };
+      preview: { id: string; mode: string; status: string; url: string };
     }>().preview;
     expect(markdownPreview).toMatchObject({
       mode: 'markdown',
@@ -1129,17 +1214,26 @@ describe('Studio workspace API', () => {
     expect(markdown.body).toContain('<h1>Markdown works</h1>');
     expect(markdown.body).not.toContain('<script>');
     expect(markdown.body).toContain(
-      `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&amp;source=%2Fstatic%2Freading.jpeg`,
+      `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Freading.jpeg`,
     );
     expect(markdown.headers['content-security-policy']).toContain(
       "script-src 'none'",
     );
     const resource = await app.inject({
-      url: `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&source=%2Fstatic%2Freading.jpeg`,
-      headers,
+      url: `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Freading.jpeg`,
     });
     expect(resource.statusCode, resource.body).toBe(200);
     expect(resource.headers['content-type']).toContain('image/jpeg');
+    expect(resource.headers['cache-control']).toBe('no-store');
+
+    const unreferencedResource = await app.inject({
+      url: `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Funreferenced.jpeg`,
+    });
+    expect(unreferencedResource.statusCode).toBe(404);
+    const normalResourceWithoutSession = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&source=%2Fstatic%2Freading.jpeg`,
+    });
+    expect(normalResourceWithoutSession.statusCode).toBe(401);
 
     const enhancedStarted = await app.inject({
       method: 'POST',
@@ -1202,6 +1296,7 @@ describe('Studio workspace API', () => {
         originalFilename: '写作 Guide.pdf',
         mediaType: 'application/pdf',
         inlinePreview: true,
+        storage: 'local',
       },
     });
     expect(
@@ -1221,7 +1316,40 @@ describe('Studio workspace API', () => {
     expect(executable.statusCode).toBe(422);
     expect(executable.json()).toMatchObject({
       title: 'Executable resources are not accepted',
+      code: 'RESOURCE_EXECUTABLE_REJECTED',
     });
+
+    const orphanUrl = `/api/sites/${siteId}/content/${documentId}/resources/orphans?collection=posts`;
+    const orphaned = await app.inject({ url: orphanUrl, headers });
+    expect(orphaned.statusCode, orphaned.body).toBe(200);
+    const plan = orphaned.json<{
+      plan: {
+        confirmation: string;
+        storage: string;
+        assets: Array<{ id: string }>;
+      };
+    }>().plan;
+    expect(plan).toMatchObject({ storage: 'local' });
+    expect(plan.assets).toHaveLength(1);
+    const stalePlan = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation: `sha256:${'0'.repeat(64)}` },
+    });
+    expect(stalePlan.statusCode).toBe(409);
+    expect(stalePlan.json()).toMatchObject({ code: 'ASSET_PLAN_CONFLICT' });
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation: plan.confirmation },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toMatchObject({ count: 1 });
+    expect(
+      (await app.inject({ url: orphanUrl, headers })).json(),
+    ).toMatchObject({ plan: { assets: [] } });
   });
 
   it('prepares immutable idempotent ChangeSets without applying or publishing', async () => {
@@ -1461,6 +1589,27 @@ describe('Studio workspace API', () => {
       sourceChangeSetId: changedSet.id,
       sourceCommitId: committedChangeSet.commitId,
     });
+    const siteRelease = await app.inject({
+      method: 'GET',
+      url: `/api/sites/${siteId}/releases/${remoteRelease.id}`,
+      headers,
+    });
+    expect(siteRelease.statusCode, siteRelease.body).toBe(200);
+    expect(
+      siteRelease.json<{ release: { sourceChangeSetId: string } }>().release
+        .sourceChangeSetId,
+    ).toBe(changedSet.id);
+    const siteReleases = await app.inject({
+      method: 'GET',
+      url: `/api/sites/${siteId}/releases`,
+      headers,
+    });
+    expect(siteReleases.statusCode, siteReleases.body).toBe(200);
+    expect(
+      siteReleases
+        .json<{ releases: { release: { id: string } }[] }>()
+        .releases.some((item) => item.release.id === remoteRelease.id),
+    ).toBe(true);
     expect(
       (await waitForRelease(app, session.cookie, remoteRelease.id)).release
         .status,

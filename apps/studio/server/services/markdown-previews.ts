@@ -9,6 +9,29 @@ export interface MarkdownPreviewSession {
   readonly expiresAt: string;
 }
 
+export type MarkdownPreviewResourceContext =
+  | {
+      readonly kind: 'site';
+      readonly siteId: string;
+      readonly documentId: string;
+      readonly collection: string;
+    }
+  | {
+      readonly kind: 'workspace';
+      readonly workspaceId: string;
+      readonly documentId: string;
+      readonly collection: string;
+    };
+
+interface StoredMarkdownPreviewSession {
+  readonly preview: MarkdownPreviewSession;
+  readonly resource: MarkdownPreviewResourceContext;
+  readonly referencedSources: ReadonlySet<string>;
+}
+
+export class MarkdownPreviewNotFoundError extends Error {}
+export class MarkdownPreviewResourceNotFoundError extends Error {}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -18,8 +41,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function rewriteResourceUrls(html: string, resourceBase: string): string {
-  return html.replace(
+function rewriteResourceUrls(
+  html: string,
+  resourceBase: string,
+): { readonly html: string; readonly referencedSources: ReadonlySet<string> } {
+  const referencedSources = new Set<string>();
+  const rewritten = html.replace(
     /\b(href|src)="([^"]*)"/gi,
     (_match, attribute: string, value: string) => {
       if (value.length === 0) return `${attribute}="#blocked-resource"`;
@@ -30,29 +57,32 @@ function rewriteResourceUrls(html: string, resourceBase: string): string {
       ) {
         return `${attribute}="${value}"`;
       }
+      referencedSources.add(value);
       return `${attribute}="${resourceBase.replaceAll('&', '&amp;')}${encodeURIComponent(value)}"`;
     },
   );
+  return { html: rewritten, referencedSources };
 }
 
 export class MarkdownPreviewService {
-  readonly #sessions = new Map<string, MarkdownPreviewSession>();
+  readonly #sessions = new Map<string, StoredMarkdownPreviewSession>();
 
   public constructor(private readonly idleMs = 5 * 60_000) {}
 
   public start(input: {
     readonly title: string;
     readonly body: string;
-    readonly resourceBase: string;
+    readonly resource: MarkdownPreviewResourceContext;
     readonly now?: number;
   }): MarkdownPreviewSession {
     const now = input.now ?? Date.now();
+    const id = randomUUID();
     const rendered = rewriteResourceUrls(
       micromark(input.body, { allowDangerousHtml: false }),
-      input.resourceBase,
+      `/api/markdown-previews/${id}/resource?source=`,
     );
     const session: MarkdownPreviewSession = {
-      id: randomUUID(),
+      id,
       html: `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -71,27 +101,48 @@ export class MarkdownPreviewService {
     a { color: LinkText; }
   </style>
 </head>
-<body><main>${rendered}</main></body>
+<body><main>${rendered.html}</main></body>
 </html>`,
       createdAt: new Date(now).toISOString(),
       expiresAt: new Date(now + this.idleMs).toISOString(),
     };
-    this.#sessions.set(session.id, session);
+    this.#sessions.set(session.id, {
+      preview: session,
+      resource: input.resource,
+      referencedSources: rendered.referencedSources,
+    });
     return session;
   }
 
   public get(id: string, now = Date.now()): MarkdownPreviewSession {
-    const session = this.#sessions.get(id);
-    if (!session || Date.parse(session.expiresAt) <= now) {
-      throw new Error(`Unknown Markdown preview: ${id}`);
+    const stored = this.#sessions.get(id);
+    if (!stored || Date.parse(stored.preview.expiresAt) <= now) {
+      throw new MarkdownPreviewNotFoundError(`Unknown Markdown preview: ${id}`);
     }
-    return session;
+    return stored.preview;
+  }
+
+  public resource(
+    id: string,
+    source: string,
+    now = Date.now(),
+  ): MarkdownPreviewResourceContext {
+    const stored = this.#sessions.get(id);
+    if (!stored || Date.parse(stored.preview.expiresAt) <= now) {
+      throw new MarkdownPreviewNotFoundError(`Unknown Markdown preview: ${id}`);
+    }
+    if (!stored.referencedSources.has(source)) {
+      throw new MarkdownPreviewResourceNotFoundError(
+        'Resource was not referenced by this Markdown preview',
+      );
+    }
+    return stored.resource;
   }
 
   public reapExpired(now = Date.now()): number {
     let reaped = 0;
-    for (const [id, session] of this.#sessions) {
-      if (Date.parse(session.expiresAt) <= now) {
+    for (const [id, stored] of this.#sessions) {
+      if (Date.parse(stored.preview.expiresAt) <= now) {
         this.#sessions.delete(id);
         reaped++;
       }

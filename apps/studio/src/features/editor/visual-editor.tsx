@@ -38,6 +38,10 @@ function EditorSurface({
     const root = surface.current;
     if (!root) return;
     const rewrite = () => {
+      const editor = root.querySelector<HTMLElement>(
+        '[contenteditable="true"]',
+      );
+      if (editor) editor.setAttribute('aria-label', '文章正文');
       for (const image of root.querySelectorAll<HTMLImageElement>('img[src]')) {
         if (image.dataset.blogStudioSource) continue;
         const source = image.getAttribute('src');

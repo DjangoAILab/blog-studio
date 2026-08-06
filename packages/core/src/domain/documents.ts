@@ -84,7 +84,7 @@ export interface ContentSummary {
   readonly title: string;
   readonly tags: readonly string[];
   readonly state: ContentState;
-  readonly sourceState: 'draft' | 'published';
+  readonly sourceState: 'draft' | 'published' | 'unavailable';
   readonly updatedAt?: string;
   readonly workingCopy?: {
     readonly version: number;
@@ -100,6 +100,25 @@ export interface ContentQueryResult {
   readonly pageSize: number;
   readonly total: number;
   readonly counts: Readonly<Record<'all' | ContentState, number>>;
+  readonly facets: {
+    readonly collections: readonly {
+      readonly id: string;
+      readonly count: number;
+    }[];
+    readonly tags: readonly {
+      readonly name: string;
+      readonly count: number;
+    }[];
+    readonly dateRange: {
+      readonly from?: string;
+      readonly to?: string;
+    };
+  };
+  readonly issues: readonly {
+    readonly collectionId: string;
+    readonly kind: 'collection-unavailable';
+    readonly message: string;
+  }[];
 }
 
 export interface ContentCollection {

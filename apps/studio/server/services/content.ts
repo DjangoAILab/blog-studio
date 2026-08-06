@@ -1,6 +1,7 @@
 import {
   BlogStudioError,
   createContentHash,
+  createDocumentId,
   createWorkspaceId,
   type ContentQueryResult,
   type ContentState,
@@ -83,13 +84,33 @@ export class ContentService {
     const workspace = this.workspaces.get(workspaceId);
     const root = workspace.config.workspace.root;
     const model = await workspace.generator.inspect(root);
-    const summaries = (
-      await Promise.all(
-        model.collections.map(async (collection) =>
-          workspace.generator.listDocuments(root, collection.id),
-        ),
-      )
-    ).flat();
+    const collectionResults = await Promise.all(
+      model.collections.map(async (collection) => {
+        try {
+          return {
+            collectionId: collection.id,
+            items: await workspace.generator.listDocuments(root, collection.id),
+          };
+        } catch (error) {
+          return {
+            collectionId: collection.id,
+            items: [],
+            issue: {
+              collectionId: collection.id,
+              kind: 'collection-unavailable' as const,
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Collection could not be inspected',
+            },
+          };
+        }
+      }),
+    );
+    const summaries = collectionResults.flatMap((result) => result.items);
+    const issues = collectionResults.flatMap((result) =>
+      result.issue ? [result.issue] : [],
+    );
     const drafts = new Map(
       this.drafts
         .listMetadataForWorkspace(
@@ -127,11 +148,69 @@ export class ContentService {
           : {}),
       };
     });
+    const availableIds = new Set(
+      summaries.map((summary) => summary.ref.documentId),
+    );
+    for (const draft of drafts.values()) {
+      if (availableIds.has(draft.documentId)) continue;
+      allItems.push({
+        siteId: site.id,
+        documentId: draft.documentId,
+        collectionId: 'recovery',
+        path: '',
+        title: stringValue(draft.frontMatter.title) ?? '无法定位的工作副本',
+        tags: stringList(draft.frontMatter.tags),
+        state: 'modified',
+        sourceState: 'unavailable',
+        updatedAt: draft.savedAt,
+        workingCopy: {
+          version: draft.version,
+          savedAt: draft.savedAt,
+          sourceRevision: draft.sourceRevision,
+          stale: true,
+        },
+      });
+    }
     const counts = {
       all: allItems.length,
       draft: allItems.filter((item) => item.state === 'draft').length,
       published: allItems.filter((item) => item.state === 'published').length,
       modified: allItems.filter((item) => item.state === 'modified').length,
+    };
+    const collectionCounts = new Map<string, number>();
+    const tagCounts = new Map<
+      string,
+      { readonly name: string; count: number }
+    >();
+    const dates: string[] = [];
+    for (const item of allItems) {
+      collectionCounts.set(
+        item.collectionId,
+        (collectionCounts.get(item.collectionId) ?? 0) + 1,
+      );
+      for (const name of item.tags) {
+        const key = normalize(name);
+        const current = tagCounts.get(key);
+        if (current) current.count += 1;
+        else tagCounts.set(key, { name, count: 1 });
+      }
+      if (item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)))
+        dates.push(item.updatedAt);
+    }
+    dates.sort();
+    const firstDate = dates[0];
+    const lastDate = dates.at(-1);
+    const facets: ContentQueryResult['facets'] = {
+      collections: [...collectionCounts]
+        .map(([id, count]) => ({ id, count }))
+        .sort((left, right) => left.id.localeCompare(right.id)),
+      tags: [...tagCounts.values()].sort((left, right) =>
+        left.name.localeCompare(right.name),
+      ),
+      dateRange: {
+        ...(firstDate ? { from: firstDate } : {}),
+        ...(lastDate ? { to: lastDate } : {}),
+      },
     };
     const search = query.search ? normalize(query.search) : undefined;
     const tag = query.tag ? normalize(query.tag) : undefined;
@@ -165,7 +244,52 @@ export class ContentService {
       pageSize,
       total: filtered.length,
       counts,
+      facets,
+      issues,
     };
+  }
+
+  public async discardUnavailable(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly expectedVersion: number;
+  }): Promise<void> {
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    const root = workspace.config.workspace.root;
+    const model = await workspace.generator.inspect(root);
+    for (const collection of model.collections) {
+      try {
+        const documents = await workspace.generator.listDocuments(
+          root,
+          collection.id,
+        );
+        if (documents.some((item) => item.ref.documentId === input.documentId))
+          throw new BlogStudioError(
+            'DOCUMENT_CONFLICT',
+            'Canonical source is available; use the normal discard flow',
+            { documentId: input.documentId },
+          );
+      } catch (error) {
+        if (error instanceof BlogStudioError) throw error;
+      }
+    }
+    const current = this.drafts.get(
+      createWorkspaceId(workspace.config.workspace.id),
+      createDocumentId(input.documentId),
+    );
+    if (
+      !current ||
+      !this.drafts.delete(
+        current.workspaceId,
+        current.documentId,
+        input.expectedVersion,
+      )
+    )
+      throw new RevisionConflictError(
+        input.expectedVersion,
+        current?.version ?? 0,
+      );
   }
 
   public async read(siteId: string, collectionId: string, documentId: string) {

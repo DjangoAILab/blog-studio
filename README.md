@@ -63,10 +63,11 @@ curl --fail http://127.0.0.1:4310/api/health
 
 The initialization command reads and confirms the new owner password without
 echoing it. Open the configured HTTPS route, log in with that password, edit
-“Welcome to Blog Studio,” and choose preview. To connect your own site, replace
-the example workspace with a clean trusted checkout, install its locked
-dependencies on the host, and select its generator/publisher adapters in the
-configuration.
+the discovered `Example Blog` Site, and choose preview. Registration creates
+only the Site identity and audit record in SQLite. To connect your own site,
+replace the example workspace with a clean trusted checkout, install its locked
+dependencies on the host, configure its generator/publisher adapters, and
+review the discovered candidate before registering it.
 
 Port 4310 binds only to localhost. Use the supplied Traefik override, another
 TLS reverse proxy, or a private tunnel for browser access; do not expose the
@@ -106,9 +107,13 @@ final container image for unaccepted critical findings.
 - [v0.2 implementation plan](docs/plans/2026-08-04-blog-studio-v0.2.md)
 - [v0.1 implementation plan](docs/plans/2026-08-02-blog-studio-v0.1.md)
 - [Self-hosting](docs/guides/self-hosting.md)
+- [Sites and first run](docs/guides/sites-and-first-run.md)
+- [Prepare, commit and release](docs/guides/prepare-commit-release.md)
 - [Backup and restore](docs/guides/backup-restore.md)
 - [Upgrade and rollback](docs/guides/upgrading.md)
 - [v0.1.0 release notes](docs/releases/v0.1.0.md)
+- [v0.2.0 release-candidate notes](docs/releases/v0.2.0.md)
+- [v0.2 release-candidate evidence index](docs/verification/v0.2-release-candidate.md)
 - [v0.2 operations evidence](docs/verification/v0.2-operations.md)
 - [v0.2 real reference Site evidence](docs/verification/v0.2-reference-site.md)
 - [Verification evidence](artifacts/verification/release-readiness.md)

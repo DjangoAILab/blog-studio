@@ -1,66 +1,54 @@
+import type {
+  ChangeSetReview,
+  Site,
+  SiteDiscoveryCandidate,
+  StudioSetupStatus,
+} from '@blog-studio/core';
+import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+
+import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
+import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
+import {
+  ContentLibrary,
+  type ContentAdvancedFilters,
+} from '../features/library/content-library.js';
+import { SiteOnboarding } from '../features/onboarding/site-onboarding.js';
+import { SetupRecovery } from '../features/onboarding/setup-recovery.js';
+import { PreviewPane } from '../features/preview/preview-pane.js';
+import {
+  ResourcePicker,
+  type ResourceUploadView,
+} from '../features/resources/resource-picker.js';
+import { SystemSettings } from '../features/settings/system-settings.js';
+import { SiteOverview } from '../features/site/site-overview.js';
+import {
+  StudioNavigation,
+  type StudioDestination,
+} from '../features/shell/studio-navigation.js';
 import {
   csrfFromCookie,
   StudioApi,
+  StudioApiError,
+  type ContentQueryResult,
+  type ContentState,
+  type ContentSummary,
   type DocumentPayload,
-  type DocumentSummary,
   type OrphanAssetPlan,
   type PreviewFallbackReason,
   type ReleaseDetails,
-  type ReleaseStatus,
-  type WorkspaceSummary,
 } from './api.js';
 
 type SaveState =
   'clean' | 'changed' | 'saving' | 'saved' | 'error' | 'conflict';
 type PreviewState = 'idle' | 'building' | 'ready' | 'error';
-interface AssetUpload {
-  readonly id: string;
-  readonly file: File;
-  readonly previewUrl: string;
-  readonly state: 'uploading' | 'ready' | 'error';
-  readonly error?: string;
-}
 const VisualEditor = lazy(() =>
   import('../features/editor/visual-editor.js').then((module) => ({
     default: module.VisualEditor,
   })),
 );
 
-const terminalReleaseStatuses = new Set<ReleaseStatus>([
-  'succeeded',
-  'failed',
-  'rolled-back',
-  'canceled',
-]);
-
-const releaseLabels: Readonly<Record<ReleaseStatus, string>> = {
-  queued: '等待发布',
-  preflight: '环境检查',
-  building: '生成站点',
-  planning: '计算差异',
-  'uploading-assets': '上传资源',
-  'uploading-pages': '切换页面',
-  'invalidating-cache': '刷新缓存',
-  verifying: '公网验证',
-  succeeded: '发布成功',
-  failed: '发布失败',
-  'rollback-required': '需要回滚',
-  'rolling-back': '正在回滚',
-  'rolled-back': '已安全回滚',
-  canceled: '已取消',
-};
-
-const previewFallbackMessages: Readonly<Record<PreviewFallbackReason, string>> =
-  {
-    'missing-output': '真实主题没有生成当前文章页，已显示 Markdown 预览。',
-    'route-error': '真实主题路由未返回当前文章，已显示 Markdown 预览。',
-    'build-error': '站点生成器运行失败，已显示 Markdown 预览。',
-    timeout: '站点生成器超时，已显示 Markdown 预览。',
-    'unsupported-engine': '当前引擎不支持真实主题预览，已显示 Markdown 预览。',
-    canceled: '真实主题预览已取消，已显示 Markdown 预览。',
-    restart: '真实主题预览因服务重启中断，已显示 Markdown 预览。',
-  };
+type ContentFilter = 'all' | ContentState;
 
 function Login({
   onLogin,
@@ -149,10 +137,43 @@ export function StudioApp() {
   const [ownerInitialized, setOwnerInitialized] = useState<boolean | null>(
     null,
   );
-  const [workspaces, setWorkspaces] = useState<readonly WorkspaceSummary[]>([]);
-  const [workspace, setWorkspace] = useState<WorkspaceSummary>();
-  const [documents, setDocuments] = useState<readonly DocumentSummary[]>([]);
-  const [selected, setSelected] = useState<DocumentSummary>();
+  const [setupStatus, setSetupStatus] = useState<StudioSetupStatus>();
+  const [setupChecked, setSetupChecked] = useState(false);
+  const [setupRetrying, setSetupRetrying] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const [sites, setSites] = useState<readonly Site[]>([]);
+  const [site, setSite] = useState<Site>();
+  const [destination, setDestination] = useState<StudioDestination>('site');
+  const [siteContent, setSiteContent] = useState<ContentQueryResult>();
+  const [siteContentState, setSiteContentState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
+  const [siteContentError, setSiteContentError] = useState('');
+  const [contentSearch, setContentSearch] = useState('');
+  const [contentFilter, setContentFilter] = useState<ContentFilter>('all');
+  const [contentAdvancedFilters, setContentAdvancedFilters] =
+    useState<ContentAdvancedFilters>({
+      collection: '',
+      tag: '',
+      from: '',
+      to: '',
+    });
+  const [contentPage, setContentPage] = useState(1);
+  const [candidates, setCandidates] = useState<
+    readonly SiteDiscoveryCandidate[]
+  >([]);
+  const [discoveryState, setDiscoveryState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
+  const [discoveryError, setDiscoveryError] = useState('');
+  const [changeSetOpen, setChangeSetOpen] = useState(false);
+  const [changeSetState, setChangeSetState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle');
+  const [changeSet, setChangeSet] = useState<ChangeSetReview>();
+  const [changeSetError, setChangeSetError] = useState('');
+  const [changeSetRelease, setChangeSetRelease] = useState<ReleaseDetails>();
+  const [selected, setSelected] = useState<ContentSummary>();
   const [document, setDocument] = useState<DocumentPayload>();
   const [loadedDocumentId, setLoadedDocumentId] = useState('');
   const [body, setBody] = useState('');
@@ -168,68 +189,80 @@ export function StudioApp() {
   const [previewError, setPreviewError] = useState('');
   const [previewFallback, setPreviewFallback] =
     useState<PreviewFallbackReason>();
+  const [previewMode, setPreviewMode] = useState<'markdown' | 'enhanced'>(
+    'markdown',
+  );
   const [panel, setPanel] = useState<'library' | 'write' | 'preview'>('write');
-  const [uploads, setUploads] = useState<readonly AssetUpload[]>([]);
-  const [release, setRelease] = useState<ReleaseDetails>();
-  const [releaseError, setReleaseError] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [createTitle, setCreateTitle] = useState('');
-  const [createSlug, setCreateSlug] = useState('');
-  const [createError, setCreateError] = useState('');
+  const [uploads, setUploads] = useState<readonly ResourceUploadView[]>([]);
   const [orphanPlan, setOrphanPlan] = useState<OrphanAssetPlan>();
-  const [orphanState, setOrphanState] = useState<
-    'idle' | 'loading' | 'ready' | 'deleting' | 'deleted' | 'error'
-  >('idle');
+  const [orphanBusy, setOrphanBusy] = useState(false);
   const [orphanError, setOrphanError] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [securityState, setSecurityState] = useState<
-    'idle' | 'saving' | 'saved' | 'error'
-  >('idle');
-  const [securityMessage, setSecurityMessage] = useState('');
-  const assetInput = useRef<HTMLInputElement>(null);
+  const [createRequest, setCreateRequest] = useState(0);
+  const resourceInput = useRef<HTMLInputElement>(null);
 
-  function uploadAsset(file: File): void {
-    if (!workspace || !selected || !file.type.startsWith('image/')) return;
+  function uploadResource(file: File): void {
+    if (!site || !selected) return;
     const id = crypto.randomUUID();
-    const previewUrl = URL.createObjectURL(file);
+    const previewUrl = file.type.startsWith('image/')
+      ? URL.createObjectURL(file)
+      : undefined;
     setUploads((items) => [
       ...items,
-      { id, file, previewUrl, state: 'uploading' },
+      {
+        id,
+        file,
+        ...(previewUrl ? { previewUrl } : {}),
+        state: 'uploading',
+      },
     ]);
     void api
-      .uploadAsset({
-        workspaceId: workspace.id,
-        documentId: selected.ref.documentId,
-        collection: selected.ref.collectionId,
+      .uploadResource({
+        siteId: site.id,
+        documentId: selected.documentId,
+        collection: selected.collectionId,
         file,
       })
-      .then(({ asset }) => {
-        URL.revokeObjectURL(previewUrl);
-        setUploads((items) =>
-          items.map((item) =>
-            item.id === id
-              ? { ...item, previewUrl: asset.publicUrl, state: 'ready' }
-              : item,
-          ),
-        );
-        const alt = file.name.replace(/\.[^.]+$/, '') || 'image';
-        setBody(
-          (value) =>
-            `${value.replace(/\s*$/, '')}\n\n![${alt}](${asset.publicUrl})\n`,
-        );
-        setSaveState('changed');
-      })
-      .catch((reason: unknown) => {
+      .then(({ resource }) => {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
         setUploads((items) =>
           items.map((item) =>
             item.id === id
               ? {
                   ...item,
-                  state: 'error',
+                  kind: resource.kind,
+                  storage: resource.storage,
+                  ...(resource.inlinePreview
+                    ? { previewUrl: resource.publicUrl }
+                    : {}),
+                  state: 'ready',
+                }
+              : item,
+          ),
+        );
+        setBody(
+          (value) => `${value.replace(/\s*$/, '')}\n\n${resource.insertion}\n`,
+        );
+        setSaveState('changed');
+      })
+      .catch((reason: unknown) => {
+        const rejected =
+          reason instanceof StudioApiError &&
+          [
+            'ASSET_TOO_LARGE',
+            'ASSET_MEDIA_UNSUPPORTED',
+            'ASSET_MEDIA_MISMATCH',
+            'ASSET_PIXEL_LIMIT',
+            'RESOURCE_EXECUTABLE_REJECTED',
+            'RESOURCE_EXTENSION_MISMATCH',
+          ].includes(reason.code ?? '');
+        setUploads((items) =>
+          items.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  state: rejected ? 'rejected' : 'error',
                   error:
-                    reason instanceof Error ? reason.message : '图片上传失败',
+                    reason instanceof Error ? reason.message : '资源上传失败',
                 }
               : item,
           ),
@@ -237,45 +270,166 @@ export function StudioApp() {
       });
   }
 
-  async function loadWorkspaces(): Promise<void> {
+  async function discoverSites(): Promise<void> {
+    setDiscoveryState('loading');
+    setDiscoveryError('');
     try {
-      const result = await api.workspaces();
-      setWorkspaces(result.workspaces);
-      setWorkspace(result.workspaces[0]);
+      const result = await api.discoverSites();
+      setCandidates(result.candidates);
+      setDiscoveryState('ready');
+    } catch (reason: unknown) {
+      setCandidates([]);
+      setDiscoveryState('error');
+      setDiscoveryError(
+        reason instanceof Error ? reason.message : '站点检查失败',
+      );
+    }
+  }
+
+  async function loadStudioState(): Promise<void> {
+    try {
+      const siteResult = await api.sites();
+      setSites(siteResult.sites);
+      setSite(
+        (current) =>
+          siteResult.sites.find((item) => item.id === current?.id) ??
+          siteResult.sites[0],
+      );
+      if (siteResult.sites.length === 0) void discoverSites();
       setAuthenticated(true);
     } catch {
       setAuthenticated(false);
     }
   }
 
+  async function refreshSetupStatus(): Promise<StudioSetupStatus> {
+    setSetupRetrying(true);
+    setSetupError('');
+    try {
+      const status = await api.setupStatus();
+      setSetupStatus(status);
+      setSetupChecked(true);
+      if (status.configuration.state === 'valid') {
+        const auth = await api.authStatus();
+        setOwnerInitialized(auth.initialized);
+        if (auth.initialized) await loadStudioState();
+        else setAuthenticated(false);
+      }
+      return status;
+    } catch (reason: unknown) {
+      setSetupChecked(true);
+      setSetupError(
+        reason instanceof Error ? reason.message : '无法读取首次运行状态',
+      );
+      throw reason;
+    } finally {
+      setSetupRetrying(false);
+    }
+  }
+
   useEffect(() => {
-    void api
-      .authStatus()
-      .then(async (status) => {
-        setOwnerInitialized(status.initialized);
-        if (status.initialized) await loadWorkspaces();
+    void Promise.all([api.setupStatus(), api.authStatus()])
+      .then(async ([setup, auth]) => {
+        setSetupStatus(setup);
+        setSetupChecked(true);
+        setOwnerInitialized(auth.initialized);
+        if (setup.configuration.state !== 'valid') {
+          setAuthenticated(false);
+          return;
+        }
+        if (auth.initialized) await loadStudioState();
         else setAuthenticated(false);
       })
       .catch(() => {
+        setSetupChecked(true);
+        setSetupError('无法读取首次运行状态');
         setOwnerInitialized(false);
         setAuthenticated(false);
       });
   }, [api]);
   useEffect(() => {
-    if (!workspace) return;
-    void Promise.all([
-      api.documents(workspace.id, 'posts'),
-      api.documents(workspace.id, 'drafts'),
-      api.releases(workspace.id),
-    ]).then(([postResult, draftResult, releaseResult]) => {
-      const nextDocuments = [...draftResult.documents, ...postResult.documents];
-      setDocuments(nextDocuments);
-      setSelected(nextDocuments[0]);
-      setRelease(releaseResult.releases[0]);
-    });
-  }, [api, workspace]);
+    if (!site) {
+      setSiteContent(undefined);
+      setSiteContentState('idle');
+      return;
+    }
+    let cancelled = false;
+    setSiteContentState('loading');
+    setSiteContentError('');
+    void api
+      .content(site.id, {
+        ...(contentSearch ? { search: contentSearch } : {}),
+        ...(contentFilter === 'all' ? {} : { state: contentFilter }),
+        ...(contentAdvancedFilters.collection
+          ? { collection: contentAdvancedFilters.collection }
+          : {}),
+        ...(contentAdvancedFilters.tag
+          ? { tag: contentAdvancedFilters.tag }
+          : {}),
+        ...(contentAdvancedFilters.from
+          ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
+          : {}),
+        ...(contentAdvancedFilters.to
+          ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
+          : {}),
+        page: contentPage,
+        pageSize: 30,
+      })
+      .then(({ content }) => {
+        if (cancelled) return;
+        setSiteContent(content);
+        setSelected((current) =>
+          current
+            ? (content.items.find(
+                (item) => item.documentId === current.documentId,
+              ) ?? content.items[0])
+            : content.items[0],
+        );
+        setSiteContentState('ready');
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return;
+        setSiteContent(undefined);
+        setSiteContentState('error');
+        setSiteContentError(
+          reason instanceof Error ? reason.message : '站点内容读取失败',
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    api,
+    contentAdvancedFilters,
+    contentFilter,
+    contentPage,
+    contentSearch,
+    site,
+  ]);
   useEffect(() => {
-    if (!workspace || !selected) return;
+    if (!site || !changeSetOpen || !changeSetRelease) return;
+    if (
+      ['succeeded', 'failed', 'rolled-back', 'canceled'].includes(
+        changeSetRelease.release.status,
+      )
+    )
+      return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void api
+        .siteRelease(site.id, changeSetRelease.release.id)
+        .then((details) => {
+          if (!cancelled) setChangeSetRelease(details);
+        })
+        .catch(() => undefined);
+    }, 900);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [api, changeSetOpen, changeSetRelease, site]);
+  useEffect(() => {
+    if (!site || !selected) return;
     let cancelled = false;
     setDocument(undefined);
     setLoadedDocumentId('');
@@ -283,25 +437,18 @@ export function StudioApp() {
     setPreviewState('idle');
     setPreviewError('');
     setPreviewFallback(undefined);
-    setOrphanPlan(undefined);
-    setOrphanState('idle');
-    setOrphanError('');
     setUploads((items) => {
       for (const item of items)
-        if (item.previewUrl.startsWith('blob:'))
+        if (item.previewUrl?.startsWith('blob:'))
           URL.revokeObjectURL(item.previewUrl);
       return [];
     });
     void api
-      .document(
-        workspace.id,
-        selected.ref.documentId,
-        selected.ref.collectionId,
-      )
+      .siteDocument(site.id, selected.documentId, selected.collectionId)
       .then((result) => {
         if (cancelled) return;
         setDocument(result);
-        setLoadedDocumentId(selected.ref.documentId);
+        setLoadedDocumentId(selected.documentId);
         const nextBody = result.draft?.body ?? result.source.body;
         setBody(nextBody);
         setMode(/\{%[\s\S]*?%\}/.test(nextBody) ? 'source' : 'visual');
@@ -311,71 +458,57 @@ export function StudioApp() {
           typeof matter.title === 'string' ? matter.title : selected.title,
         );
         setVersion(result.draft?.version ?? 0);
-        setSaveState('clean');
+        setSaveState(result.stale ? 'conflict' : 'clean');
       });
     return () => {
       cancelled = true;
     };
-  }, [api, selected, workspace]);
+  }, [api, selected, site]);
 
   useEffect(() => {
-    if (
-      !workspace ||
-      !release ||
-      terminalReleaseStatuses.has(release.release.status)
-    )
+    if (!site || !selected || loadedDocumentId !== selected.documentId) {
+      setOrphanPlan(undefined);
       return;
-    const timer = window.setInterval(() => {
-      void api
-        .release(workspace.id, release.release.id)
-        .then((next) => {
-          const becameTerminal = terminalReleaseStatuses.has(
-            next.release.status,
-          );
-          setRelease(next);
-          if (becameTerminal && selected) {
-            void loadWorkspaces();
-            void Promise.all([
-              api.documents(workspace.id, 'posts'),
-              api.documents(workspace.id, 'drafts'),
-            ]).then(([posts, drafts]) => {
-              const nextDocuments = [...drafts.documents, ...posts.documents];
-              setDocuments(nextDocuments);
-              setSelected(
-                nextDocuments.find(
-                  (item) => item.ref.documentId === selected.ref.documentId,
-                ) ??
-                  nextDocuments.find((item) => item.title === title) ??
-                  nextDocuments[0],
-              );
-            });
-          }
-        })
-        .catch((reason: unknown) =>
-          setReleaseError(
-            reason instanceof Error ? reason.message : '发布状态读取失败',
-          ),
+    }
+    let cancelled = false;
+    setOrphanError('');
+    void api
+      .orphanResources({
+        siteId: site.id,
+        documentId: selected.documentId,
+        collection: selected.collectionId,
+      })
+      .then(({ plan }) => {
+        if (!cancelled) setOrphanPlan(plan);
+      })
+      .catch((reason: unknown) => {
+        if (cancelled) return;
+        setOrphanPlan(undefined);
+        setOrphanError(
+          reason instanceof Error ? reason.message : '未引用资源检查失败',
         );
-    }, 800);
-    return () => window.clearInterval(timer);
-  }, [api, release, selected, workspace]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, loadedDocumentId, selected, site, version]);
 
   useEffect(() => {
     if (
       saveState !== 'changed' ||
-      !workspace ||
+      !site ||
       !selected ||
       !document ||
-      loadedDocumentId !== selected.ref.documentId
+      loadedDocumentId !== selected.documentId
     )
       return;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
       void api
-        .saveDraft({
-          workspaceId: workspace.id,
-          documentId: selected.ref.documentId,
-          collection: selected.ref.collectionId,
+        .saveWorkingCopy({
+          siteId: site.id,
+          documentId: selected.documentId,
+          collection: selected.collectionId,
           expectedVersion: version,
           sourceRevision: document.source.revision,
           frontMatter: { ...frontMatter, title },
@@ -404,828 +537,671 @@ export function StudioApp() {
     selected,
     title,
     version,
-    workspace,
+    site,
   ]);
 
-  if (authenticated === null || ownerInitialized === null)
+  function openContentDocument(item: ContentSummary): void {
+    setSelected(item);
+    setDestination('content');
+    setPanel('write');
+  }
+
+  function prepareChanges(): void {
+    if (!site) return;
+    setChangeSetOpen(true);
+    setChangeSetState('loading');
+    setChangeSet(undefined);
+    setChangeSetRelease(undefined);
+    setChangeSetError('');
+    void api
+      .prepareChangeSet(site.id)
+      .then(({ changeSet: prepared }) => {
+        setChangeSet(prepared);
+        setChangeSetState('ready');
+      })
+      .catch((reason: unknown) => {
+        setChangeSetState('error');
+        setChangeSetError(
+          reason instanceof Error ? reason.message : '修改整理失败',
+        );
+      });
+  }
+
+  function startPreview(nextMode: 'markdown' | 'enhanced' = 'markdown'): void {
+    if (!site || !selected) return;
+    setPanel('preview');
+    setPreviewMode(nextMode);
+    setPreviewState('building');
+    setPreviewError('');
+    setPreviewFallback(undefined);
+    void api
+      .startContentPreview({
+        siteId: site.id,
+        documentId: selected.documentId,
+        collection: selected.collectionId,
+        mode: nextMode,
+      })
+      .then(({ preview }) => {
+        setPreviewUrl(preview.url);
+        setPreviewFallback(preview.fallbackReason);
+        setPreviewState('ready');
+      })
+      .catch((reason: unknown) => {
+        setPreviewUrl('');
+        setPreviewFallback(undefined);
+        setPreviewState('error');
+        setPreviewError(
+          reason instanceof Error ? reason.message : '预览生成失败',
+        );
+      });
+  }
+
+  if (!setupChecked || authenticated === null || ownerInitialized === null)
     return <div className="boot-screen">BLOG / STUDIO</div>;
+  if (!setupStatus || setupStatus.configuration.state === 'invalid')
+    return (
+      <SetupRecovery
+        error={setupError}
+        retrying={setupRetrying}
+        status={setupStatus}
+        onRetry={() => void refreshSetupStatus().catch(() => undefined)}
+      />
+    );
   if (!authenticated)
     return (
       <Login
         initialized={ownerInitialized}
         onLogin={async (password) => {
           await api.login(password);
-          await loadWorkspaces();
+          await loadStudioState();
         }}
       />
     );
 
   return (
-    <div className="studio-shell">
-      <header className="topbar">
-        <div className="wordmark">
-          <b>BLOG</b>
-          <span>/</span>STUDIO
-        </div>
-        <div className="workspace-switcher">
-          <span className="live-dot" />
-          <select
-            aria-label="当前工作区"
-            value={workspace?.id}
-            onChange={(event) =>
-              setWorkspace(
-                workspaces.find((item) => item.id === event.target.value),
-              )
-            }
-          >
-            {workspaces.map((item) => (
-              <option key={item.id}>{item.id}</option>
-            ))}
-          </select>
-          <small>{workspace?.generator}</small>
-        </div>
-        <SaveBadge state={saveState} />
-        <details className="security-menu">
-          <summary>安全</summary>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              setSecurityMessage('');
-              if (newPassword !== confirmPassword) {
-                setSecurityState('error');
-                setSecurityMessage('两次输入的新密码不一致');
-                return;
-              }
-              setSecurityState('saving');
-              void api
-                .changePassword({ currentPassword, newPassword })
-                .then(({ credentialGeneration }) => {
-                  setCurrentPassword('');
-                  setNewPassword('');
-                  setConfirmPassword('');
-                  setSecurityState('saved');
-                  setSecurityMessage(
-                    `密码已更新（凭据版本 ${credentialGeneration}），其他会话已退出`,
-                  );
-                })
-                .catch((reason: unknown) => {
-                  setSecurityState('error');
-                  setSecurityMessage(
-                    reason instanceof Error ? reason.message : '密码更新失败',
-                  );
-                });
-            }}
-          >
-            <label>
-              当前密码
-              <input
-                autoComplete="current-password"
-                type="password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-            </label>
-            <label>
-              新密码
-              <input
-                autoComplete="new-password"
-                minLength={12}
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-            </label>
-            <label>
-              确认新密码
-              <input
-                autoComplete="new-password"
-                minLength={12}
-                type="password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-              />
-            </label>
-            {securityMessage ? (
-              <p role={securityState === 'error' ? 'alert' : 'status'}>
-                {securityMessage}
-              </p>
-            ) : null}
-            <button disabled={securityState === 'saving'} type="submit">
-              {securityState === 'saving' ? '正在更新…' : '更新密码'}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void api.logout().finally(() => {
-                  setAuthenticated(false);
-                  setWorkspace(undefined);
-                  setWorkspaces([]);
-                });
-              }}
-            >
-              退出登录
-            </button>
-          </form>
-        </details>
-        <button
-          className="publish-button"
-          disabled={
-            !workspace?.publishTarget.configured ||
-            (workspace.publishTarget.baselineAdoption !== 'required' &&
-              (!selected ||
-                ['changed', 'saving', 'error', 'conflict'].includes(
-                  saveState,
-                ))) ||
-            (release !== undefined &&
-              !terminalReleaseStatuses.has(release.release.status))
-          }
-          title={
-            workspace?.publishTarget.baselineAdoption === 'required'
-              ? '先逐个校验现有对象，仅写入可验证发布标记'
-              : workspace?.publishTarget.configured
-                ? '发布当前已保存文章与站点变更'
-                : '管理员尚未配置发布目标'
-          }
-          onClick={() => {
-            if (!workspace) return;
-            setPanel('preview');
-            setReleaseError('');
-            if (workspace.publishTarget.baselineAdoption === 'required') {
-              const confirmed = window.confirm(
-                '接管前会只读下载并校验现有部署，校验完成后仅写入 Blog Studio 发布标记。不会覆盖文章或旧资源。继续吗？',
-              );
-              if (!confirmed) return;
-              void api
-                .adoptBaseline(workspace.id, workspace.publishTarget.id)
-                .then(setRelease)
-                .catch((reason: unknown) =>
-                  setReleaseError(
-                    reason instanceof Error
-                      ? reason.message
-                      : '现有部署接管失败',
-                  ),
-                );
-              return;
-            }
-            if (!selected) return;
-            void api
-              .startRelease({
-                workspaceId: workspace.id,
-                targetId: workspace.publishTarget.id,
-                ...(version > 0
-                  ? {
-                      draft: {
-                        collectionId: selected.ref.collectionId,
-                        documentId: selected.ref.documentId,
-                        version,
-                      },
-                    }
-                  : {}),
-              })
-              .then(setRelease)
-              .catch((reason: unknown) =>
-                setReleaseError(
-                  reason instanceof Error ? reason.message : '发布启动失败',
-                ),
-              );
+    <MotionConfig reducedMotion="user">
+      <div className="studio-shell studio2-shell">
+        <StudioNavigation
+          destination={destination}
+          onCreateDocument={() => {
+            setDestination('content');
+            setPanel('library');
+            setCreateRequest((value) => value + 1);
           }}
-        >
-          {release && !terminalReleaseStatuses.has(release.release.status)
-            ? `${releaseLabels[release.release.status]}…`
-            : workspace?.publishTarget.baselineAdoption === 'required'
-              ? '核验并接管现有站点 →'
-              : '发布文章 →'}
-        </button>
-        <button
-          className="preview-button"
-          disabled={!workspace || !selected}
-          onClick={() => {
-            if (!workspace || !selected) return;
-            setPanel('preview');
-            setPreviewState('building');
-            setPreviewError('');
-            setPreviewFallback(undefined);
-            void api
-              .startPreview(
-                workspace.id,
-                selected.ref.documentId,
-                selected.ref.collectionId,
-              )
-              .then(({ preview }) => {
-                setPreviewUrl(preview.url);
-                setPreviewFallback(preview.fallbackReason);
-                setPreviewState('ready');
-              })
-              .catch((reason: unknown) => {
-                setPreviewUrl('');
-                setPreviewFallback(undefined);
-                setPreviewState('error');
-                setPreviewError(
-                  reason instanceof Error ? reason.message : '预览生成失败',
-                );
+          onDestinationChange={setDestination}
+          onPrepareChanges={prepareChanges}
+          onSiteChange={(nextSite) => {
+            setSite(nextSite);
+            setDestination('site');
+          }}
+          pendingChanges={Math.max(
+            siteContent?.counts.modified ?? 0,
+            ['changed', 'saving', 'saved'].includes(saveState) ? 1 : 0,
+          )}
+          preparing={changeSetState === 'loading'}
+          site={site}
+          sites={sites}
+        />
+
+        <ChangeSetReviewSheet
+          error={changeSetError}
+          loading={changeSetState === 'loading'}
+          open={changeSetOpen}
+          release={changeSetRelease}
+          review={changeSet}
+          site={site}
+          onApply={async (review) => {
+            if (!site) return;
+            const result = await api.applyChangeSet(site.id, review.id);
+            setChangeSet(result.changeSet);
+            const refreshed = await api.content(site.id, {
+              ...(contentSearch ? { search: contentSearch } : {}),
+              ...(contentFilter === 'all' ? {} : { state: contentFilter }),
+              ...(contentAdvancedFilters.collection
+                ? { collection: contentAdvancedFilters.collection }
+                : {}),
+              ...(contentAdvancedFilters.tag
+                ? { tag: contentAdvancedFilters.tag }
+                : {}),
+              ...(contentAdvancedFilters.from
+                ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
+                : {}),
+              ...(contentAdvancedFilters.to
+                ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
+                : {}),
+              page: contentPage,
+              pageSize: 30,
+            });
+            setSiteContent(refreshed.content);
+            setSelected((current) =>
+              current
+                ? (refreshed.content.items.find(
+                    (item) => item.documentId === current.documentId,
+                  ) ?? refreshed.content.items[0])
+                : refreshed.content.items[0],
+            );
+          }}
+          onCancelRelease={async (details) => {
+            if (!site) return;
+            setChangeSetRelease(
+              await api.cancelSiteRelease(site.id, details.release.id),
+            );
+          }}
+          onClose={() => setChangeSetOpen(false)}
+          onCommit={async (review, input) => {
+            if (!site) return;
+            const result = await api.commitChangeSet({
+              siteId: site.id,
+              changeSetId: review.id,
+              message: input.message,
+              paths: input.paths,
+            });
+            setChangeSet(result.changeSet);
+          }}
+          onRelease={async (review, confirmation) => {
+            if (!site) return;
+            const result = await api.releaseChangeSet({
+              siteId: site.id,
+              changeSetId: review.id,
+              confirmation,
+            });
+            setChangeSetRelease(result.release);
+          }}
+          onReprepare={async () => {
+            if (!site) return;
+            const result = await api.prepareChangeSet(site.id);
+            setChangeSet(result.changeSet);
+            setChangeSetError('');
+          }}
+          onRollbackRelease={async (details) => {
+            if (!site) return;
+            setChangeSetRelease(
+              await api.rollbackSiteRelease(site.id, details.release.id),
+            );
+          }}
+        />
+
+        {!site ? (
+          <SiteOnboarding
+            candidates={candidates}
+            error={discoveryError}
+            loading={discoveryState === 'loading'}
+            onRefresh={() => void discoverSites()}
+            onRegister={async ({ candidate, displayName, canonicalUrl }) => {
+              const result = await api.registerSite({
+                candidateId: candidate.candidateId,
+                displayName,
+                ...(canonicalUrl ? { canonicalUrl } : {}),
               });
-          }}
-        >
-          预览全文 ↗
-        </button>
-      </header>
-
-      <nav className="mobile-nav" aria-label="工作区面板">
-        {(['library', 'write', 'preview'] as const).map((item) => (
-          <button
-            className={panel === item ? 'active' : ''}
-            key={item}
-            onClick={() => setPanel(item)}
-          >
-            {{ library: '文章', write: '写作', preview: '预览' }[item]}
-          </button>
-        ))}
-      </nav>
-
-      <div className="workspace-grid">
-        <aside className={`library-panel mobile-${panel}`}>
-          <div className="panel-heading">
-            <p>LIBRARY</p>
-            {workspace?.canCreateDocuments ? (
-              <button
-                aria-label="新建文章"
-                aria-expanded={creating}
-                onClick={() => {
-                  setCreating((value) => !value);
-                  setCreateError('');
-                }}
-              >
-                {creating ? '×' : '＋'}
-              </button>
-            ) : null}
-          </div>
-          {creating && workspace?.canCreateDocuments ? (
-            <form
-              className="new-document-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!workspace || !createTitle.trim()) return;
-                setCreateError('');
-                void api
-                  .createDocument(workspace.id, {
-                    title: createTitle.trim(),
-                    ...(createSlug.trim() ? { slug: createSlug.trim() } : {}),
-                  })
-                  .then(async (created) => {
-                    const drafts = await api.documents(workspace.id, 'drafts');
-                    const posts = await api.documents(workspace.id, 'posts');
-                    const nextDocuments = [
-                      ...drafts.documents,
-                      ...posts.documents,
-                    ];
-                    setDocuments(nextDocuments);
-                    setSelected(
-                      nextDocuments.find(
-                        (item) =>
-                          item.ref.documentId === created.source.ref.documentId,
-                      ),
-                    );
-                    setCreateTitle('');
-                    setCreateSlug('');
-                    setCreating(false);
-                    setPanel('write');
-                  })
-                  .catch((reason: unknown) =>
-                    setCreateError(
-                      reason instanceof Error ? reason.message : '新建草稿失败',
+              setSites((items) => [...items, result.site]);
+              setSite(result.site);
+              setDestination('site');
+              return result.site;
+            }}
+          />
+        ) : (
+          <AnimatePresence mode="wait" initial={false}>
+            {destination === 'site' ? (
+              <SiteOverview
+                content={siteContent}
+                error={siteContentError}
+                key={`site-${site.id}`}
+                loading={siteContentState === 'loading'}
+                site={site}
+                onLoadSiteEvents={async (siteId) =>
+                  (await api.siteEvents(siteId)).events
+                }
+                onOpenContent={() => setDestination('content')}
+                onOpenDocument={openContentDocument}
+                onPrepareChanges={prepareChanges}
+                onReloadSite={async (siteId) => {
+                  const latest = (await api.site(siteId)).site;
+                  setSite(latest);
+                  setSites((items) =>
+                    items.map((item) =>
+                      item.id === latest.id ? latest : item,
                     ),
                   );
-              }}
-            >
-              <label>
-                标题
-                <input
-                  autoFocus
-                  maxLength={200}
-                  value={createTitle}
-                  onChange={(event) => setCreateTitle(event.target.value)}
-                  placeholder="这篇文章讲什么？"
-                />
-              </label>
-              <label>
-                Slug <small>可选，英文小写</small>
-                <input
-                  maxLength={80}
-                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                  value={createSlug}
-                  onChange={(event) => setCreateSlug(event.target.value)}
-                  placeholder="my-new-post"
-                />
-              </label>
-              {createError ? (
-                <p className="form-error" role="alert">
-                  {createError}
-                </p>
-              ) : null}
-              <button className="primary-button" type="submit">
-                建立原生草稿
-              </button>
-            </form>
-          ) : null}
-          <label className="search-box">
-            <span>⌕</span>
-            <input placeholder="搜索文章" />
-          </label>
-          <div className="collection-label">
-            <span>原生草稿</span>
-            <b>
-              {
-                documents.filter((item) => item.ref.collectionId === 'drafts')
-                  .length
-              }
-            </b>
-          </div>
-          <ol className="document-list">
-            {documents
-              .filter((item) => item.ref.collectionId === 'drafts')
-              .map((item) => (
-                <li key={item.ref.documentId}>
-                  <button
-                    className={
-                      item.ref.documentId === selected?.ref.documentId
-                        ? 'selected'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSelected(item);
-                      setPanel('write');
-                    }}
-                  >
-                    <span>{item.title}</span>
-                    <small>
-                      {item.updatedAt
-                        ? new Date(item.updatedAt).toLocaleDateString('zh-CN')
-                        : item.state}
-                    </small>
-                  </button>
-                </li>
-              ))}
-          </ol>
-          <div className="collection-label">
-            <span>已发布</span>
-            <b>
-              {
-                documents.filter((item) => item.ref.collectionId === 'posts')
-                  .length
-              }
-            </b>
-          </div>
-          <ol className="document-list">
-            {documents
-              .filter((item) => item.ref.collectionId === 'posts')
-              .map((item) => (
-                <li key={item.ref.documentId}>
-                  <button
-                    className={
-                      item.ref.documentId === selected?.ref.documentId
-                        ? 'selected'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSelected(item);
-                      setPanel('write');
-                    }}
-                  >
-                    <span>{item.title}</span>
-                    <small>
-                      {item.updatedAt
-                        ? new Date(item.updatedAt).toLocaleDateString('zh-CN')
-                        : item.state}
-                    </small>
-                  </button>
-                </li>
-              ))}
-          </ol>
-        </aside>
-
-        <main className={`writing-panel mobile-${panel}`}>
-          <div className="document-kicker">
-            <span>文章</span>
-            <i />
-            {selected?.state === 'draft' ? '草稿' : '已发布'}
-          </div>
-          <textarea
-            className="title-input"
-            aria-label="文章标题"
-            rows={1}
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value);
-              setSaveState('changed');
-            }}
-            placeholder="无标题文章"
-          />
-          <div className="editor-actions">
-            <div className="mode-switch" role="group" aria-label="编辑模式">
-              <button
-                className={mode === 'visual' ? 'active' : ''}
-                onClick={() => setMode('visual')}
-              >
-                所见即所得
-              </button>
-              <button
-                className={mode === 'source' ? 'active' : ''}
-                onClick={() => setMode('source')}
-              >
-                Markdown 源码
-              </button>
-            </div>
-            <button
-              className="asset-button"
-              onClick={() => assetInput.current?.click()}
-            >
-              插入图片 ＋
-            </button>
-            <button
-              className="asset-maintenance-button"
-              disabled={
-                !workspace ||
-                !selected ||
-                !['clean', 'saved'].includes(saveState) ||
-                ['loading', 'deleting'].includes(orphanState)
-              }
-              onClick={() => {
-                if (!workspace || !selected) return;
-                setOrphanState('loading');
-                setOrphanError('');
-                void api
-                  .orphanAssets({
-                    workspaceId: workspace.id,
-                    documentId: selected.ref.documentId,
-                    collection: selected.ref.collectionId,
-                  })
-                  .then(({ plan }) => {
-                    setOrphanPlan(plan);
-                    setOrphanState('ready');
-                  })
-                  .catch((reason: unknown) => {
-                    setOrphanPlan(undefined);
-                    setOrphanState('error');
-                    setOrphanError(
-                      reason instanceof Error ? reason.message : '资源检查失败',
-                    );
-                  });
-              }}
-            >
-              {orphanState === 'loading' ? '正在检查…' : '检查未引用资源'}
-            </button>
-            {version > 0 && workspace && selected ? (
-              <button
-                className="discard-button"
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      '放弃已自动保存的修改并恢复到文件版本？原生 Markdown 文件不会被删除。',
-                    )
-                  )
-                    return;
-                  void api
-                    .discardDraft({
-                      workspaceId: workspace.id,
-                      documentId: selected.ref.documentId,
-                      collection: selected.ref.collectionId,
-                      expectedVersion: version,
-                    })
-                    .then(async () => {
-                      const restored = await api.document(
-                        workspace.id,
-                        selected.ref.documentId,
-                        selected.ref.collectionId,
-                      );
-                      setDocument(restored);
-                      setBody(restored.source.body);
-                      setFrontMatter(restored.source.frontMatter);
-                      setTitle(
-                        typeof restored.source.frontMatter.title === 'string'
-                          ? restored.source.frontMatter.title
-                          : selected.title,
-                      );
-                      setVersion(0);
-                      setSaveState('clean');
-                    })
-                    .catch(() => setSaveState('conflict'));
+                  return latest;
                 }}
-              >
-                放弃修改
-              </button>
+                onUpdateSite={async (input) => {
+                  const updated = (await api.updateSite(input)).site;
+                  setSite(updated);
+                  setSites((items) =>
+                    items.map((item) =>
+                      item.id === updated.id ? updated : item,
+                    ),
+                  );
+                  return updated;
+                }}
+              />
+            ) : destination === 'settings' ? (
+              <SystemSettings
+                key="settings"
+                onChangePassword={(input) => api.changePassword(input)}
+                onLogout={async () => {
+                  await api.logout();
+                  setAuthenticated(false);
+                  setSite(undefined);
+                  setSites([]);
+                }}
+              />
             ) : null}
-            <input
-              ref={assetInput}
-              hidden
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) uploadAsset(file);
-                event.target.value = '';
+          </AnimatePresence>
+        )}
+
+        <motion.section
+          className={`studio2-content-heading ${
+            destination !== 'content' || !site ? 'studio2-hidden' : ''
+          }`}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.24 }}
+        >
+          <div>
+            <div className="studio2-breadcrumb" aria-label="当前位置">
+              <button type="button" onClick={() => setDestination('site')}>
+                {site?.displayName}
+              </button>
+              <i>/</i>
+              <b>内容</b>
+            </div>
+            <h1>{selected?.title ?? '内容'}</h1>
+          </div>
+          <div className="studio2-content-actions">
+            <SaveBadge state={saveState} />
+            <button
+              className="studio2-secondary-button"
+              disabled={!site || !selected}
+              type="button"
+              onClick={() => startPreview('markdown')}
+            >
+              预览全文
+            </button>
+          </div>
+        </motion.section>
+
+        <nav
+          className={`mobile-nav ${
+            destination !== 'content' || !site ? 'studio2-hidden' : ''
+          }`}
+          aria-label="工作区面板"
+        >
+          {(['library', 'write', 'preview'] as const).map((item) => (
+            <button
+              className={panel === item ? 'active' : ''}
+              key={item}
+              onClick={() => setPanel(item)}
+            >
+              {{ library: '文章', write: '写作', preview: '预览' }[item]}
+            </button>
+          ))}
+        </nav>
+
+        <div
+          className={`workspace-grid ${
+            destination !== 'content' || !site ? 'studio2-hidden' : ''
+          }`}
+        >
+          <div className={`studio3-library-slot mobile-${panel}`}>
+            <ContentLibrary
+              advancedFilters={contentAdvancedFilters}
+              canCreate={Boolean(site?.capabilities.createDocuments)}
+              content={siteContent}
+              createRequest={createRequest}
+              error={siteContentError}
+              filter={contentFilter}
+              loading={siteContentState === 'loading'}
+              search={contentSearch}
+              selectedDocumentId={selected?.documentId}
+              onCreate={async (input) => {
+                if (!site) throw new Error('当前站点不能新建文章');
+                const created = await api.createContent(site.id, input);
+                const refreshed = await api.content(site.id, {
+                  page: 1,
+                  pageSize: 30,
+                });
+                setSiteContent(refreshed.content);
+                setContentFilter('all');
+                setContentAdvancedFilters({
+                  collection: '',
+                  tag: '',
+                  from: '',
+                  to: '',
+                });
+                setContentSearch('');
+                setContentPage(1);
+                setSelected(
+                  refreshed.content.items.find(
+                    (item) => item.documentId === created.source.ref.documentId,
+                  ),
+                );
+                setPanel('write');
+              }}
+              onFilterChange={(nextFilter) => {
+                setContentFilter(nextFilter);
+                setContentPage(1);
+              }}
+              onAdvancedFiltersChange={(filters) => {
+                setContentAdvancedFilters(filters);
+                setContentPage(1);
+              }}
+              onDiscardUnavailable={async (item) => {
+                if (!site || !item.workingCopy) return;
+                if (
+                  !window.confirm(
+                    '只删除这个无法定位的工作副本？源文件与站点中的其他内容不会被修改。',
+                  )
+                )
+                  return;
+                await api.discardUnavailableWorkingCopy({
+                  siteId: site.id,
+                  documentId: item.documentId,
+                  expectedVersion: item.workingCopy.version,
+                });
+                const refreshed = await api.content(site.id, {
+                  ...(contentSearch ? { search: contentSearch } : {}),
+                  ...(contentFilter === 'all' ? {} : { state: contentFilter }),
+                  ...(contentAdvancedFilters.collection
+                    ? { collection: contentAdvancedFilters.collection }
+                    : {}),
+                  ...(contentAdvancedFilters.tag
+                    ? { tag: contentAdvancedFilters.tag }
+                    : {}),
+                  ...(contentAdvancedFilters.from
+                    ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
+                    : {}),
+                  ...(contentAdvancedFilters.to
+                    ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
+                    : {}),
+                  page: contentPage,
+                  pageSize: 30,
+                });
+                setSiteContent(refreshed.content);
+              }}
+              onOpen={openContentDocument}
+              onPageChange={setContentPage}
+              onSearchChange={(nextSearch) => {
+                setContentSearch(nextSearch);
+                setContentPage(1);
               }}
             />
           </div>
-          {uploads.length ? (
-            <div className="asset-uploads" aria-live="polite">
-              {uploads.slice(-3).map((upload) => (
-                <div
-                  className={`asset-upload asset-${upload.state}`}
-                  key={upload.id}
-                >
-                  <img alt="" src={upload.previewUrl} />
-                  <span>
-                    <b>{upload.file.name}</b>
-                    <small>
-                      {upload.state === 'uploading'
-                        ? '处理中并上传…'
-                        : upload.state === 'ready'
-                          ? '已插入文章'
-                          : upload.error}
-                    </small>
-                  </span>
-                  {upload.state === 'error' ? (
-                    <button
-                      onClick={() => {
-                        setUploads((items) =>
-                          items.filter((item) => item.id !== upload.id),
-                        );
-                        URL.revokeObjectURL(upload.previewUrl);
-                        uploadAsset(upload.file);
-                      }}
-                    >
-                      重试
-                    </button>
-                  ) : null}
-                </div>
-              ))}
+
+          <main className={`writing-panel mobile-${panel}`}>
+            <div className="document-kicker">
+              <span>文章</span>
+              <i />
+              {selected?.state === 'modified'
+                ? '工作副本'
+                : selected?.sourceState === 'draft'
+                  ? '草稿'
+                  : '已发布'}
             </div>
-          ) : null}
-          {orphanState !== 'idle' ? (
-            <div className="orphan-assets" aria-live="polite">
-              {orphanState === 'error' ? (
-                <p role="alert">{orphanError}</p>
-              ) : orphanState === 'deleted' ? (
-                <p>未引用资源已删除；旧资源目录没有被扫描或修改。</p>
-              ) : orphanPlan ? (
+            <textarea
+              className="title-input"
+              aria-label="文章标题"
+              disabled={Boolean(document?.stale)}
+              rows={1}
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value);
+                setSaveState('changed');
+              }}
+              placeholder="无标题文章"
+            />
+            <div className="editor-actions">
+              {!document?.stale ? (
                 <>
-                  <div>
-                    <b>删除预览</b>
-                    <span>
-                      {orphanPlan.assets.length
-                        ? `${orphanPlan.assets.length} 个文章级资源未被当前草稿引用`
-                        : '没有发现未引用的文章级资源'}
-                    </span>
-                  </div>
-                  {orphanPlan.assets.length ? (
-                    <ul>
-                      {orphanPlan.assets.map((asset) => (
-                        <li key={asset.id}>
-                          <span>{asset.key.split('/').at(-1)}</span>
-                          <small>
-                            {(asset.byteLength / 1024).toFixed(1)} KiB
-                          </small>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : null}
-                  {orphanPlan.assets.length ? (
+                  <div
+                    className="mode-switch"
+                    role="group"
+                    aria-label="编辑模式"
+                  >
                     <button
-                      className="danger-button"
-                      disabled={
-                        orphanState === 'deleting' ||
-                        !['clean', 'saved'].includes(saveState)
-                      }
+                      className={mode === 'visual' ? 'active' : ''}
+                      onClick={() => setMode('visual')}
+                    >
+                      所见即所得
+                    </button>
+                    <button
+                      className={mode === 'source' ? 'active' : ''}
+                      onClick={() => setMode('source')}
+                    >
+                      Markdown 源码
+                    </button>
+                  </div>
+                  <ResourcePicker
+                    accept={site?.capabilities.resourceMediaTypes ?? []}
+                    inputRef={resourceInput}
+                    orphanResources={
+                      orphanPlan?.assets.length
+                        ? {
+                            count: orphanPlan.assets.length,
+                            storage: orphanPlan.storage ?? 'local',
+                            busy: orphanBusy,
+                            ...(orphanError ? { error: orphanError } : {}),
+                          }
+                        : undefined
+                    }
+                    uploads={uploads}
+                    onDeleteOrphans={() => {
+                      if (!orphanPlan || !site || !selected) return;
+                      if (
+                        !window.confirm(
+                          `清理这 ${orphanPlan.assets.length} 个未引用资源？删除前会再次核对文章版本；已引用资源不会被删除。`,
+                        )
+                      )
+                        return;
+                      setOrphanBusy(true);
+                      setOrphanError('');
+                      void api
+                        .deleteOrphanResources({
+                          siteId: site.id,
+                          documentId: selected.documentId,
+                          collection: selected.collectionId,
+                          confirmation: orphanPlan.confirmation,
+                        })
+                        .then(() => setOrphanPlan(undefined))
+                        .catch((reason: unknown) =>
+                          setOrphanError(
+                            reason instanceof Error
+                              ? reason.message
+                              : '未引用资源清理失败，请重新审阅',
+                          ),
+                        )
+                        .finally(() => setOrphanBusy(false));
+                    }}
+                    onDismiss={(upload) =>
+                      setUploads((items) =>
+                        items.filter((item) => item.id !== upload.id),
+                      )
+                    }
+                    onPick={uploadResource}
+                    onRetry={(upload) => {
+                      setUploads((items) =>
+                        items.filter((item) => item.id !== upload.id),
+                      );
+                      if (upload.previewUrl?.startsWith('blob:'))
+                        URL.revokeObjectURL(upload.previewUrl);
+                      uploadResource(upload.file);
+                    }}
+                  />
+                  {version > 0 && site && selected ? (
+                    <button
+                      className="discard-button"
                       onClick={() => {
-                        if (!workspace || !selected) return;
                         if (
                           !window.confirm(
-                            `永久删除预览中的 ${orphanPlan.assets.length} 个未引用文章资源？此操作不会触及配置的旧资源目录。`,
+                            '放弃已自动保存的修改并恢复到文件版本？原生 Markdown 文件不会被删除。',
                           )
                         )
                           return;
-                        setOrphanState('deleting');
-                        setOrphanError('');
                         void api
-                          .deleteOrphanAssets({
-                            workspaceId: workspace.id,
-                            documentId: selected.ref.documentId,
-                            collection: selected.ref.collectionId,
-                            confirmation: orphanPlan.confirmation,
+                          .discardWorkingCopy({
+                            siteId: site.id,
+                            documentId: selected.documentId,
+                            collection: selected.collectionId,
+                            expectedVersion: version,
                           })
-                          .then(() => {
-                            setOrphanPlan(undefined);
-                            setOrphanState('deleted');
-                          })
-                          .catch((reason: unknown) => {
-                            setOrphanPlan(undefined);
-                            setOrphanState('error');
-                            setOrphanError(
-                              reason instanceof Error
-                                ? `${reason.message}。请重新检查后再删除。`
-                                : '删除计划已变化，请重新检查',
+                          .then(async () => {
+                            const restored = await api.siteDocument(
+                              site.id,
+                              selected.documentId,
+                              selected.collectionId,
                             );
-                          });
+                            setDocument(restored);
+                            setBody(restored.source.body);
+                            setFrontMatter(restored.source.frontMatter);
+                            setTitle(
+                              typeof restored.source.frontMatter.title ===
+                                'string'
+                                ? restored.source.frontMatter.title
+                                : selected.title,
+                            );
+                            setVersion(0);
+                            setSaveState('clean');
+                          })
+                          .catch(() => setSaveState('conflict'));
                       }}
                     >
-                      {orphanState === 'deleting'
-                        ? '正在删除…'
-                        : `确认删除 ${orphanPlan.assets.length} 个资源`}
+                      放弃修改
                     </button>
                   ) : null}
                 </>
               ) : null}
             </div>
-          ) : null}
-          <section
-            className="editor-paper"
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const file = [...event.dataTransfer.files].find((item) =>
-                item.type.startsWith('image/'),
-              );
-              if (file) uploadAsset(file);
-            }}
-            onPaste={(event) => {
-              const file = [...event.clipboardData.files].find((item) =>
-                item.type.startsWith('image/'),
-              );
-              if (file) {
-                event.preventDefault();
-                uploadAsset(file);
-              }
-            }}
-          >
-            {(!document || loadedDocumentId !== selected?.ref.documentId) && (
-              <div className="editor-loading">正在读取文章…</div>
-            )}
-            {document &&
-            loadedDocumentId === selected?.ref.documentId &&
-            mode === 'visual' ? (
-              <Suspense
-                fallback={<div className="editor-loading">正在铺开稿纸…</div>}
-              >
-                <VisualEditor
-                  key={`${selected?.ref.documentId}-${mode}`}
-                  markdown={body}
-                  resolveImageSource={(source) =>
-                    `/api/workspaces/${workspace?.id}/documents/${selected?.ref.documentId}/legacy-asset?collection=${selected?.ref.collectionId}&source=${encodeURIComponent(source)}`
-                  }
-                  onChange={(value) => {
-                    setBody(value);
-                    setSaveState('changed');
-                  }}
-                />
-              </Suspense>
-            ) : document && loadedDocumentId === selected?.ref.documentId ? (
-              <textarea
-                className="source-editor"
-                aria-label="Markdown 源码"
-                value={body}
-                onChange={(event) => {
-                  setBody(event.target.value);
-                  setSaveState('changed');
+            {document?.stale && document.draft && site && selected ? (
+              <WorkingCopyConflict
+                document={document}
+                onKeepWorkingCopy={async () => {
+                  const saved = await api.saveWorkingCopy({
+                    siteId: site.id,
+                    documentId: selected.documentId,
+                    collection: selected.collectionId,
+                    expectedVersion: document.draft!.version,
+                    sourceRevision: document.source.revision,
+                    frontMatter: document.draft!.frontMatter,
+                    body: document.draft!.body,
+                  });
+                  const restored = await api.siteDocument(
+                    site.id,
+                    selected.documentId,
+                    selected.collectionId,
+                  );
+                  setDocument(restored);
+                  setBody(restored.draft?.body ?? restored.source.body);
+                  setFrontMatter(
+                    restored.draft?.frontMatter ?? restored.source.frontMatter,
+                  );
+                  setTitle(
+                    typeof (
+                      restored.draft?.frontMatter ?? restored.source.frontMatter
+                    ).title === 'string'
+                      ? String(
+                          (
+                            restored.draft?.frontMatter ??
+                            restored.source.frontMatter
+                          ).title,
+                        )
+                      : selected.title,
+                  );
+                  setVersion(saved.draft.version);
+                  setSaveState('clean');
+                }}
+                onUseFileVersion={async () => {
+                  await api.discardWorkingCopy({
+                    siteId: site.id,
+                    documentId: selected.documentId,
+                    collection: selected.collectionId,
+                    expectedVersion: document.draft!.version,
+                  });
+                  const restored = await api.siteDocument(
+                    site.id,
+                    selected.documentId,
+                    selected.collectionId,
+                  );
+                  setDocument(restored);
+                  setBody(restored.source.body);
+                  setFrontMatter(restored.source.frontMatter);
+                  setTitle(
+                    typeof restored.source.frontMatter.title === 'string'
+                      ? restored.source.frontMatter.title
+                      : selected.title,
+                  );
+                  setVersion(0);
+                  setSaveState('clean');
                 }}
               />
-            ) : null}
-          </section>
-        </main>
-
-        <aside className={`preview-panel mobile-${panel}`}>
-          <div className="panel-heading">
-            <p>{release ? 'RELEASE PROOF' : 'LIVE PROOF'}</p>
-            <span>
-              {release
-                ? releaseLabels[release.release.status]
-                : previewState.toUpperCase()}
-            </span>
-          </div>
-          {release ? (
-            <div className="release-proof" aria-live="polite">
-              <div
-                className={`release-summary release-${release.release.status}`}
+            ) : (
+              <section
+                className="editor-paper"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const file = event.dataTransfer.files[0];
+                  if (file) uploadResource(file);
+                }}
+                onPaste={(event) => {
+                  const file = event.clipboardData.files[0];
+                  if (file) {
+                    event.preventDefault();
+                    uploadResource(file);
+                  }
+                }}
               >
-                <span>
-                  {release.release.status === 'succeeded' ? '✓' : '◒'}
-                </span>
-                <div>
-                  <small>{release.release.targetId}</small>
-                  <h2>{releaseLabels[release.release.status]}</h2>
-                  <p>{release.release.id}</p>
-                </div>
-              </div>
-              <ol className="release-timeline">
-                {release.release.stages.map((stage) => (
-                  <li className={`stage-${stage.status}`} key={stage.name}>
-                    <i />
-                    <span>
-                      <b>
-                        {releaseLabels[stage.name as ReleaseStatus] ??
-                          stage.name}
-                      </b>
-                      <small>{stage.status}</small>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              {release.events.length ? (
-                <div className="release-log">
-                  {release.events.slice(-5).map((event, index) => (
-                    <p key={`${event.at}-${index}`}>
-                      <time>
-                        {new Date(event.at).toLocaleTimeString('zh-CN')}
-                      </time>
-                      {event.message}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-              {releaseError ? (
-                <p className="form-error">{releaseError}</p>
-              ) : null}
-              <div className="release-controls">
-                {!terminalReleaseStatuses.has(release.release.status) &&
-                !['rollback-required', 'rolling-back'].includes(
-                  release.release.status,
-                ) ? (
-                  <button
-                    onClick={() => {
-                      if (!workspace) return;
-                      void api
-                        .cancelRelease(workspace.id, release.release.id)
-                        .then(setRelease)
-                        .catch((reason: unknown) =>
-                          setReleaseError(
-                            reason instanceof Error
-                              ? reason.message
-                              : '取消发布失败',
-                          ),
-                        );
-                    }}
+                {(!document || loadedDocumentId !== selected?.documentId) && (
+                  <div className="editor-loading">正在读取文章…</div>
+                )}
+                {document &&
+                loadedDocumentId === selected?.documentId &&
+                mode === 'visual' ? (
+                  <Suspense
+                    fallback={
+                      <div className="editor-loading">正在铺开稿纸…</div>
+                    }
                   >
-                    取消发布
-                  </button>
-                ) : null}
-                {release.release.status === 'succeeded' &&
-                release.release.previousReleaseId &&
-                workspace ? (
-                  <button
-                    className="danger-control"
-                    onClick={() => {
-                      setReleaseError('');
-                      void api
-                        .rollbackRelease(workspace.id, release.release.id)
-                        .then(setRelease)
-                        .catch((reason: unknown) =>
-                          setReleaseError(
-                            reason instanceof Error
-                              ? reason.message
-                              : '回滚启动失败',
-                          ),
-                        );
+                    <VisualEditor
+                      key={`${selected?.documentId}-${mode}`}
+                      markdown={body}
+                      resolveImageSource={(source) =>
+                        `/api/sites/${site?.id ?? ''}/content/${selected?.documentId}/resource?collection=${encodeURIComponent(selected?.collectionId ?? '')}&source=${encodeURIComponent(source)}`
+                      }
+                      onChange={(value) => {
+                        setBody(value);
+                        setSaveState('changed');
+                      }}
+                    />
+                  </Suspense>
+                ) : document && loadedDocumentId === selected?.documentId ? (
+                  <textarea
+                    className="source-editor"
+                    aria-label="Markdown 源码"
+                    value={body}
+                    onChange={(event) => {
+                      setBody(event.target.value);
+                      setSaveState('changed');
                     }}
-                  >
-                    回滚线上版本
-                  </button>
+                  />
                 ) : null}
-                {terminalReleaseStatuses.has(release.release.status) ? (
-                  <button onClick={() => setRelease(undefined)}>
-                    返回真实预览
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          ) : previewUrl ? (
-            <div className="preview-frame">
-              {previewFallback ? (
-                <p className="preview-notice" role="status">
-                  {previewFallbackMessages[previewFallback]}
-                </p>
-              ) : null}
-              <iframe title="文章真实预览" sandbox="" src={previewUrl} />
-            </div>
-          ) : (
-            <div className="preview-empty" aria-live="polite">
-              <span>{previewState === 'building' ? '◒' : '◌'}</span>
-              <h2>
-                {previewState === 'building'
-                  ? '正在生成真实页面'
-                  : previewState === 'error'
-                    ? '预览生成失败'
-                    : '真实主题预览'}
-              </h2>
-              <p>
-                {previewState === 'error'
-                  ? previewError
-                  : previewState === 'building'
-                    ? '正在隔离副本中应用草稿并运行站点生成器…'
-                    : '运行站点生成器后，在隔离画布中检查最终页面。'}
-              </p>
-            </div>
-          )}
-        </aside>
+              </section>
+            )}
+          </main>
+
+          <div className={`studio3-preview-slot mobile-${panel}`}>
+            <PreviewPane
+              enhancedAvailable={Boolean(site?.capabilities.generatorPreview)}
+              error={previewError}
+              fallback={previewFallback}
+              mode={previewMode}
+              state={previewState}
+              url={previewUrl}
+              onClose={() => setPanel('write')}
+              onPreview={startPreview}
+            />
+          </div>
+        </div>
       </div>
-    </div>
+    </MotionConfig>
   );
 }

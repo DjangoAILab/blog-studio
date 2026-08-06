@@ -35,7 +35,12 @@ describe('Markdown preview fallback', () => {
 
 ![Remote](https://images.example.test/cover.png)
 `,
-      resourceBase: '/safe-resource?source=',
+      resource: {
+        kind: 'site',
+        siteId: 'site-one',
+        documentId: 'doc-one',
+        collection: 'posts',
+      },
       now: 1_000,
     });
 
@@ -44,7 +49,7 @@ describe('Markdown preview fallback', () => {
     expect(session.html).not.toContain('<script');
     expect(session.html).not.toContain('<img src=x');
     expect(session.html).toContain(
-      'src="/safe-resource?source=..%2Fstatic%2Freading.jpeg"',
+      `src="/api/markdown-previews/${session.id}/resource?source=..%2Fstatic%2Freading.jpeg"`,
     );
     expect(session.html).not.toContain('javascript:');
     expect(session.html).toContain('href="#blocked-resource"');
@@ -52,9 +57,23 @@ describe('Markdown preview fallback', () => {
       'src="https://images.example.test/cover.png"',
     );
     expect(session.html).toContain('<title>&lt;unsafe title&gt;</title>');
+    expect(
+      previews.resource(session.id, '../static/reading.jpeg', 1_999),
+    ).toEqual({
+      kind: 'site',
+      siteId: 'site-one',
+      documentId: 'doc-one',
+      collection: 'posts',
+    });
+    expect(() =>
+      previews.resource(session.id, '/unreferenced.txt', 1_999),
+    ).toThrow(/not referenced/i);
     expect(previews.get(session.id, 1_999)).toEqual(session);
     expect(previews.reapExpired(2_000)).toBe(1);
     expect(() => previews.get(session.id, 2_000)).toThrow(/Unknown Markdown/);
+    expect(() =>
+      previews.resource(session.id, '../static/reading.jpeg', 2_000),
+    ).toThrow(/Unknown Markdown/);
   });
 
   it('rejects enhanced preview before creating a sandbox when unsupported', async () => {

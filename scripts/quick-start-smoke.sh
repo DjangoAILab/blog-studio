@@ -63,7 +63,7 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 [[ "${health:-missing}" == 'healthy' ]]
-[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/workspaces")" == '401' ]]
+[[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/sites")" == '401' ]]
 
 session="$(curl --fail --silent --show-error \
   --cookie-jar "$fixture/cookies" \
@@ -72,25 +72,33 @@ session="$(curl --fail --silent --show-error \
   --data "{\"password\":\"$owner_password\"}" \
   "$origin/api/session")"
 csrf="$(node -e 'const input=JSON.parse(process.argv[1]);process.stdout.write(input.csrfToken)' "$session")"
-workspace="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces")"
+setup="$(curl --fail --silent --show-error "$origin/api/setup/status")"
 node -e '
-const item=JSON.parse(process.argv[1]).workspaces[0];
-if(item.id!=="example-blog"||item.generator!=="command"||item.canCreateDocuments!==false||item.publishTarget.adapter!=="none"||item.publishTarget.configured!==false)process.exit(1);
-' "$workspace"
-scan="$(curl --fail --silent --show-error \
+const input=JSON.parse(process.argv[1]);
+if(input.ready!==false||input.credentials?.state!=="ready"||input.configuration?.state!=="valid"||input.site?.state!=="not-registered")process.exit(1);
+' "$setup"
+discovery="$(curl --fail --silent --show-error \
+  --cookie "$fixture/cookies" \
+  "$origin/api/sites/discover")"
+node -e '
+const item=JSON.parse(process.argv[1]).candidates[0];
+if(item?.candidateId!=="example-blog"||item?.capabilities?.generator!=="command"||item?.capabilities?.createDocuments!==false||item?.capabilities?.publishConfigured!==false||item?.repository?.available!==true)process.exit(1);
+' "$discovery"
+registered="$(curl --fail --silent --show-error \
   --request POST \
   --cookie "$fixture/cookies" \
   --header "Origin: $origin" \
   --header "x-csrf-token: $csrf" \
-  "$origin/api/workspaces/example-blog/scan")"
-node -e '
-const input=JSON.parse(process.argv[1]);
-if(input.detection.detected!==true||input.detection.confidence!==1||input.model.collections.map((item)=>item.id).join(",")!=="posts,drafts")process.exit(1);
-' "$scan"
+  --header 'Content-Type: application/json' \
+  --data '{"candidateId":"example-blog","displayName":"Example Blog"}' \
+  "$origin/api/sites")"
+site_id="$(node -e 'const input=JSON.parse(process.argv[1]);if(!input.site?.id)process.exit(1);process.stdout.write(input.site.id)' "$registered")"
+setup="$(curl --fail --silent --show-error "$origin/api/setup/status")"
+node -e 'const input=JSON.parse(process.argv[1]);if(input.ready!==true||input.site?.state!=="registered")process.exit(1)' "$setup"
 
-documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/example-blog/documents?collection=posts")"
-document_id="$(node -e 'const item=JSON.parse(process.argv[1]).documents[0];if(item.title!=="Welcome to Blog Studio")process.exit(1);process.stdout.write(item.ref.documentId)' "$documents")"
-document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/workspaces/example-blog/documents/$document_id?collection=posts")"
+documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content?collection=posts")"
+document_id="$(node -e 'const item=JSON.parse(process.argv[1]).content.items[0];if(item.title!=="Welcome to Blog Studio"||item.state!=="published")process.exit(1);process.stdout.write(item.documentId)' "$documents")"
+document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
 revision="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).source.revision)' "$document")"
 front_matter="$(node -e 'process.stdout.write(JSON.stringify(JSON.parse(process.argv[1]).source.frontMatter))' "$document")"
 payload="$(node -e 'process.stdout.write(JSON.stringify({expectedVersion:0,sourceRevision:process.argv[1],frontMatter:JSON.parse(process.argv[2]),body:"Quick Start verified body.\n"}))' "$revision" "$front_matter")"
@@ -101,7 +109,7 @@ saved="$(curl --fail --silent --show-error \
   --header "x-csrf-token: $csrf" \
   --header 'Content-Type: application/json' \
   --data "$payload" \
-  "$origin/api/workspaces/example-blog/documents/$document_id/draft?collection=posts")"
+  "$origin/api/sites/$site_id/content/$document_id/working-copy?collection=posts")"
 node -e 'if(JSON.parse(process.argv[1]).draft.version!==1)process.exit(1)' "$saved"
 
 preview="$(curl --fail --silent --show-error \
@@ -109,10 +117,10 @@ preview="$(curl --fail --silent --show-error \
   --cookie "$fixture/cookies" \
   --header "Origin: $origin" \
   --header "x-csrf-token: $csrf" \
-  "$origin/api/workspaces/example-blog/documents/$document_id/preview?collection=posts")"
+  "$origin/api/sites/$site_id/content/$document_id/preview?collection=posts&mode=enhanced")"
 preview_url="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).preview.url)' "$preview")"
 curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin$preview_url" | grep -q 'Quick Start verified body'
 test -s "$fixture/data/blog-studio.sqlite"
 [[ -z "$(git -C "$fixture/workspace" status --short)" ]]
 
-echo 'quick start passed: owner password, command workspace, durable autosave, real preview, publish disabled'
+echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, durable autosave, real preview, publish disabled'

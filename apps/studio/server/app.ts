@@ -412,6 +412,11 @@ export async function createStudioServer(
     )
       return;
     if (request.method === 'GET' && path.startsWith('/api/previews/')) return;
+    if (
+      request.method === 'GET' &&
+      /^\/api\/markdown-previews\/[^/]+\/resource$/.test(path)
+    )
+      return;
 
     const session = request.cookies[SESSION_COOKIE];
     if (!session) {
@@ -581,10 +586,19 @@ export async function createStudioServer(
       type: 'about:blank',
       title: status === 500 ? 'Internal server error' : message,
       status,
+      ...(error instanceof SiteRevisionConflictError
+        ? { code: 'SITE_REVISION_CONFLICT' }
+        : error instanceof SiteAlreadyExistsError
+          ? {
+              code: 'SITE_ALREADY_EXISTS',
+              details: { field: error.field },
+            }
+          : {}),
       ...(error instanceof RevisionConflictError ||
       error instanceof BlogStudioError
         ? { code: error.code, details: error.details }
         : {}),
+      ...(error instanceof AssetPolicyError ? { code: error.code } : {}),
     });
   });
 

@@ -23,7 +23,12 @@ import {
   type ContentService,
 } from '../services/content.js';
 import type { ChangeSetService } from '../services/change-sets.js';
-import type { MarkdownPreviewService } from '../services/markdown-previews.js';
+import {
+  MarkdownPreviewNotFoundError,
+  MarkdownPreviewResourceNotFoundError,
+  type MarkdownPreviewResourceContext,
+  type MarkdownPreviewService,
+} from '../services/markdown-previews.js';
 import {
   PreviewReadinessError,
   type PreviewFallbackReason,
@@ -116,6 +121,16 @@ const releaseParams = {
   },
 } as const;
 
+const siteReleaseParams = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['siteId', 'releaseId'],
+  properties: {
+    siteId: { type: 'string', pattern: '^site-[a-z0-9-]+$' },
+    releaseId: { type: 'string', pattern: '^release-[a-z0-9-]+$' },
+  },
+} as const;
+
 const collectionQuery = {
   type: 'object',
   additionalProperties: false,
@@ -129,6 +144,15 @@ const assetSourceQuery = {
   required: ['collection', 'source'],
   properties: {
     collection: { type: 'string', minLength: 1, maxLength: 64 },
+    source: { type: 'string', minLength: 1, maxLength: 2048 },
+  },
+} as const;
+
+const markdownPreviewResourceQuery = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['source'],
+  properties: {
     source: { type: 'string', minLength: 1, maxLength: 2048 },
   },
 } as const;
@@ -364,6 +388,54 @@ export function registerApiRoutes(
     }),
   );
 
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/releases',
+    { schema: { params: siteParams } },
+    (request) => ({
+      releases: dependencies.releases.list(
+        dependencies.sites.workspaceId(request.params.siteId),
+      ),
+    }),
+  );
+
+  app.get<{ Params: { siteId: string; releaseId: string } }>(
+    '/api/sites/:siteId/releases/:releaseId',
+    { schema: { params: siteReleaseParams } },
+    (request) =>
+      dependencies.releases.get(
+        dependencies.sites.workspaceId(request.params.siteId),
+        request.params.releaseId,
+      ),
+  );
+
+  app.delete<{ Params: { siteId: string; releaseId: string } }>(
+    '/api/sites/:siteId/releases/:releaseId',
+    { schema: { params: siteReleaseParams } },
+    (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          dependencies.releases.cancel(
+            dependencies.sites.workspaceId(request.params.siteId),
+            request.params.releaseId,
+          ),
+        ),
+  );
+
+  app.post<{ Params: { siteId: string; releaseId: string } }>(
+    '/api/sites/:siteId/releases/:releaseId/rollback',
+    { schema: { params: siteReleaseParams } },
+    (request, reply) =>
+      reply
+        .code(202)
+        .send(
+          dependencies.releases.rollback(
+            dependencies.sites.workspaceId(request.params.siteId),
+            request.params.releaseId,
+          ),
+        ),
+  );
+
   app.post<{
     Params: { siteId: string; changeSetId: string };
     Body: { targetId?: string; confirmation: string };
@@ -518,6 +590,54 @@ export function registerApiRoutes(
     }),
   );
 
+  app.post<{
+    Params: { siteId: string };
+    Body: { title: string; slug?: string };
+  }>(
+    '/api/sites/:siteId/content',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title'],
+          properties: {
+            title: { type: 'string', minLength: 1, maxLength: 200 },
+            slug: {
+              type: 'string',
+              pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$',
+              maxLength: 80,
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const now = new Date();
+      const created = await dependencies.workspaces.createDocument(
+        workspaceId,
+        {
+          collectionId: 'drafts',
+          title: request.body.title,
+          slug: request.body.slug ?? defaultSlug(request.body.title, now),
+          createdAt: now.toISOString(),
+        },
+      );
+      const draft = dependencies.drafts.save({
+        workspaceId: created.source.ref.workspaceId,
+        documentId: created.source.ref.documentId,
+        expectedVersion: 0,
+        sourceRevision: created.source.revision,
+        frontMatter: created.source.frontMatter,
+        body: created.source.body,
+        savedAt: now.toISOString(),
+      });
+      return reply.code(201).send({ source: created.source, draft });
+    },
+  );
+
   app.get<{
     Params: { siteId: string; documentId: string };
     Querystring: { collection: string };
@@ -602,6 +722,32 @@ export function registerApiRoutes(
       await dependencies.content.discard({
         siteId: request.params.siteId,
         collectionId: request.query.collection,
+        documentId: request.params.documentId,
+        expectedVersion: request.body.expectedVersion,
+      });
+      return { discarded: true };
+    },
+  );
+
+  app.delete<{
+    Params: { siteId: string; documentId: string };
+    Body: { expectedVersion: number };
+  }>(
+    '/api/sites/:siteId/content/:documentId/unavailable-working-copy',
+    {
+      schema: {
+        params: siteDocumentParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedVersion'],
+          properties: { expectedVersion: { type: 'integer', minimum: 1 } },
+        },
+      },
+    },
+    async (request) => {
+      await dependencies.content.discardUnavailable({
+        siteId: request.params.siteId,
         documentId: request.params.documentId,
         expectedVersion: request.body.expectedVersion,
       });
@@ -698,7 +844,95 @@ export function registerApiRoutes(
         claimedMediaType: request.headers['content-type'] ?? '',
         bytes: request.body,
       });
-      return reply.code(201).send({ resource });
+      return reply.code(201).send({
+        resource: {
+          ...resource,
+          storage:
+            workspace.config.assets.adapter === 'filesystem'
+              ? 'local'
+              : 'remote',
+        },
+      });
+    },
+  );
+
+  app.get<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId/resources/orphans',
+    { schema: { params: siteDocumentParams, querystring: collectionQuery } },
+    async (request) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const workspace = dependencies.workspaces.get(workspaceId);
+      const plan = await createOrphanAssetPlan(dependencies, {
+        workspaceId,
+        documentId: request.params.documentId,
+        collection: request.query.collection,
+      });
+      return {
+        plan: {
+          confirmation: plan.confirmation,
+          sourceRevision: plan.sourceRevision,
+          draftVersion: plan.draftVersion,
+          assets: plan.assets,
+          storage:
+            workspace.config.assets.adapter === 'filesystem'
+              ? 'local'
+              : 'remote',
+        },
+      };
+    },
+  );
+
+  app.delete<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { confirmation: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId/resources/orphans',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['confirmation'],
+          properties: {
+            confirmation: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const workspace = dependencies.workspaces.get(workspaceId);
+      const plan = await createOrphanAssetPlan(dependencies, {
+        workspaceId,
+        documentId: request.params.documentId,
+        collection: request.query.collection,
+      });
+      if (request.body.confirmation !== plan.confirmation)
+        return reply.code(409).send({
+          type: 'about:blank',
+          title: 'Resource deletion plan changed; preview it again',
+          status: 409,
+          code: 'ASSET_PLAN_CONFLICT',
+        });
+      for (const asset of plan.assets)
+        await workspace.assetProvider.delete({
+          scope: plan.scope,
+          assetId: asset.id,
+          expectedContentHash: asset.contentHash,
+        });
+      return {
+        deleted: plan.assets.map((asset) => asset.id),
+        count: plan.assets.length,
+      };
     },
   );
 
@@ -738,11 +972,15 @@ export function registerApiRoutes(
         typeof titleValue === 'string' || typeof titleValue === 'number'
           ? String(titleValue)
           : request.params.documentId;
-      const resourceBase = `/api/sites/${request.params.siteId}/content/${request.params.documentId}/resource?collection=${encodeURIComponent(request.query.collection)}&source=`;
       const markdown = dependencies.markdownPreviews.start({
         title,
         body,
-        resourceBase,
+        resource: {
+          kind: 'site',
+          siteId: request.params.siteId,
+          documentId: request.params.documentId,
+          collection: request.query.collection,
+        },
       });
       const markdownResult = {
         id: markdown.id,
@@ -1334,7 +1572,12 @@ export function registerApiRoutes(
       const markdown = dependencies.markdownPreviews.start({
         title,
         body: previewSource.body,
-        resourceBase: `/api/workspaces/${request.params.workspaceId}/documents/${request.params.documentId}/legacy-asset?collection=${encodeURIComponent(request.query.collection)}&source=`,
+        resource: {
+          kind: 'workspace',
+          workspaceId: request.params.workspaceId,
+          documentId: request.params.documentId,
+          collection: request.query.collection,
+        },
       });
       const markdownResult = {
         id: markdown.id,
@@ -1403,6 +1646,75 @@ export function registerApiRoutes(
         .header('cache-control', 'no-store')
         .type('text/html; charset=utf-8')
         .send(preview.html);
+    },
+  );
+
+  app.get<{
+    Params: { previewId: string };
+    Querystring: { source: string };
+  }>(
+    '/api/markdown-previews/:previewId/resource',
+    { schema: { querystring: markdownPreviewResourceQuery } },
+    async (request, reply) => {
+      let context: MarkdownPreviewResourceContext;
+      try {
+        context = dependencies.markdownPreviews.resource(
+          request.params.previewId,
+          request.query.source,
+        );
+      } catch (error) {
+        if (
+          error instanceof MarkdownPreviewNotFoundError ||
+          error instanceof MarkdownPreviewResourceNotFoundError
+        ) {
+          return reply.code(404).send({
+            type: 'about:blank',
+            title: 'Markdown preview resource not found',
+            status: 404,
+          });
+        }
+        throw error;
+      }
+
+      const workspaceId =
+        context.kind === 'site'
+          ? dependencies.sites.workspaceId(context.siteId)
+          : context.workspaceId;
+      const workspace = dependencies.workspaces.get(workspaceId);
+      const { ref } = await dependencies.workspaces.findDocument(
+        workspaceId,
+        context.collection,
+        context.documentId,
+      );
+      const sourcePath = await workspace.generator.resolveAssetSourcePath?.(
+        workspace.config.workspace.root,
+        ref,
+        request.query.source,
+      );
+      if (!sourcePath) {
+        return reply.code(404).send({
+          type: 'about:blank',
+          title: 'Markdown preview resource not found',
+          status: 404,
+        });
+      }
+      const absolutePath = await resolveWorkspacePath(
+        workspace.config.workspace.root,
+        sourcePath,
+      );
+      return reply
+        .header('cache-control', 'no-store')
+        .header(
+          'content-security-policy',
+          "sandbox; default-src 'none'; img-src 'self'; media-src 'self'; style-src 'none'; script-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'",
+        )
+        .header('x-content-type-options', 'nosniff')
+        .header('referrer-policy', 'no-referrer')
+        .type(
+          mediaTypes[extname(absolutePath).toLowerCase()] ??
+            'application/octet-stream',
+        )
+        .send(await readFile(absolutePath));
     },
   );
 

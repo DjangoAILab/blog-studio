@@ -63,6 +63,13 @@ No statistics dashboard or Agent surface is required for this gate. Full visual
 and motion-system coverage remains a separate gate, but interaction design is a
 prerequisite rather than a cleanup pass after v0.2 implementation.
 
+**Current checkpoint (2026-08-05):** the hard capabilities, selected interaction
+system, disposable browser/container journeys, and Studio-only home-server
+upgrade/rollback rehearsal are implemented and evidenced. Final acceptance is
+waiting only for the owner-selected production credential and the authenticated
+`wj2015-blog` journey. See the
+[v0.2 release-candidate index](../verification/v0.2-release-candidate.md).
+
 ## Horizon 2 — interaction and visual system
 
 The desired quality bar is inspired by the iOS 26 design language and motion
@@ -176,10 +183,19 @@ continues to live in files and Git.
 - a public mutable demo;
 - a second Agent runtime before the Pi boundary is proven.
 
-## Open decisions
+## Confirmed interaction implementation
 
-- Select high-fidelity visual targets before choosing the exact web animation
-  and material implementation libraries.
+The owner selected the **Focused Workbench** direction. Production surfaces use
+`@base-ui/react` for focus-managed primitives, `motion` for spatial transitions
+and reduced-motion handling, and semantic CSS material/elevation/type/spacing/
+radius/focus tokens with reduced-transparency, increased-contrast, and no-blur
+fallbacks. The content and diff layer remains opaque and stable. The selection
+and implementation evidence are recorded in the
+[design selection](../verification/v0.2-design-selection.md) and
+[UI kernel](../verification/v0.2-ui-kernel.md).
+
+## Open decision
+
 - Decide whether the GitHub Pages site should remain at the repository Pages
   path or later receive a public custom domain.
 

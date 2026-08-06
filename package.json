@@ -11,6 +11,7 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "candidate:manifest": "bash scripts/candidate-input-manifest.sh",
     "check": "corepack pnpm policy:smoke && corepack pnpm lint && corepack pnpm typecheck && corepack pnpm test && corepack pnpm build",
     "container:smoke": "bash scripts/container-smoke.sh",
     "operations:smoke": "bash scripts/operations-smoke.sh",

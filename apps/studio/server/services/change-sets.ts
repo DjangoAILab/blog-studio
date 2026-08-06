@@ -11,6 +11,7 @@ import {
   type FrozenDocumentChange,
   type DocumentRef,
   type AssetRecord,
+  type RepositoryChange,
 } from '@blog-studio/core';
 import type {
   ChangeSetRecord,
@@ -41,6 +42,14 @@ function fingerprint(value: unknown) {
 function bytesFingerprint(value: Uint8Array) {
   return createContentHash(
     `sha256:${createHash('sha256').update(value).digest('hex')}`,
+  );
+}
+
+function orderedRepositoryChanges(
+  changes: readonly RepositoryChange[],
+): readonly RepositoryChange[] {
+  return [...changes].sort((left, right) =>
+    left.path.localeCompare(right.path),
   );
 }
 
@@ -94,8 +103,11 @@ export class ChangeSetNotFoundError extends Error {
 }
 
 export class ChangeSetConflictError extends BlogStudioError {
-  public constructor(message: string) {
-    super('CHANGE_SET_CONFLICT', message);
+  public constructor(
+    message: string,
+    details: Readonly<Record<string, unknown>> = {},
+  ) {
+    super('CHANGE_SET_CONFLICT', message, details);
     this.name = 'ChangeSetConflictError';
   }
 }
@@ -182,9 +194,7 @@ export class ChangeSetService {
       configurationRevision,
       documents,
       resources,
-      repositoryChanges: [...repositoryStatus.changes].sort((left, right) =>
-        left.path.localeCompare(right.path),
-      ),
+      repositoryChanges: orderedRepositoryChanges(repositoryStatus.changes),
     } as const;
     const exactFingerprint = fingerprint(frozen);
     const payload: ChangeSetPayload = { ...frozen, preparedAt };
@@ -234,16 +244,44 @@ export class ChangeSetService {
     const currentConfigurationRevision = bytesFingerprint(
       await readFile(workspace.configurationPath),
     );
+    const repositoryHeadChanged =
+      repositoryStatus.head !== changeSet.payload.baseRevision;
+    const configurationChanged =
+      currentConfigurationRevision !== changeSet.payload.configurationRevision;
+    const currentRepositoryChanges = orderedRepositoryChanges(
+      repositoryStatus.changes,
+    );
+    const repositoryChangesChanged =
+      canonical(currentRepositoryChanges) !==
+      canonical(changeSet.payload.repositoryChanges);
     if (
-      repositoryStatus.head !== changeSet.payload.baseRevision ||
-      currentConfigurationRevision !==
-        changeSet.payload.configurationRevision ||
-      canonical(repositoryStatus.changes) !==
-        canonical(changeSet.payload.repositoryChanges)
+      repositoryHeadChanged ||
+      configurationChanged ||
+      repositoryChangesChanged
     ) {
       this.repository.invalidate(id, this.now().toISOString());
+      const changedBoundary = repositoryHeadChanged
+        ? 'Repository HEAD'
+        : configurationChanged
+          ? 'Site configuration'
+          : 'Repository working tree';
       throw new ChangeSetConflictError(
-        'Repository or Site configuration changed after ChangeSet preparation',
+        `${changedBoundary} changed after ChangeSet preparation`,
+        repositoryChangesChanged
+          ? {
+              expectedRepositoryChanges:
+                changeSet.payload.repositoryChanges.map((change) => ({
+                  path: change.path,
+                  fingerprint: fingerprint(change),
+                })),
+              currentRepositoryChanges: currentRepositoryChanges.map(
+                (change) => ({
+                  path: change.path,
+                  fingerprint: fingerprint(change),
+                }),
+              ),
+            }
+          : {},
       );
     }
     const resources = await referencedResources(

@@ -1,8 +1,10 @@
 # Backup and restore
 
-Blog Studio backs up acknowledged drafts and operational history from SQLite,
-the administrator configuration, and non-generated workspace files. Provider
-objects and mounted secret files are intentionally outside this archive.
+Blog Studio backs up owner credentials/sessions, Site identities and audit
+history, acknowledged working copies, ChangeSets and release history from
+SQLite, plus the administrator configuration and non-generated workspace files.
+Provider objects and mounted secret files are intentionally outside this
+archive.
 
 ## Create a consistent backup
 
@@ -62,10 +64,12 @@ docker compose logs --tail=200 studio
 Validate all of the following before declaring recovery complete:
 
 1. authentication succeeds at the HTTPS hostname;
-2. the latest acknowledged draft and release timeline are present;
-3. the configured workspace scans successfully;
-4. real generator preview builds; and
-5. a no-op release plans zero uploads.
+2. registered Sites, their settings audit, and the latest acknowledged working
+   copy are present;
+3. unified content lists the expected published documents and native drafts;
+4. Markdown fallback renders and real generator preview builds; and
+5. a prepared no-op or disposable ChangeSet shows the expected repository state
+   without contacting a production Provider.
 
 If validation fails, stop Studio, move the newly restored paths aside, and move
 the three retained paths (`data`, `blog-studio.yml`, and `workspace`) back from

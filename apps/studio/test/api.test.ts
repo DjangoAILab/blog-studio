@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { StudioApi } from '../src/app/api.js';
+import { StudioApi, type StudioApiError } from '../src/app/api.js';
 
 describe('StudioApi', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -24,6 +24,35 @@ describe('StudioApi', () => {
       password: 'owner browser passphrase',
     });
     expect(request.body).not.toContain('token');
+  });
+
+  it('preserves typed conflict details for recoverable UI decisions', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          title: 'Site changed since it was read',
+          status: 409,
+          code: 'SITE_REVISION_CONFLICT',
+          details: { actualRevision: 'newer' },
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 409 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const request = new StudioApi('csrf-token').updateSite({
+      siteId: 'site-one',
+      expectedUpdatedAt: '2026-08-05T00:00:00.000Z',
+      displayName: 'My input',
+    });
+
+    await expect(request).rejects.toMatchObject({
+      name: 'StudioApiError',
+      message: 'Site changed since it was read',
+      status: 409,
+      code: 'SITE_REVISION_CONFLICT',
+      details: { actualRevision: 'newer' },
+    } satisfies Partial<StudioApiError>);
   });
 
   it('sends only the versioned draft contract to the server', async () => {
@@ -199,6 +228,132 @@ describe('StudioApi', () => {
         displayName: 'Renamed Site',
       }),
     });
+  });
+
+  it('creates native content without exposing a workspace route', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ source: {}, draft: {} }), {
+        headers: { 'content-type': 'application/json' },
+        status: 201,
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new StudioApi('csrf-token').createContent('site-one', {
+      title: 'Site-scoped draft',
+      slug: 'site-scoped-draft',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/sites/site-one/content',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'Site-scoped draft',
+          slug: 'site-scoped-draft',
+        }),
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/sites/site-one/content');
+  });
+
+  it('lists and prepares ChangeSets without invoking release endpoints', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ changeSets: [], changeSet: {} }), {
+          headers: { 'content-type': 'application/json' },
+          status: 200,
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new StudioApi('csrf-token');
+
+    await api.changeSets('site-one');
+    await api.prepareChangeSet('site-one');
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/sites/site-one/change-sets',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBeUndefined();
+    expect(fetchMock.mock.calls[1]?.[0]).toBe(
+      '/api/sites/site-one/change-sets/prepare',
+    );
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: '{}',
+      headers: {
+        'content-type': 'application/json',
+        'x-csrf-token': 'csrf-token',
+      },
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) => typeof url === 'string' && url.includes('/release'),
+      ),
+    ).toBe(false);
+  });
+
+  it('advances reviewed ChangeSets and controls releases through Site routes', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(() =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            changeSet: { id: 'change-one' },
+            release: {
+              release: { id: 'release-one', status: 'queued', stages: [] },
+              events: [],
+            },
+            releases: [],
+          }),
+          { headers: { 'content-type': 'application/json' }, status: 200 },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new StudioApi('csrf-token');
+
+    await api.applyChangeSet('site-one', 'change-one');
+    await api.commitChangeSet({
+      siteId: 'site-one',
+      changeSetId: 'change-one',
+      message: 'Apply reviewed content',
+      paths: ['source/_posts/hello.md'],
+    });
+    await api.releaseChangeSet({
+      siteId: 'site-one',
+      changeSetId: 'change-one',
+      confirmation: 'RELEASE COMMITTED CHANGESET',
+    });
+    await api.siteReleases('site-one');
+    await api.siteRelease('site-one', 'release-one');
+    await api.cancelSiteRelease('site-one', 'release-one');
+    await api.rollbackSiteRelease('site-one', 'release-one');
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/sites/site-one/change-sets/change-one/apply',
+      '/api/sites/site-one/change-sets/change-one/commit',
+      '/api/sites/site-one/change-sets/change-one/release',
+      '/api/sites/site-one/releases',
+      '/api/sites/site-one/releases/release-one',
+      '/api/sites/site-one/releases/release-one',
+      '/api/sites/site-one/releases/release-one/rollback',
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        message: 'Apply reviewed content',
+        paths: ['source/_posts/hello.md'],
+      }),
+    });
+    expect(fetchMock.mock.calls[2]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        confirmation: 'RELEASE COMMITTED CHANGESET',
+      }),
+    });
+    expect(fetchMock.mock.calls[5]?.[1]?.method).toBe('DELETE');
+    expect(fetchMock.mock.calls[6]?.[1]?.method).toBe('POST');
   });
 
   it('starts a release with the exact saved draft version', async () => {

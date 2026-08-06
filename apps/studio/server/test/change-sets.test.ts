@@ -10,6 +10,7 @@ import {
   createWorkspaceId,
   type AssetRecord,
   type DocumentSource,
+  type RepositoryChange,
 } from '@blog-studio/core';
 import {
   openStudioDatabase,
@@ -70,6 +71,7 @@ describe('ChangeSet interrupted-apply recovery', () => {
         createdAt: '2026-08-04T00:00:00.000Z',
       },
     ];
+    let repositoryChanges: readonly RepositoryChange[] = [];
     const generator = {
       id: 'test',
       inspect: () =>
@@ -127,7 +129,7 @@ describe('ChangeSet interrupted-apply recovery', () => {
             dirtyPaths: [],
             ahead: 0,
             behind: 0,
-            changes: [],
+            changes: repositoryChanges,
           }),
       },
     };
@@ -202,7 +204,7 @@ describe('ChangeSet interrupted-apply recovery', () => {
 
     writeFileSync(configurationPath, 'version: 1\nsite: changed\n');
     await expect(service.apply(siteId, prepared.id)).rejects.toThrow(
-      'Repository or Site configuration changed after ChangeSet preparation',
+      'Site configuration changed after ChangeSet preparation',
     );
     expect(records.get(prepared.id)?.status).toBe('invalidated');
 
@@ -213,6 +215,16 @@ describe('ChangeSet interrupted-apply recovery', () => {
       'Referenced resources changed after ChangeSet preparation',
     );
     expect(records.get(resourcePrepared.id)?.status).toBe('invalidated');
+
+    repositoryChanges = [
+      { path: 'z-unmanaged.txt', state: 'unmanaged', staged: false },
+      { path: 'a-modified.md', state: 'modified', staged: false },
+    ];
+    const orderPrepared = await service.prepare(siteId);
+    repositoryChanges = [...repositoryChanges].reverse();
+    await expect(
+      service.apply(siteId, orderPrepared.id),
+    ).resolves.toMatchObject({ status: 'applied' });
     database.close();
   });
 });

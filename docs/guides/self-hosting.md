@@ -70,7 +70,10 @@ curl --fail http://127.0.0.1:4310/api/health
 
 Open the configured HTTPS hostname and enter the owner password. A successful
 health response alone does not bypass the session and CSRF boundary used by the
-remaining API.
+remaining API. The first authenticated journey discovers the configured
+workspace as a Site candidate. Review its identity, content counts, Git state
+and capabilities before registration; registration does not rewrite the Site
+checkout or publish anything. See [Sites and first run](sites-and-first-run.md).
 
 Inspect credential state or recover a forgotten password from the trusted host:
 
@@ -199,5 +202,6 @@ docker compose up -d studio
 ```
 
 The repository's `pnpm container:smoke` reproduces the container security and
-cold-restart checks with an isolated synthetic Hexo site. It never uses a real
-workspace or provider.
+cold-restart checks with an isolated synthetic Hexo Site. The quick-start and
+operations smokes also prove Site discovery/registration and backup/restore
+through the public Site contract. They never use a real workspace or Provider.

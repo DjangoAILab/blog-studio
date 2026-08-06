@@ -89,6 +89,40 @@ describe('Studio database migrations', () => {
         'personal-blog', 'legacy-post', 3, 'sha256:legacy',
         '{"title":"Legacy"}', 'preserve me', '2026-08-03T00:00:00.000Z'
       );
+      CREATE TABLE releases (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        stages_json TEXT NOT NULL,
+        manifest_hash TEXT,
+        previous_release_id TEXT,
+        manifest_json TEXT
+      ) STRICT;
+      INSERT INTO releases VALUES (
+        'legacy-release', 'personal-blog', 'production', 'succeeded',
+        '2026-08-03T01:00:00.000Z', '2026-08-03T01:02:00.000Z',
+        '[{"name":"verify","status":"succeeded"}]', 'sha256:manifest',
+        NULL, '{"entries":[]}'
+      );
+      CREATE TABLE release_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        release_id TEXT NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+        at TEXT NOT NULL,
+        stage TEXT NOT NULL,
+        level TEXT NOT NULL,
+        message TEXT NOT NULL,
+        completed INTEGER,
+        total INTEGER
+      ) STRICT;
+      INSERT INTO release_events (
+        release_id, at, stage, level, message, completed, total
+      ) VALUES (
+        'legacy-release', '2026-08-03T01:02:00.000Z', 'verify', 'info',
+        'Legacy release verified', 1, 1
+      );
     `);
     legacy.close();
 
@@ -105,6 +139,36 @@ describe('Studio database migrations', () => {
       document_id: 'legacy-post',
       version: 3,
       body: 'preserve me',
+    });
+    expect(
+      upgraded
+        .prepare(
+          `SELECT id, workspace_id, status, manifest_hash,
+                  source_change_set_id, source_commit_id
+             FROM releases WHERE id = 'legacy-release'`,
+        )
+        .get(),
+    ).toEqual({
+      id: 'legacy-release',
+      workspace_id: 'personal-blog',
+      status: 'succeeded',
+      manifest_hash: 'sha256:manifest',
+      source_change_set_id: null,
+      source_commit_id: null,
+    });
+    expect(
+      upgraded
+        .prepare(
+          `SELECT stage, level, message, completed, total
+             FROM release_events WHERE release_id = 'legacy-release'`,
+        )
+        .get(),
+    ).toEqual({
+      stage: 'verify',
+      level: 'info',
+      message: 'Legacy release verified',
+      completed: 1,
+      total: 1,
     });
     expect(
       upgraded

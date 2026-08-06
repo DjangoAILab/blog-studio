@@ -40,6 +40,9 @@ verifyReference(
       head: git(root, 'rev-parse', 'HEAD'),
       status: git(root, 'status', '--porcelain=v1'),
       configuration: sha256(await readFile(sourceConfigurationPath)),
+      staticIndex: sha256(
+        Buffer.from(git(root, 'ls-files', '-s', 'source/static')),
+      ),
     };
     expect(before.status).toBe('');
 
@@ -147,6 +150,9 @@ verification:
       head: git(root, 'rev-parse', 'HEAD'),
       status: git(root, 'status', '--porcelain=v1'),
       configuration: sha256(await readFile(sourceConfigurationPath)),
+      staticIndex: sha256(
+        Buffer.from(git(root, 'ls-files', '-s', 'source/static')),
+      ),
     }).toEqual(before);
   },
   30_000,
