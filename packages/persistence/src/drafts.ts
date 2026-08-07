@@ -17,6 +17,7 @@ export interface DraftSnapshot {
   readonly version: number;
   readonly sourceRevision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+  readonly frontMatterSource?: string;
   readonly body: string;
   readonly savedAt: string;
 }
@@ -29,6 +30,7 @@ export interface SaveDraftInput {
   readonly expectedVersion: number;
   readonly sourceRevision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+  readonly frontMatterSource?: string;
   readonly body: string;
   readonly savedAt: string;
 }
@@ -39,6 +41,7 @@ interface DraftRow {
   readonly version: number;
   readonly source_revision: string;
   readonly front_matter_json: string;
+  readonly front_matter_source: string | null;
   readonly body: string;
   readonly saved_at: string;
 }
@@ -71,6 +74,9 @@ function decodeDraft(row: DraftRow): DraftSnapshot {
     version: row.version,
     sourceRevision: createContentHash(row.source_revision),
     frontMatter: decodeFrontMatter(row.front_matter_json),
+    ...(row.front_matter_source
+      ? { frontMatterSource: row.front_matter_source }
+      : {}),
     body: row.body,
     savedAt: row.saved_at,
   };
@@ -83,6 +89,9 @@ function decodeDraftMetadata(row: Omit<DraftRow, 'body'>): DraftMetadata {
     version: row.version,
     sourceRevision: createContentHash(row.source_revision),
     frontMatter: decodeFrontMatter(row.front_matter_json),
+    ...(row.front_matter_source
+      ? { frontMatterSource: row.front_matter_source }
+      : {}),
     savedAt: row.saved_at,
   };
 }
@@ -97,7 +106,7 @@ export class SqliteDraftRepository {
     const row = this.database
       .prepare(
         `SELECT workspace_id, document_id, version, source_revision,
-                front_matter_json, body, saved_at
+                front_matter_json, front_matter_source, body, saved_at
            FROM drafts
           WHERE workspace_id = ? AND document_id = ?`,
       )
@@ -112,7 +121,7 @@ export class SqliteDraftRepository {
       this.database
         .prepare(
           `SELECT workspace_id, document_id, version, source_revision,
-                  front_matter_json, saved_at
+                  front_matter_json, front_matter_source, saved_at
              FROM drafts
             WHERE workspace_id = ?
             ORDER BY saved_at DESC, document_id`,
@@ -135,12 +144,13 @@ export class SqliteDraftRepository {
         .prepare(
           `INSERT INTO drafts (
              workspace_id, document_id, version, source_revision,
-             front_matter_json, body, saved_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+             front_matter_json, front_matter_source, body, saved_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(workspace_id, document_id) DO UPDATE SET
              version = excluded.version,
              source_revision = excluded.source_revision,
              front_matter_json = excluded.front_matter_json,
+             front_matter_source = excluded.front_matter_source,
              body = excluded.body,
              saved_at = excluded.saved_at`,
         )
@@ -150,6 +160,7 @@ export class SqliteDraftRepository {
           nextVersion,
           input.sourceRevision,
           JSON.stringify(input.frontMatter),
+          input.frontMatterSource ?? null,
           input.body,
           input.savedAt,
         );
@@ -161,6 +172,9 @@ export class SqliteDraftRepository {
         version: nextVersion,
         sourceRevision: input.sourceRevision,
         frontMatter: input.frontMatter,
+        ...(input.frontMatterSource
+          ? { frontMatterSource: input.frontMatterSource }
+          : {}),
         body: input.body,
         savedAt: input.savedAt,
       };

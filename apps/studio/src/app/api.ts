@@ -98,11 +98,14 @@ export interface DocumentPayload {
     };
     readonly revision: string;
     readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly frontMatterSource?: string;
+    readonly frontMatterParseError?: string;
     readonly body: string;
   };
   readonly draft: null | {
     readonly version: number;
     readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly frontMatterSource?: string;
     readonly body: string;
   };
 }

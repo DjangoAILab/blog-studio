@@ -209,6 +209,13 @@ const migrations: readonly Migration[] = [
         FROM sites;
     `,
   },
+  {
+    version: 6,
+    name: 'lossless-draft-front-matter-source',
+    sql: `
+      ALTER TABLE drafts ADD COLUMN front_matter_source TEXT;
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

@@ -403,6 +403,9 @@ export class ContentService {
       expectedVersion: input.expectedVersion,
       sourceRevision: createContentHash(input.sourceRevision),
       frontMatter: input.frontMatter,
+      ...(current.source.frontMatterSource
+        ? { frontMatterSource: current.source.frontMatterSource }
+        : {}),
       body: input.body,
       savedAt: input.savedAt ?? new Date().toISOString(),
     });

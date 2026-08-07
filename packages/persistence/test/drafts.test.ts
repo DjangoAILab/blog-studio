@@ -44,6 +44,7 @@ describe('SQLite draft repository', () => {
       expectedVersion: 0,
       sourceRevision,
       frontMatter: { title: 'First post', tags: ['studio'] },
+      frontMatterSource: '# title note\ntitle: "First post"\ntags: [studio]\n',
       body: '# Durable draft',
       savedAt: '2026-08-02T00:00:00.000Z',
     });
@@ -60,6 +61,28 @@ describe('SQLite draft repository', () => {
     expect(body).toBe('# Durable draft');
     expect(restored).toEqual(saved);
     expect(listed).toEqual([metadata]);
+  });
+
+  it('retains raw front-matter source separately from structured values', () => {
+    const database = openStudioDatabase(databasePath());
+    const repository = new SqliteDraftRepository(database);
+    const workspaceId = createWorkspaceId('personal-blog');
+    const documentId = createDocumentId('lossless-post');
+    const saved = repository.save({
+      workspaceId,
+      documentId,
+      expectedVersion: 0,
+      sourceRevision: createContentHash(`sha256:${'b'.repeat(64)}`),
+      frontMatter: { title: 'Edited', categories: 'single' },
+      frontMatterSource:
+        '# preserve\ntitle: "Edited"\ncategories: single\n',
+      body: 'body',
+      savedAt: '2026-08-02T00:00:00.000Z',
+    });
+    expect(saved.frontMatterSource).toBe(
+      '# preserve\ntitle: "Edited"\ncategories: single\n',
+    );
+    database.close();
   });
 
   it('rejects a stale optimistic revision without overwriting', () => {

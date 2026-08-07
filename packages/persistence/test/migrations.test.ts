@@ -130,7 +130,7 @@ describe('Studio database migrations', () => {
     expect(
       upgraded
         .prepare(
-          `SELECT workspace_id, document_id, version, body
+          `SELECT workspace_id, document_id, version, front_matter_source, body
              FROM drafts WHERE document_id = 'legacy-post'`,
         )
         .get(),
@@ -138,6 +138,7 @@ describe('Studio database migrations', () => {
       workspace_id: 'personal-blog',
       document_id: 'legacy-post',
       version: 3,
+      front_matter_source: null,
       body: 'preserve me',
     });
     expect(
@@ -210,6 +211,16 @@ describe('Studio database migrations', () => {
         (2, 'site-first-foundation', '2026-08-04T00:00:01.000Z'),
         (3, 'change-set-apply-journal', '2026-08-04T00:00:02.000Z'),
         (4, 'immutable-release-source', '2026-08-04T00:00:03.000Z');
+      CREATE TABLE drafts (
+        workspace_id TEXT NOT NULL,
+        document_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        source_revision TEXT NOT NULL,
+        front_matter_json TEXT NOT NULL,
+        body TEXT NOT NULL,
+        saved_at TEXT NOT NULL,
+        PRIMARY KEY (workspace_id, document_id)
+      ) STRICT;
       CREATE TABLE sites (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL UNIQUE,

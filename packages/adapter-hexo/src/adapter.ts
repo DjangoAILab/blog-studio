@@ -310,6 +310,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       ref,
       revision: hashContent(raw),
       frontMatter: parsed.frontMatter,
+      ...(parsed.frontMatterSource
+        ? { frontMatterSource: parsed.frontMatterSource }
+        : {}),
       body: parsed.body,
       raw,
       format: 'markdown',

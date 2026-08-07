@@ -24,6 +24,10 @@ export interface DocumentSource {
   readonly ref: DocumentRef;
   readonly revision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+  /** Original YAML between front-matter delimiters, retained for lossless edits. */
+  readonly frontMatterSource?: string;
+  /** Parse diagnostic when canonical front matter cannot be represented safely. */
+  readonly frontMatterParseError?: string;
   readonly body: string;
   readonly raw: string;
   readonly format: 'markdown' | 'mdx';

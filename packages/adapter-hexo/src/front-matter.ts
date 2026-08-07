@@ -6,6 +6,7 @@ const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
 
 export interface ParsedMarkdown {
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+  readonly frontMatterSource?: string;
   readonly body: string;
 }
 
@@ -20,6 +21,7 @@ export function parseMarkdown(raw: string): ParsedMarkdown {
 
   return {
     frontMatter: parsed as Readonly<Record<string, FrontMatterValue>>,
+    frontMatterSource: match[1] ?? '',
     body: raw.slice(match[0].length),
   };
 }
