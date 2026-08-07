@@ -92,8 +92,18 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
     publishConfigured: workspace.config.publish.adapter !== 'none',
     frontMatterFields,
     developmentConfigured: workspace.config.development !== undefined,
+    developmentProfiles: Object.entries(
+      workspace.config.developmentProfiles ?? {},
+    ).map(([id, profile]) => ({
+      id,
+      label: profile.label,
+      baseUrl: profile.baseUrl,
+    })),
     ...(workspace.config.development
       ? { developmentBaseUrl: workspace.config.development.baseUrl }
+      : {}),
+    ...(workspace.developmentProfileId
+      ? { developmentProfileId: workspace.developmentProfileId }
       : {}),
   };
 }
@@ -124,6 +134,21 @@ function storedCapabilities(
     typeof value.maxResourceBytes !== 'number' ||
     !Array.isArray(value.resourceMediaTypes) ||
     value.resourceMediaTypes.some((item) => typeof item !== 'string')
+  ) {
+    throw new Error('Stored Site capabilities are invalid');
+  }
+  const developmentProfiles =
+    value.developmentProfiles === undefined ? [] : value.developmentProfiles;
+  if (
+    !Array.isArray(developmentProfiles) ||
+    developmentProfiles.some(
+      (profile) =>
+        profile === null ||
+        typeof profile !== 'object' ||
+        typeof (profile as { id?: unknown }).id !== 'string' ||
+        typeof (profile as { label?: unknown }).label !== 'string' ||
+        typeof (profile as { baseUrl?: unknown }).baseUrl !== 'string',
+    )
   ) {
     throw new Error('Stored Site capabilities are invalid');
   }
@@ -166,11 +191,18 @@ function storedCapabilities(
   ) {
     throw new Error('Stored Site capabilities are invalid');
   }
+  if (
+    value.developmentProfileId !== undefined &&
+    typeof value.developmentProfileId !== 'string'
+  ) {
+    throw new Error('Stored Site capabilities are invalid');
+  }
   return {
     ...value,
     inlinePreviewResourceMediaTypes,
     frontMatterFields,
     developmentConfigured,
+    developmentProfiles,
   } as unknown as SiteCapabilities;
 }
 

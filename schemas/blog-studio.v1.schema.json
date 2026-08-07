@@ -334,9 +334,15 @@
                 "minLength": 1,
                 "maxLength": 280
               },
-              "required": { "type": "boolean" },
-              "searchable": { "type": "boolean" },
-              "sortable": { "type": "boolean" },
+              "required": {
+                "type": "boolean"
+              },
+              "searchable": {
+                "type": "boolean"
+              },
+              "sortable": {
+                "type": "boolean"
+              },
               "enum": {
                 "minItems": 1,
                 "maxItems": 100,
@@ -347,7 +353,9 @@
                   "maxLength": 120
                 }
               },
-              "default": { "$ref": "#/$defs/__schema0" }
+              "default": {
+                "$ref": "#/$defs/__schema0"
+              }
             },
             "required": ["label", "type"],
             "additionalProperties": false
@@ -356,6 +364,81 @@
       },
       "required": ["collections"],
       "additionalProperties": false
+    },
+    "developmentProfiles": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "pattern": "^(?:[A-Za-z0-9]|\\/)[A-Za-z0-9._/-]*$"
+          },
+          "args": {
+            "default": [],
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "baseUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "readinessPath": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "^\\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$"
+          },
+          "environmentAllowlist": {
+            "default": [],
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z_][A-Z0-9_]*$"
+            }
+          },
+          "startupTimeoutMs": {
+            "default": 30000,
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 120000
+          },
+          "logLimit": {
+            "default": 500,
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 2000
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "command",
+          "args",
+          "baseUrl",
+          "environmentAllowlist",
+          "startupTimeoutMs",
+          "logLimit",
+          "label"
+        ],
+        "additionalProperties": false
+      }
     },
     "development": {
       "type": "object",
@@ -368,11 +451,18 @@
         },
         "args": {
           "default": [],
-          "type": "array",
           "maxItems": 40,
-          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
         },
-        "baseUrl": { "type": "string", "format": "uri" },
+        "baseUrl": {
+          "type": "string",
+          "format": "uri"
+        },
         "readinessPath": {
           "type": "string",
           "maxLength": 512,
@@ -380,9 +470,12 @@
         },
         "environmentAllowlist": {
           "default": [],
-          "type": "array",
           "maxItems": 40,
-          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$"
+          }
         },
         "startupTimeoutMs": {
           "default": 30000,

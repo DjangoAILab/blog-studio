@@ -140,6 +140,15 @@ const httpUrlSchema = z.url().refine((value) => {
   return protocol === 'http:' || protocol === 'https:';
 }, 'URL must use HTTP or HTTPS');
 
+const developmentProfileIdSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/,
+    'Development profile ID must use lowercase kebab-case',
+  );
+
 const localDevelopmentSchema = z
   .object({
     command: z
@@ -169,6 +178,14 @@ const localDevelopmentSchema = z
   })
   .strict();
 
+const developmentProfileSchema = localDevelopmentSchema.extend({
+  label: z.string().trim().min(1).max(120),
+});
+
+const ownerDevelopmentSchema = z
+  .object({ profile: developmentProfileIdSchema })
+  .strict();
+
 /**
  * The owner-controlled portion of a Site configuration. Host configuration
  * retains workspace paths, adapter selection, credentials, publish targets,
@@ -186,7 +203,7 @@ export const ownerSiteConfigurationSchema = z
       })
       .strict()
       .default({ fields: {} }),
-    development: localDevelopmentSchema.optional(),
+    development: ownerDevelopmentSchema.optional(),
   })
   .strict();
 
@@ -275,6 +292,15 @@ export const blogStudioConfigSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Profiles are host policy. An owner can only select one in their Site
+     * configuration; they can never supply an executable, arguments, URL, or
+     * environment allowlist through the browser.
+     */
+    developmentProfiles: z
+      .record(developmentProfileIdSchema, developmentProfileSchema)
+      .optional(),
+    /** @deprecated Host-only compatibility for installations predating profiles. */
     development: localDevelopmentSchema.optional(),
     verification: z
       .object({
@@ -290,6 +316,10 @@ export type OwnerSiteConfiguration = z.infer<
   typeof ownerSiteConfigurationSchema
 >;
 export type AdapterConfiguration = z.infer<typeof adapterConfigurationSchema>;
+export type DevelopmentProfile = z.infer<typeof developmentProfileSchema>;
+export type LocalDevelopmentConfiguration = z.infer<
+  typeof localDevelopmentSchema
+>;
 
 export function parseBlogStudioConfig(input: unknown): BlogStudioConfig {
   return blogStudioConfigSchema.parse(input);

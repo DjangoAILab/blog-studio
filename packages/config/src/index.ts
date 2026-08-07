@@ -19,5 +19,7 @@ export {
   secretReferenceSchema,
   type AdapterConfiguration,
   type BlogStudioConfig,
+  type DevelopmentProfile,
+  type LocalDevelopmentConfiguration,
   type OwnerSiteConfiguration,
 } from './schema.js';

@@ -1,5 +1,6 @@
 import type { Site, SiteAuditEvent } from '@blog-studio/core';
 import { motion } from 'motion/react';
+import { useState } from 'react';
 
 import type {
   ContentQueryResult,
@@ -119,6 +120,7 @@ export function SiteOverview({
 }: SiteOverviewProps) {
   const recent = content?.items.slice(0, 5) ?? [];
   const pendingChanges = content?.counts.modified ?? 0;
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <motion.main
@@ -145,6 +147,8 @@ export function SiteOverview({
             运行正常
           </span>
           <SiteSettings
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
             site={site}
             onLoadEvents={onLoadSiteEvents}
             onReload={onReloadSite}
@@ -185,7 +189,9 @@ export function SiteOverview({
 
       <LocalDevelopment
         configured={site.capabilities.developmentConfigured}
+        profilesAvailable={site.capabilities.developmentProfiles.length > 0}
         siteId={site.id}
+        onConfigure={() => setSettingsOpen(true)}
         onLoad={onLoadDevelopment}
         onControl={onControlDevelopment}
       />

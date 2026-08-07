@@ -5,6 +5,8 @@ import type { DevelopmentDetails } from '../../app/api.js';
 interface LocalDevelopmentProps {
   readonly siteId: string;
   readonly configured: boolean;
+  readonly profilesAvailable: boolean;
+  readonly onConfigure: () => void;
   readonly onLoad: (siteId: string) => Promise<DevelopmentDetails>;
   readonly onControl: (
     siteId: string,
@@ -22,6 +24,8 @@ const statusLabel: Record<DevelopmentDetails['status'], string> = {
 export function LocalDevelopment({
   siteId,
   configured,
+  profilesAvailable,
+  onConfigure,
   onLoad,
   onControl,
 }: LocalDevelopmentProps) {
@@ -42,7 +46,16 @@ export function LocalDevelopment({
   if (!configured)
     return (
       <section className="studio2-local-development">
-        <p>本地调试尚未配置。请在站点配置中提供受控命令与站点 base URL。</p>
+        <p>
+          {profilesAvailable
+            ? '本地调试尚未启用。选择主机预设的调试档后，即可在隔离副本中启动。'
+            : '此站点尚未提供本地调试档。请由部署主机管理员配置。'}
+        </p>
+        {profilesAvailable ? (
+          <button type="button" onClick={onConfigure}>
+            配置本地调试
+          </button>
+        ) : null}
       </section>
     );
 

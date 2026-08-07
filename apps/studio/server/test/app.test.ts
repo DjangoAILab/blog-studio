@@ -166,6 +166,12 @@ publish:
     }
 verification:
   baseUrl: https://blog.example.test
+developmentProfiles:
+  local-preview:
+    label: 本地预览
+    command: ${process.execPath}
+    args: []
+    baseUrl: http://127.0.0.1:4000
 ${contentModel}
 `;
   await writeFile(configPath, configuration);
@@ -1242,6 +1248,8 @@ content:
       label: 精选
       type: boolean
       default: false
+development:
+  profile: local-preview
 `,
       },
     });
@@ -1255,6 +1263,15 @@ content:
         capabilities: {
           frontMatterFields: [
             { key: 'featured', type: 'boolean', default: false },
+          ],
+          developmentConfigured: true,
+          developmentProfileId: 'local-preview',
+          developmentProfiles: [
+            {
+              id: 'local-preview',
+              label: '本地预览',
+              baseUrl: 'http://127.0.0.1:4000',
+            },
           ],
         },
       },
