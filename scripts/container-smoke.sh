@@ -4,7 +4,10 @@ set -euo pipefail
 image="${BLOG_STUDIO_SMOKE_IMAGE:-blog-studio:test}"
 port="${BLOG_STUDIO_SMOKE_PORT:-14310}"
 container="blog-studio-smoke-$$"
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/blog-studio-container-smoke.XXXXXX")"
+# The fixture must live below the checkout: Colima and Docker Desktop may not
+# share macOS's per-session TMPDIR or /tmp with their Linux VM.
+repository_root="$(cd "$(dirname "$0")/.." && pwd)"
+fixture="$(mktemp -d "$repository_root/.blog-studio-container-smoke.XXXXXX")"
 origin="http://127.0.0.1:${port}"
 owner_password="container-smoke-owner-password"
 cookie_secret="container-smoke-cookie-secret-with-more-than-thirty-two-characters"
