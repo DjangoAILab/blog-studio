@@ -33,6 +33,12 @@ export {
 } from './releases.js';
 export { SqliteOwnerSessionRepository, type OwnerSession } from './sessions.js';
 export {
+  SiteConfigurationRevisionConflictError,
+  SqliteSiteConfigurationRepository,
+  type ActiveSiteConfiguration,
+  type SiteConfigurationRevision,
+} from './site-configurations.js';
+export {
   SiteAlreadyExistsError,
   SiteRevisionConflictError,
   SqliteSiteRepository,

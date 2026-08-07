@@ -216,6 +216,26 @@ const migrations: readonly Migration[] = [
       ALTER TABLE drafts ADD COLUMN front_matter_source TEXT;
     `,
   },
+  {
+    version: 7,
+    name: 'owner-site-configuration-revisions',
+    sql: `
+      CREATE TABLE site_configuration_revisions (
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        yaml TEXT NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('legacy', 'owner', 'revert')),
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (site_id, revision)
+      ) STRICT;
+
+      CREATE TABLE site_configuration_active (
+        site_id TEXT PRIMARY KEY REFERENCES sites(id) ON DELETE RESTRICT,
+        revision INTEGER NOT NULL CHECK (revision > 0),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

@@ -5,6 +5,8 @@ import type {
   ContentQueryResult,
   ContentSummary,
   DevelopmentDetails,
+  SiteConfigurationDetails,
+  SiteConfigurationRevision,
 } from '../../app/api.js';
 import { LocalDevelopment } from './local-development.js';
 import { SiteSettings } from '../settings/site-settings.js';
@@ -32,6 +34,26 @@ interface SiteOverviewProps {
     siteId: string,
     action: 'start' | 'restart' | 'stop',
   ) => Promise<DevelopmentDetails>;
+  readonly onLoadConfiguration: (
+    siteId: string,
+  ) => Promise<SiteConfigurationDetails>;
+  readonly onValidateConfiguration: (
+    siteId: string,
+    yaml: string,
+  ) => Promise<void>;
+  readonly onLoadConfigurationHistory: (
+    siteId: string,
+  ) => Promise<readonly SiteConfigurationRevision[]>;
+  readonly onActivateConfiguration: (input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly yaml: string;
+  }) => Promise<SiteConfigurationDetails>;
+  readonly onRevertConfiguration: (input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly revision: number;
+  }) => Promise<SiteConfigurationDetails>;
 }
 
 const stateLabels: Readonly<Record<ContentSummary['state'], string>> = {
@@ -83,6 +105,11 @@ export function SiteOverview({
   onUpdateSite,
   onLoadDevelopment,
   onControlDevelopment,
+  onLoadConfiguration,
+  onValidateConfiguration,
+  onLoadConfigurationHistory,
+  onActivateConfiguration,
+  onRevertConfiguration,
 }: SiteOverviewProps) {
   const recent = content?.items.slice(0, 5) ?? [];
   const pendingChanges = content?.counts.modified ?? 0;
@@ -116,6 +143,11 @@ export function SiteOverview({
             onLoadEvents={onLoadSiteEvents}
             onReload={onReloadSite}
             onSave={onUpdateSite}
+            onLoadConfiguration={onLoadConfiguration}
+            onValidateConfiguration={onValidateConfiguration}
+            onLoadConfigurationHistory={onLoadConfigurationHistory}
+            onActivateConfiguration={onActivateConfiguration}
+            onRevertConfiguration={onRevertConfiguration}
           />
         </div>
       </section>

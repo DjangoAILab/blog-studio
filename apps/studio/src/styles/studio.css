@@ -3709,6 +3709,91 @@ select:focus-visible,
 }
 
 .studio2-site-capabilities,
+.studio2-site-configuration {
+  margin: 1.4rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 1rem 0;
+}
+.studio2-site-configuration > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.studio2-site-configuration h3,
+.studio2-site-configuration p {
+  margin: 0;
+}
+.studio2-site-configuration header p,
+.studio2-site-configuration > p {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin-top: 0.3rem;
+}
+.studio2-site-configuration > header > span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.studio2-site-configuration textarea {
+  box-sizing: border-box;
+  min-height: 12rem;
+  width: 100%;
+  margin: 0.85rem 0;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--paper) 90%, var(--ink) 2%);
+  color: var(--ink);
+  font:
+    0.76rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  padding: 0.7rem;
+}
+.studio2-site-configuration button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  margin-right: 0.5rem;
+  padding: 0.45rem 0.75rem;
+}
+.studio2-site-configuration button.is-primary {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.studio2-site-configuration-history {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 0.9rem;
+}
+.studio2-site-configuration-history summary {
+  cursor: pointer;
+}
+.studio2-site-configuration-history ol {
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+}
+.studio2-site-configuration-history li {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.studio2-site-configuration-history button {
+  font-size: 0.7rem;
+  margin: 0;
+  padding: 0.25rem 0.55rem;
+}
 .studio2-site-history {
   margin-top: 22px;
 }

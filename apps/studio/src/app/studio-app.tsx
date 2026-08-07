@@ -816,6 +816,21 @@ export function StudioApp() {
                 onControlDevelopment={async (siteId, action) =>
                   (await api.controlDevelopment(siteId, action)).development
                 }
+                onLoadConfiguration={async (siteId) =>
+                  (await api.siteConfiguration(siteId)).configuration
+                }
+                onValidateConfiguration={async (siteId, yaml) => {
+                  await api.validateSiteConfiguration(siteId, yaml);
+                }}
+                onLoadConfigurationHistory={async (siteId) =>
+                  (await api.siteConfigurationHistory(siteId)).revisions
+                }
+                onActivateConfiguration={async (input) =>
+                  (await api.activateSiteConfiguration(input)).configuration
+                }
+                onRevertConfiguration={async (input) =>
+                  (await api.revertSiteConfiguration(input)).configuration
+                }
                 onOpenContent={() => setDestination('content')}
                 onOpenDocument={openContentDocument}
                 onPrepareChanges={prepareChanges}

@@ -1195,6 +1195,80 @@ describe('Studio workspace API', () => {
     });
   });
 
+  it('activates owner Site configuration atomically without exposing host policy', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Dynamic Config Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const initial = await app.inject({
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+    });
+    expect(initial.statusCode, initial.body).toBe(200);
+    expect(initial.json()).toMatchObject({
+      configuration: { revision: 1, source: 'legacy' },
+    });
+    const invalid = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/configuration/validate`,
+      headers,
+      payload: {
+        yaml: 'version: 1\ncredentials:\n  password: not-allowed\n',
+      },
+    });
+    expect(invalid.statusCode).toBe(422);
+    const activated = await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        yaml: `version: 1
+content:
+  fields:
+    featured:
+      label: 精选
+      type: boolean
+      default: false
+`,
+      },
+    });
+    expect(activated.statusCode, activated.body).toBe(200);
+    expect(activated.json()).toMatchObject({
+      configuration: { revision: 2, source: 'owner' },
+    });
+    const site = await app.inject({ url: `/api/sites/${siteId}`, headers });
+    expect(site.json()).toMatchObject({
+      site: {
+        capabilities: {
+          frontMatterFields: [
+            { key: 'featured', type: 'boolean', default: false },
+          ],
+        },
+      },
+    });
+    const history = await app.inject({
+      url: `/api/sites/${siteId}/configuration/history`,
+      headers,
+    });
+    expect(history.json()).toMatchObject({
+      revisions: [
+        { revision: 2, source: 'owner' },
+        { revision: 1, source: 'legacy' },
+      ],
+    });
+  });
+
   it('repairs malformed canonical front matter only with a revision-checked YAML replacement', async () => {
     const { app, workspace } = await fixture();
     const session = await login(app);

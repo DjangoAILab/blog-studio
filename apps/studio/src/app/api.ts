@@ -88,6 +88,23 @@ export interface DevelopmentDetails {
   readonly logs: readonly string[];
 }
 
+export interface SiteConfigurationDetails {
+  readonly siteId: string;
+  readonly revision: number;
+  readonly yaml: string;
+  readonly source: 'legacy' | 'owner' | 'revert';
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface SiteConfigurationRevision {
+  readonly siteId: string;
+  readonly revision: number;
+  readonly yaml: string;
+  readonly source: 'legacy' | 'owner' | 'revert';
+  readonly createdAt: string;
+}
+
 export interface DocumentSummary {
   readonly ref: {
     readonly documentId: string;
@@ -438,6 +455,59 @@ export class StudioApi {
   public development(siteId: string) {
     return this.#request<{ development: DevelopmentDetails }>(
       `/api/sites/${siteId}/development`,
+    );
+  }
+
+  public siteConfiguration(siteId: string) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${siteId}/configuration`,
+    );
+  }
+
+  public validateSiteConfiguration(siteId: string, yaml: string) {
+    return this.#request<{ valid: true }>(
+      `/api/sites/${siteId}/configuration/validate`,
+      { method: 'POST', body: JSON.stringify({ yaml }) },
+    );
+  }
+
+  public siteConfigurationHistory(siteId: string) {
+    return this.#request<{
+      revisions: readonly SiteConfigurationRevision[];
+    }>(`/api/sites/${siteId}/configuration/history`);
+  }
+
+  public activateSiteConfiguration(input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly yaml: string;
+  }) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${input.siteId}/configuration`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedRevision: input.expectedRevision,
+          yaml: input.yaml,
+        }),
+      },
+    );
+  }
+
+  public revertSiteConfiguration(input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly revision: number;
+  }) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${input.siteId}/configuration/revert`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          expectedRevision: input.expectedRevision,
+          revision: input.revision,
+        }),
+      },
     );
   }
 

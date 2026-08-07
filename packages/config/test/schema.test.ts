@@ -9,6 +9,7 @@ import {
   createBlogStudioJsonSchema,
   parseBlogStudioConfig,
   parseBlogStudioConfigYaml,
+  parseOwnerSiteConfiguration,
   type BlogStudioConfig,
 } from '../src/index.js';
 
@@ -214,6 +215,29 @@ describe('blog-studio configuration schema', () => {
           command: 'pnpm && rm -rf /',
           baseUrl: 'http://127.0.0.1:4000',
         },
+      }),
+    ).toThrow();
+  });
+
+  it('limits owner Site configuration to content metadata and local development', () => {
+    expect(
+      parseOwnerSiteConfiguration({
+        version: 1,
+        content: { fields: {} },
+      }),
+    ).toEqual({ version: 1, content: { fields: {} } });
+    expect(() =>
+      parseOwnerSiteConfiguration({
+        version: 1,
+        content: { fields: {} },
+        publish: { credentials: { password: 'not-allowed' } },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseOwnerSiteConfiguration({
+        version: 1,
+        content: { fields: {} },
+        workspace: { root: '/outside-host-policy' },
       }),
     ).toThrow();
   });

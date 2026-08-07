@@ -36,6 +36,7 @@ import {
 } from '../services/previews.js';
 import type { SiteService } from '../services/sites.js';
 import type { DevelopmentService } from '../services/development.js';
+import type { SiteConfigurationService } from '../services/site-configurations.js';
 import {
   BASELINE_ADOPTION_CONFIRMATION,
   type ReleaseService,
@@ -52,6 +53,7 @@ export interface ApiDependencies {
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
   readonly development: DevelopmentService;
+  readonly siteConfigurations: SiteConfigurationService;
   readonly allowLegacyReleaseApi: boolean;
 }
 
@@ -545,6 +547,106 @@ export function registerApiRoutes(
     },
     (request) => ({
       site: dependencies.sites.update({
+        siteId: request.params.siteId,
+        ...request.body,
+      }),
+    }),
+  );
+
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/configuration',
+    { schema: { params: siteParams } },
+    async (request) => ({
+      configuration: await dependencies.siteConfigurations.get(
+        request.params.siteId,
+      ),
+    }),
+  );
+
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/configuration/history',
+    { schema: { params: siteParams } },
+    async (request) => ({
+      revisions: await dependencies.siteConfigurations.history(
+        request.params.siteId,
+      ),
+    }),
+  );
+
+  app.post<{
+    Params: { siteId: string };
+    Body: { yaml: string };
+  }>(
+    '/api/sites/:siteId/configuration/validate',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['yaml'],
+          properties: {
+            yaml: { type: 'string', minLength: 1, maxLength: 200_000 },
+          },
+        },
+      },
+    },
+    (request) => ({
+      valid: true,
+      configuration: dependencies.siteConfigurations.validate(
+        request.body.yaml,
+      ),
+    }),
+  );
+
+  app.put<{
+    Params: { siteId: string };
+    Body: { expectedRevision: number; yaml: string };
+  }>(
+    '/api/sites/:siteId/configuration',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedRevision', 'yaml'],
+          properties: {
+            expectedRevision: { type: 'integer', minimum: 1 },
+            yaml: { type: 'string', minLength: 1, maxLength: 200_000 },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      configuration: await dependencies.siteConfigurations.activate({
+        siteId: request.params.siteId,
+        ...request.body,
+      }),
+    }),
+  );
+
+  app.post<{
+    Params: { siteId: string };
+    Body: { expectedRevision: number; revision: number };
+  }>(
+    '/api/sites/:siteId/configuration/revert',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedRevision', 'revision'],
+          properties: {
+            expectedRevision: { type: 'integer', minimum: 1 },
+            revision: { type: 'integer', minimum: 1 },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      configuration: await dependencies.siteConfigurations.revert({
         siteId: request.params.siteId,
         ...request.body,
       }),

@@ -147,7 +147,7 @@ const localDevelopmentSchema = z
       .min(1)
       .max(160)
       .regex(
-        /^(?:[A-Za-z0-9]|\/)[A-Za-z0-9._/-]*$/,
+        new RegExp('^(?:[A-Za-z0-9]|/)[A-Za-z0-9._/-]*$'),
         'Development command must be an executable path, not a shell expression',
       ),
     args: z.array(z.string().min(1).max(500)).max(40).default([]),
@@ -166,6 +166,27 @@ const localDevelopmentSchema = z
       .default([]),
     startupTimeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
     logLimit: z.number().int().min(10).max(2_000).default(500),
+  })
+  .strict();
+
+/**
+ * The owner-controlled portion of a Site configuration. Host configuration
+ * retains workspace paths, adapter selection, credentials, publish targets,
+ * and all command policy; keeping this schema narrow makes secret/path
+ * exfiltration impossible through the Studio UI.
+ */
+export const ownerSiteConfigurationSchema = z
+  .object({
+    version: z.literal(CONFIG_SCHEMA_VERSION),
+    content: z
+      .object({
+        fields: z
+          .record(frontMatterKeySchema, frontMatterFieldSchema)
+          .default({}),
+      })
+      .strict()
+      .default({ fields: {} }),
+    development: localDevelopmentSchema.optional(),
   })
   .strict();
 
@@ -265,8 +286,17 @@ export const blogStudioConfigSchema = z
   .strict();
 
 export type BlogStudioConfig = z.infer<typeof blogStudioConfigSchema>;
+export type OwnerSiteConfiguration = z.infer<
+  typeof ownerSiteConfigurationSchema
+>;
 export type AdapterConfiguration = z.infer<typeof adapterConfigurationSchema>;
 
 export function parseBlogStudioConfig(input: unknown): BlogStudioConfig {
   return blogStudioConfigSchema.parse(input);
+}
+
+export function parseOwnerSiteConfiguration(
+  input: unknown,
+): OwnerSiteConfiguration {
+  return ownerSiteConfigurationSchema.parse(input);
 }

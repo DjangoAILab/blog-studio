@@ -163,12 +163,16 @@ function storedCapabilities(
   } as unknown as SiteCapabilities;
 }
 
-function publicSite(record: SiteRecord): Site {
+function publicSite(
+  record: SiteRecord,
+  currentCapabilities?: SiteCapabilities,
+): Site {
   return {
     id: createSiteId(record.id),
     displayName: record.displayName,
     ...(record.canonicalUrl ? { canonicalUrl: record.canonicalUrl } : {}),
-    capabilities: storedCapabilities(record.capabilities),
+    capabilities:
+      currentCapabilities ?? storedCapabilities(record.capabilities),
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -195,13 +199,23 @@ export class SiteService {
   ) {}
 
   public list(): readonly Site[] {
-    return this.repository.list().map(publicSite);
+    return this.repository
+      .list()
+      .map((record) =>
+        publicSite(
+          record,
+          capabilities(this.workspaces.get(record.workspaceId)),
+        ),
+      );
   }
 
   public get(siteId: string): Site {
     const site = this.repository.get(siteId);
     if (!site) throw new SiteNotFoundError(siteId);
-    return publicSite(site);
+    return publicSite(
+      site,
+      capabilities(this.workspaces.get(site.workspaceId)),
+    );
   }
 
   public workspaceId(siteId: string): string {
@@ -313,6 +327,7 @@ export class SiteService {
         createdAt: at,
         updatedAt: at,
       }),
+      capabilities(workspace),
     );
   }
 
@@ -349,6 +364,7 @@ export class SiteService {
         capabilities: existing.capabilities,
         updatedAt,
       }),
+      capabilities(this.workspaces.get(existing.workspaceId)),
     );
   }
 }

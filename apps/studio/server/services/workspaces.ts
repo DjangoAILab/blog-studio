@@ -14,6 +14,7 @@ import {
   parseBlogStudioConfigYaml,
   type AdapterRegistry,
   type BlogStudioConfig,
+  type OwnerSiteConfiguration,
 } from '@blog-studio/config';
 import type {
   AssetProvider,
@@ -305,6 +306,8 @@ async function createAssets(
 
 export class WorkspaceService {
   readonly #workspaces = new Map<string, WorkspaceHandle>();
+  readonly #hostConfigurations = new Map<string, BlogStudioConfig>();
+  readonly #hostConfigurationPaths = new Map<string, string>();
 
   private constructor() {}
 
@@ -360,6 +363,11 @@ export class WorkspaceService {
             : {}),
         }),
       });
+      service.#hostConfigurations.set(config.workspace.id, config);
+      service.#hostConfigurationPaths.set(
+        config.workspace.id,
+        configurationPath,
+      );
     }
     return service;
   }
@@ -372,6 +380,54 @@ export class WorkspaceService {
     const workspace = this.#workspaces.get(workspaceId);
     if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
     return workspace;
+  }
+
+  public ownerConfiguration(workspaceId: string): OwnerSiteConfiguration {
+    const host = this.#hostConfigurations.get(workspaceId);
+    if (!host) throw new Error(`Unknown workspace: ${workspaceId}`);
+    return {
+      version: 1,
+      content: { fields: host.content?.fields ?? {} },
+      ...(host.development ? { development: host.development } : {}),
+    };
+  }
+
+  public applyOwnerConfiguration(input: {
+    readonly workspaceId: string;
+    readonly configurationPath: string;
+    readonly ownerConfiguration: OwnerSiteConfiguration;
+  }): void {
+    const current = this.get(input.workspaceId);
+    const host = this.#hostConfigurations.get(input.workspaceId);
+    if (!host) throw new Error(`Unknown workspace: ${input.workspaceId}`);
+    const config: BlogStudioConfig = {
+      ...host,
+      content: {
+        ...(host.content ?? { collections: {} }),
+        fields: input.ownerConfiguration.content.fields,
+      },
+      ...(input.ownerConfiguration.development
+        ? { development: input.ownerConfiguration.development }
+        : {}),
+    };
+    this.#workspaces.set(input.workspaceId, {
+      ...current,
+      configurationPath: input.configurationPath,
+      config,
+    });
+  }
+
+  public restoreHostConfiguration(workspaceId: string): void {
+    const current = this.get(workspaceId);
+    const host = this.#hostConfigurations.get(workspaceId);
+    const hostConfigurationPath = this.#hostConfigurationPaths.get(workspaceId);
+    if (!host || !hostConfigurationPath)
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    this.#workspaces.set(workspaceId, {
+      ...current,
+      configurationPath: hostConfigurationPath,
+      config: host,
+    });
   }
 
   public async createDocument(

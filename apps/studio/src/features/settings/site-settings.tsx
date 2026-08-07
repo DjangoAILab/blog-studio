@@ -3,6 +3,11 @@ import type { Site, SiteAuditEvent } from '@blog-studio/core';
 import { useState } from 'react';
 
 import { StudioApiError } from '../../app/api.js';
+import type {
+  SiteConfigurationDetails,
+  SiteConfigurationRevision,
+} from '../../app/api.js';
+import { SiteConfigurationEditor } from './site-configuration-editor.js';
 
 interface SiteSettingsProps {
   readonly site: Site;
@@ -14,6 +19,26 @@ interface SiteSettingsProps {
     readonly displayName: string;
     readonly canonicalUrl?: string;
   }) => Promise<Site>;
+  readonly onLoadConfiguration: (
+    siteId: string,
+  ) => Promise<SiteConfigurationDetails>;
+  readonly onValidateConfiguration: (
+    siteId: string,
+    yaml: string,
+  ) => Promise<void>;
+  readonly onLoadConfigurationHistory: (
+    siteId: string,
+  ) => Promise<readonly SiteConfigurationRevision[]>;
+  readonly onActivateConfiguration: (input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly yaml: string;
+  }) => Promise<SiteConfigurationDetails>;
+  readonly onRevertConfiguration: (input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly revision: number;
+  }) => Promise<SiteConfigurationDetails>;
 }
 
 interface ConflictState {
@@ -36,6 +61,11 @@ export function SiteSettings({
   onLoadEvents,
   onReload,
   onSave,
+  onLoadConfiguration,
+  onValidateConfiguration,
+  onLoadConfigurationHistory,
+  onActivateConfiguration,
+  onRevertConfiguration,
 }: SiteSettingsProps) {
   const [open, setOpen] = useState(false);
   const [displayName, setDisplayName] = useState(site.displayName);
@@ -272,6 +302,18 @@ export function SiteSettings({
                 </div>
               </dl>
             </section>
+
+            <SiteConfigurationEditor
+              siteId={site.id}
+              onLoad={onLoadConfiguration}
+              onValidate={onValidateConfiguration}
+              onLoadHistory={onLoadConfigurationHistory}
+              onActivate={onActivateConfiguration}
+              onRevert={onRevertConfiguration}
+              onActivated={async () => {
+                await onReload(site.id);
+              }}
+            />
 
             <section className="studio2-site-history">
               <h3>资料修改记录</h3>
