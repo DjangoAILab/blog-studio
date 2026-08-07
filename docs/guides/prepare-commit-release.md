@@ -23,7 +23,7 @@ overwritten.
 
 - source and working-copy revisions, front matter and bodies;
 - referenced resource records and content hashes;
-- Site configuration hash;
+- active Site configuration hash (shown in the review provenance);
 - Git branch, HEAD, managed diffs, untracked/ignored paths and staging state.
 
 Preparation does not write canonical content, run a production build, create a
@@ -72,6 +72,9 @@ the Studio application or SQLite backup.
 Never test this boundary against a production Site casually. Use a disposable
 filesystem/staging Provider first, and do not initiate a production content
 release without the owner's explicit confirmation for that specific attempt.
+Filesystem publishing rejects a target that overlaps a workspace, Studio state,
+or another configured Site; existing targets require the explicit baseline
+adoption flow and unmanaged/protected files are not deleted.
 
 ## Failure checklist
 

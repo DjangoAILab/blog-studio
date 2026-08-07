@@ -74,8 +74,7 @@ describe('SQLite draft repository', () => {
       expectedVersion: 0,
       sourceRevision: createContentHash(`sha256:${'b'.repeat(64)}`),
       frontMatter: { title: 'Edited', categories: 'single' },
-      frontMatterSource:
-        '# preserve\ntitle: "Edited"\ncategories: single\n',
+      frontMatterSource: '# preserve\ntitle: "Edited"\ncategories: single\n',
       body: 'body',
       savedAt: '2026-08-02T00:00:00.000Z',
     });

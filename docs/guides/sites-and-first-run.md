@@ -51,9 +51,10 @@ Each candidate previews:
 - advanced workspace/configuration paths behind progressive disclosure.
 
 Review the candidate and choose **注册站点**. Registration writes a new Site
-identity and audit event to SQLite; it does not rewrite Markdown, the Site
-configuration, Git or a public target. Existing v0.1 configurations need no
-mandatory `site` block—their workspace becomes a discoverable candidate.
+identity and audit event to SQLite, then creates a versioned owner Site
+configuration in Studio data. It does not rewrite Markdown, Git or a public
+target. Existing v0.1 configurations need no mandatory `site` block—their
+workspace becomes a discoverable candidate.
 
 ## Site settings
 
@@ -64,8 +65,17 @@ the latest stored values beside the owner's input and asks whether to load the
 latest version or explicitly retry the owner's values.
 
 A successful settings update never changes canonical content, configuration or
-the public Site. Generator, storage, repository and publishing policy remain
+the public Site. The same sheet includes a versioned **站点配置** editor: validate
+before activation, inspect its history, and recover an earlier version. Owner
+YAML may define content fields and the local development command only. Generator,
+storage, repository, credentials, workspace paths, and publishing policy remain
 administrator-controlled configuration.
+
+Use the lifecycle controls when taking a Site out of service. **暂停站点** stops
+its local development process and blocks content, ChangeSet, build, and release
+operations without deleting any canonical files. **解除注册** retains its Studio
+history and configuration while enforcing the same block; **恢复站点** returns it
+to service. It never removes a repository or a publish target.
 
 ## Recovery boundaries
 

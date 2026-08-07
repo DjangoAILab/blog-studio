@@ -8,7 +8,6 @@ import {
   type SiteCapabilities,
   type SiteDiscoveryCandidate,
   type FrontMatterField,
-  type FrontMatterValue,
 } from '@blog-studio/core';
 import type {
   SiteRecord,
@@ -64,9 +63,7 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
     ...(field.searchable === undefined ? {} : { searchable: field.searchable }),
     ...(field.sortable === undefined ? {} : { sortable: field.sortable }),
     ...(field.enum ? { enum: field.enum } : {}),
-    ...(field.default === undefined
-      ? {}
-      : { default: field.default as FrontMatterValue }),
+    ...(field.default === undefined ? {} : { default: field.default }),
   }));
   return {
     generator: workspace.generator.id,

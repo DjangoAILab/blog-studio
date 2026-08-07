@@ -1107,9 +1107,11 @@ describe('Studio workspace API', () => {
       headers,
     });
     expect(malformedSource.statusCode, malformedSource.body).toBe(200);
-    expect(malformedSource.json()).toMatchObject({
-      source: { frontMatterParseError: expect.any(String) },
-    });
+    expect(
+      typeof malformedSource.json<{
+        source: { frontMatterParseError?: unknown };
+      }>().source.frontMatterParseError,
+    ).toBe('string');
 
     await unlink(join(workspace, 'source', '_posts', 'hello.md'));
     const unavailableList = await app.inject({

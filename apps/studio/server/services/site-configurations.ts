@@ -1,11 +1,4 @@
-import {
-  chmod,
-  mkdir,
-  readFile,
-  rename,
-  unlink,
-  writeFile,
-} from 'node:fs/promises';
+import { chmod, mkdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
@@ -14,9 +7,9 @@ import {
 } from '@blog-studio/config';
 import {
   SiteConfigurationRevisionConflictError,
-  SqliteSiteConfigurationRepository,
   type ActiveSiteConfiguration,
   type SiteConfigurationRevision,
+  type SqliteSiteConfigurationRepository,
 } from '@blog-studio/persistence';
 import { stringify } from 'yaml';
 
