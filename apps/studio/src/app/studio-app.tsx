@@ -1002,8 +1002,47 @@ export function StudioApp() {
               placeholder="无标题文章"
             />
             <FrontMatterEditor
-              disabled={Boolean(document?.stale)}
+              disabled={Boolean(
+                document?.stale || document?.source.frontMatterParseError,
+              )}
+              fields={site?.capabilities.frontMatterFields ?? []}
               frontMatter={frontMatter}
+              {...((document?.draft?.frontMatterSource ??
+              document?.source.frontMatterSource)
+                ? {
+                    frontMatterSource:
+                      document.draft?.frontMatterSource ??
+                      document.source.frontMatterSource,
+                  }
+                : {})}
+              {...(document?.source.frontMatterParseError
+                ? {
+                    frontMatterParseError:
+                      document.source.frontMatterParseError,
+                  }
+                : {})}
+              {...(site && selected && document?.source.frontMatterParseError
+                ? {
+                    onRepair: async (frontMatterSource: string) => {
+                      const repaired = await api.repairFrontMatter({
+                        siteId: site.id,
+                        documentId: selected.documentId,
+                        collection: selected.collectionId,
+                        sourceRevision: document.source.revision,
+                        frontMatterSource,
+                      });
+                      setDocument({ source: repaired.source, draft: null });
+                      setFrontMatter(repaired.source.frontMatter);
+                      setTitle(
+                        typeof repaired.source.frontMatter.title === 'string'
+                          ? repaired.source.frontMatter.title
+                          : selected.title,
+                      );
+                      setVersion(0);
+                      setSaveState('clean');
+                    },
+                  }
+                : {})}
               onChange={(nextFrontMatter) => {
                 setFrontMatter(nextFrontMatter);
                 setSaveState('changed');

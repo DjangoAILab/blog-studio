@@ -646,12 +646,19 @@ export function registerApiRoutes(
           createdAt: now.toISOString(),
         },
       );
+      const workspace = dependencies.workspaces.get(workspaceId);
+      const configuredDefaults = Object.fromEntries(
+        Object.entries(workspace.config.content?.fields ?? {}).flatMap(
+          ([key, field]) =>
+            field.default === undefined ? [] : [[key, field.default]],
+        ),
+      ) as Record<string, FrontMatterValue>;
       const draft = dependencies.drafts.save({
         workspaceId: created.source.ref.workspaceId,
         documentId: created.source.ref.documentId,
         expectedVersion: 0,
         sourceRevision: created.source.revision,
-        frontMatter: created.source.frontMatter,
+        frontMatter: { ...created.source.frontMatter, ...configuredDefaults },
         body: created.source.body,
         savedAt: now.toISOString(),
       });
@@ -713,6 +720,44 @@ export function registerApiRoutes(
     },
     async (request) => ({
       draft: await dependencies.content.save({
+        siteId: request.params.siteId,
+        collectionId: request.query.collection,
+        documentId: request.params.documentId,
+        ...request.body,
+      }),
+    }),
+  );
+
+  app.post<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { sourceRevision: string; frontMatterSource: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId/repair-front-matter',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['sourceRevision', 'frontMatterSource'],
+          properties: {
+            sourceRevision: {
+              type: 'string',
+              pattern: '^sha256:[a-f0-9]{64}$',
+            },
+            frontMatterSource: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 200_000,
+            },
+          },
+        },
+      },
+    },
+    async (request) => ({
+      source: await dependencies.content.repairFrontMatter({
         siteId: request.params.siteId,
         collectionId: request.query.collection,
         documentId: request.params.documentId,

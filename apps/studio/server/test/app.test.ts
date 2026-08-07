@@ -45,6 +45,7 @@ interface FixtureOptions {
   readonly seedInterruptedPreviewSandbox?: boolean;
   readonly logger?: StudioServerOptions['logger'];
   readonly legacyReleaseApi?: boolean;
+  readonly contentFields?: string;
 }
 
 async function fixture(options: FixtureOptions = {}): Promise<{
@@ -125,6 +126,15 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
   const usesCosBaseline = options.existingCosObjects !== undefined;
+  const contentModel = options.contentFields
+    ? `content:
+  collections:
+    posts:
+      path: source/_posts
+      draftPath: source/_drafts
+  fields:
+${options.contentFields}`
+    : '';
   const configuration = options.invalidConfiguration
     ? 'version: invalid\n'
     : `version: 1
@@ -156,6 +166,7 @@ publish:
     }
 verification:
   baseUrl: https://blog.example.test
+${contentModel}
 `;
   await writeFile(configPath, configuration);
   const configurationPaths = [configPath];
@@ -1081,18 +1092,24 @@ describe('Studio workspace API', () => {
         }>;
       };
     }>().content;
-    expect(partialContent.issues).toMatchObject([
-      { collectionId: 'posts', kind: 'collection-unavailable' },
-    ]);
+    expect(partialContent.issues).toEqual([]);
     expect(partialContent.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: 'Native idea', state: 'draft' }),
         expect.objectContaining({
           documentId: published.documentId,
-          sourceState: 'unavailable',
+          sourceState: 'published',
         }),
       ]),
     );
+    const malformedSource = await app.inject({
+      url: `/api/sites/${siteId}/content/${published.documentId}?collection=posts`,
+      headers,
+    });
+    expect(malformedSource.statusCode, malformedSource.body).toBe(200);
+    expect(malformedSource.json()).toMatchObject({
+      source: { frontMatterParseError: expect.any(String) },
+    });
 
     await unlink(join(workspace, 'source', '_posts', 'hello.md'));
     const unavailableList = await app.inject({
@@ -1130,6 +1147,107 @@ describe('Studio workspace API', () => {
       payload: { expectedVersion: 1 },
     });
     expect(discarded.statusCode, discarded.body).toBe(200);
+  });
+
+  it('exposes configured front-matter fields and applies their defaults to a native draft', async () => {
+    const { app } = await fixture({
+      contentFields: `    featured:
+      label: 精选
+      type: boolean
+      default: false
+    mood:
+      label: 心情
+      type: string
+      enum: [calm, focused]
+      default: calm`,
+    });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Metadata Site' },
+    });
+    expect(registered.statusCode, registered.body).toBe(201);
+    const site = registered.json<{
+      site: { id: string; capabilities: { frontMatterFields: unknown } };
+    }>().site;
+    expect(site.capabilities.frontMatterFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'featured', default: false }),
+        expect.objectContaining({ key: 'mood', default: 'calm' }),
+      ]),
+    );
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/content`,
+      headers,
+      payload: { title: 'Schema draft', slug: 'schema-draft' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({
+      draft: { frontMatter: { featured: false, mood: 'calm' } },
+    });
+  });
+
+  it('repairs malformed canonical front matter only with a revision-checked YAML replacement', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Repair Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: [\n---\nBody\n',
+    );
+    const malformed = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = malformed.json<{
+      source: { revision: string; frontMatterParseError?: string };
+    }>().source;
+    expect(source.frontMatterParseError).toEqual(expect.any(String));
+    const repaired = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/repair-front-matter?collection=posts`,
+      headers,
+      payload: {
+        sourceRevision: source.revision,
+        frontMatterSource: 'title: Repaired\ncategories: Engineering',
+      },
+    });
+    expect(repaired.statusCode, repaired.body).toBe(200);
+    expect(repaired.json()).toMatchObject({
+      source: { frontMatter: { title: 'Repaired', categories: 'Engineering' } },
+    });
+    await expect(
+      readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).resolves.toBe(
+      '---\ntitle: Repaired\ncategories: Engineering\n---\nBody\n',
+    );
   });
 
   it('scans, lists, reads, and autosaves with optimistic conflicts', async () => {

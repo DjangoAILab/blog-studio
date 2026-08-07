@@ -84,6 +84,21 @@ publish:
   adapter: filesystem
   options:
     directory: $fixture/published
+content:
+  collections:
+    posts:
+      path: source/_posts
+      draftPath: source/_drafts
+  fields:
+    featured:
+      label: 精选
+      type: boolean
+      default: false
+    mood:
+      label: 心情
+      type: string
+      enum: [calm, focused]
+      default: calm
 verification:
   baseUrl: http://example.invalid/
 YAML

@@ -161,6 +161,31 @@ describe('HexoGeneratorAdapter', () => {
     );
   });
 
+  it('keeps malformed front matter readable but refuses a structured overwrite', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    const [summary] = await adapter.listDocuments(root, 'posts');
+    if (!summary) throw new Error('fixture post missing');
+    const path = join(root, summary.ref.path);
+    await writeFile(path, '---\ntitle: [\n---\nBody\n');
+
+    const malformed = await adapter.readDocument(root, summary.ref);
+    expect(malformed.frontMatter).toEqual({});
+    expect(malformed.frontMatterSource).toBe('title: [');
+    expect(malformed.frontMatterParseError).toContain('line 1');
+    await expect(
+      adapter.writeDocument(root, {
+        ref: summary.ref,
+        expectedRevision: malformed.revision,
+        frontMatter: { title: 'Would overwrite source' },
+        body: malformed.body,
+      }),
+    ).rejects.toThrow('requires source repair');
+    await expect(readFile(path, 'utf8')).resolves.toBe(
+      '---\ntitle: [\n---\nBody\n',
+    );
+  });
+
   it('creates portable native drafts exclusively and promotes by revision', async () => {
     const root = await copySite();
     const adapter = createAdapter();

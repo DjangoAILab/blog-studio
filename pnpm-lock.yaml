@@ -122,6 +122,9 @@ importers:
       tencentcloud-sdk-nodejs-teo:
         specifier: 4.1.281
         version: 4.1.281
+      yaml:
+        specifier: 2.9.0
+        version: 2.9.0
     devDependencies:
       '@axe-core/playwright':
         specifier: 4.12.1

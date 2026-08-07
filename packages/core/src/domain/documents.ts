@@ -37,6 +37,11 @@ export interface WriteDocumentInput {
   readonly ref: DocumentRef;
   readonly expectedRevision: ContentHash;
   readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+  /**
+   * A validated replacement YAML mapping for source-repair operations. Normal
+   * authoring deliberately omits it so key-level edits retain CST formatting.
+   */
+  readonly frontMatterSource?: string;
   readonly body: string;
   /** Stable source timestamp for generators whose output depends on file metadata. */
   readonly modifiedAt?: string;

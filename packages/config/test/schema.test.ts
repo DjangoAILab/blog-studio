@@ -101,6 +101,74 @@ describe('blog-studio configuration schema', () => {
     ).toThrow();
   });
 
+  it('accepts typed custom front-matter fields and rejects ambiguous definitions', () => {
+    const configured = parseBlogStudioConfig({
+      ...validConfig,
+      content: {
+        collections: validConfig.content.collections,
+        fields: {
+          mood: {
+            label: '心情',
+            type: 'string',
+            enum: ['calm', 'focused'],
+            default: 'calm',
+            searchable: true,
+            sortable: true,
+          },
+          featured: {
+            label: '精选',
+            type: 'boolean',
+            default: false,
+          },
+          theme_options: {
+            label: '主题选项',
+            type: 'object',
+            default: { hero: true },
+          },
+        },
+      },
+    });
+    expect(configured.content?.fields?.mood).toMatchObject({
+      type: 'string',
+      default: 'calm',
+    });
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        content: {
+          collections: validConfig.content.collections,
+          fields: { title: { label: '重复标题', type: 'string' } },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        content: {
+          collections: validConfig.content.collections,
+          fields: {
+            score: { label: '评分', type: 'number', default: '5' },
+          },
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        content: {
+          collections: validConfig.content.collections,
+          fields: {
+            metadata: {
+              label: '元数据',
+              type: 'object',
+              sortable: true,
+            },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+
   it('accepts a bounded generic resource policy', () => {
     const result = parseBlogStudioConfig({
       ...validConfig,

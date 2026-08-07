@@ -51,6 +51,90 @@ const collectionSchema = z
   })
   .strict();
 
+const reservedFrontMatterKeys = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'title',
+  'date',
+  'updated',
+  'tags',
+  'categories',
+]);
+
+const frontMatterKeySchema = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(
+    /^[A-Za-z][A-Za-z0-9_-]*$/,
+    'Front-matter field keys must start with a letter and use letters, numbers, hyphens, or underscores',
+  )
+  .refine(
+    (value) => !reservedFrontMatterKeys.has(value),
+    'Standard front-matter fields are managed by Studio and cannot be redefined',
+  );
+
+const frontMatterFieldSchema = z
+  .object({
+    label: z.string().trim().min(1).max(80),
+    type: z.enum(['string', 'number', 'boolean', 'list', 'object']),
+    description: z.string().trim().min(1).max(280).optional(),
+    required: z.boolean().optional(),
+    searchable: z.boolean().optional(),
+    sortable: z.boolean().optional(),
+    enum: z.array(z.string().trim().min(1).max(120)).min(1).max(100).optional(),
+    default: jsonValueSchema.optional(),
+  })
+  .strict()
+  .superRefine((field, context) => {
+    if (field.enum && field.type !== 'string' && field.type !== 'list') {
+      context.addIssue({
+        code: 'custom',
+        path: ['enum'],
+        message: 'enum is only supported by string and list fields',
+      });
+    }
+    if (
+      field.sortable &&
+      !['string', 'number', 'boolean'].includes(field.type)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['sortable'],
+        message: 'Only string, number, and boolean fields are sortable',
+      });
+    }
+    if (field.default === undefined) return;
+    const valid =
+      (field.type === 'string' && typeof field.default === 'string') ||
+      (field.type === 'number' && typeof field.default === 'number') ||
+      (field.type === 'boolean' && typeof field.default === 'boolean') ||
+      (field.type === 'list' && Array.isArray(field.default)) ||
+      (field.type === 'object' &&
+        field.default !== null &&
+        typeof field.default === 'object' &&
+        !Array.isArray(field.default));
+    if (!valid) {
+      context.addIssue({
+        code: 'custom',
+        path: ['default'],
+        message: `default must match the ${field.type} field type`,
+      });
+    }
+    if (
+      field.enum &&
+      typeof field.default === 'string' &&
+      !field.enum.includes(field.default)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['default'],
+        message: 'default must be one of enum values',
+      });
+    }
+  });
+
 const httpUrlSchema = z.url().refine((value) => {
   const protocol = new URL(value).protocol;
   return protocol === 'http:' || protocol === 'https:';
@@ -135,6 +219,9 @@ export const blogStudioConfigSchema = z
     content: z
       .object({
         collections: z.record(z.string().min(1), collectionSchema),
+        fields: z
+          .record(frontMatterKeySchema, frontMatterFieldSchema)
+          .optional(),
       })
       .strict()
       .optional(),

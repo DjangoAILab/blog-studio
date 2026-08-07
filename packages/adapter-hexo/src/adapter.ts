@@ -30,6 +30,7 @@ import { createManifest, hashContent, walkFiles } from './files.js';
 import {
   parseMarkdown,
   patchMarkdown,
+  replaceFrontMatterSource,
   serializeMarkdown,
 } from './front-matter.js';
 
@@ -313,6 +314,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       ...(parsed.frontMatterSource
         ? { frontMatterSource: parsed.frontMatterSource }
         : {}),
+      ...(parsed.frontMatterParseError
+        ? { frontMatterParseError: parsed.frontMatterParseError }
+        : {}),
       body: parsed.body,
       raw,
       format: 'markdown',
@@ -331,13 +335,15 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
     if (hashContent(current) !== input.expectedRevision) {
       throw new Error('Document revision conflict');
     }
-    const next = patchMarkdown(current, input.frontMatter, input.body);
-    const parsedCurrent = parseMarkdown(current);
-    if (
-      parsedCurrent.body === input.body &&
-      JSON.stringify(parsedCurrent.frontMatter) ===
-        JSON.stringify(input.frontMatter)
-    )
+    const next =
+      input.frontMatterSource === undefined
+        ? patchMarkdown(current, input.frontMatter, input.body)
+        : replaceFrontMatterSource(
+            input.frontMatterSource,
+            input.frontMatter,
+            input.body,
+          );
+    if (current === next)
       return { revision: input.expectedRevision, changed: false };
 
     await writeFile(path, next, 'utf8');

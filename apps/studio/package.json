@@ -40,7 +40,8 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tencentcloud-sdk-nodejs-cdn": "4.1.250",
-    "tencentcloud-sdk-nodejs-teo": "4.1.281"
+    "tencentcloud-sdk-nodejs-teo": "4.1.281",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

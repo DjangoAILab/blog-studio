@@ -475,7 +475,8 @@ body::before {
   font-weight: 700;
   letter-spacing: 0.08em;
 }
-.studio3-front-matter input {
+.studio3-front-matter input,
+.studio3-front-matter select {
   width: 100%;
   min-height: 2.35rem;
   border: 1px solid var(--line);
@@ -486,9 +487,59 @@ body::before {
   letter-spacing: normal;
   padding: 0.45rem 0.6rem;
 }
-.studio3-front-matter input:focus-visible {
+.studio3-front-matter input:focus-visible,
+.studio3-front-matter select:focus-visible,
+.studio3-front-matter textarea:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
   outline-offset: 2px;
+}
+.studio3-front-matter-checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.studio3-front-matter-checkbox input {
+  width: 1rem;
+  min-height: 1rem;
+  accent-color: var(--accent);
+}
+.studio3-front-matter-advanced {
+  grid-column: 1 / -1;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 0.76rem;
+  padding-top: 0.7rem;
+}
+.studio3-front-matter-advanced summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+.studio3-front-matter-advanced textarea {
+  box-sizing: border-box;
+  display: block;
+  min-height: 10rem;
+  resize: vertical;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--paper) 88%, var(--ink) 2%);
+  color: var(--ink);
+  font:
+    0.8rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  margin: 0.6rem 0;
+  padding: 0.6rem;
+}
+.studio3-front-matter-advanced button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.4rem 0.7rem;
 }
 .mode-switch {
   display: inline-flex;

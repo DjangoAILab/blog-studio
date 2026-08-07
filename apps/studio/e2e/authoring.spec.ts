@@ -131,6 +131,8 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   const articleProperties = page.getByLabel('文章属性');
   await articleProperties.getByLabel('标签').fill('Browser, Draft');
   await articleProperties.getByLabel('分类').fill('Engineering');
+  await articleProperties.getByLabel('精选').check();
+  await articleProperties.getByLabel('心情').selectOption('focused');
   await expect(page.getByText('刚刚保存')).toBeVisible({ timeout: 5_000 });
   await page.reload();
   await page.getByRole('button', { name: '内容', exact: true }).click();
@@ -139,6 +141,10 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   );
   await expect(page.getByLabel('文章属性').getByLabel('分类')).toHaveValue(
     'Engineering',
+  );
+  await expect(page.getByLabel('文章属性').getByLabel('精选')).toBeChecked();
+  await expect(page.getByLabel('文章属性').getByLabel('心情')).toHaveValue(
+    'focused',
   );
 
   await page.getByRole('button', { name: 'Markdown 源码' }).click();
@@ -275,9 +281,16 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   expect(incompatibleSource.status()).toBe(204);
   await page.reload();
   await page.getByRole('button', { name: '内容', exact: true }).click();
-  await expect(page.getByText('部分内容暂时不可用')).toBeVisible();
-  await expect(page.getByText('源文件缺失或不兼容')).toBeVisible();
-  await expect(page.getByRole('button', { name: '删除副本' })).toBeVisible();
+  await library.getByRole('button', { name: /Existing article/ }).click();
+  await page.getByText('高级 YAML').click();
+  await expect(
+    page.getByText(
+      '原始 YAML 无法解析。修复后会直接替换这一段属性，正文不会改变。',
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '修复原始 YAML' }),
+  ).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
   const compatibleAgain = await request.post(
     'http://127.0.0.1:14314/restore-source',
@@ -417,8 +430,6 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   expect(brokenSource.status()).toBe(204);
   await mobileLibrary.getByLabel('搜索内容').fill('still-no-match');
   await mobileLibrary.getByLabel('搜索内容').press('Enter');
-  await expect(page.getByText('部分内容暂时不可用')).toBeVisible();
-  await expect(page.getByText(/posts：/)).toBeVisible();
   await expect(page.getByText('没有匹配内容')).toBeVisible();
   await expectNoSeriousAccessibilityViolations(page);
 

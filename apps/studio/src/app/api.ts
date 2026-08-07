@@ -465,6 +465,25 @@ export class StudioApi {
     );
   }
 
+  public repairFrontMatter(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly sourceRevision: string;
+    readonly frontMatterSource: string;
+  }) {
+    return this.#request<{ source: DocumentPayload['source'] }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/repair-front-matter?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceRevision: input.sourceRevision,
+          frontMatterSource: input.frontMatterSource,
+        }),
+      },
+    );
+  }
+
   public discardWorkingCopy(input: {
     readonly siteId: string;
     readonly documentId: string;

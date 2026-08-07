@@ -7,6 +7,8 @@ import {
   type SiteAuditEvent,
   type SiteCapabilities,
   type SiteDiscoveryCandidate,
+  type FrontMatterField,
+  type FrontMatterValue,
 } from '@blog-studio/core';
 import type {
   SiteRecord,
@@ -37,6 +39,21 @@ export class SiteValidationError extends Error {
 }
 
 function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
+  const frontMatterFields: readonly FrontMatterField[] = Object.entries(
+    workspace.config.content?.fields ?? {},
+  ).map(([key, field]) => ({
+    key,
+    label: field.label,
+    type: field.type,
+    ...(field.description ? { description: field.description } : {}),
+    ...(field.required === undefined ? {} : { required: field.required }),
+    ...(field.searchable === undefined ? {} : { searchable: field.searchable }),
+    ...(field.sortable === undefined ? {} : { sortable: field.sortable }),
+    ...(field.enum ? { enum: field.enum } : {}),
+    ...(field.default === undefined
+      ? {}
+      : { default: field.default as FrontMatterValue }),
+  }));
   return {
     generator: workspace.generator.id,
     generatorPreview: workspace.generator.capabilities.preview,
@@ -62,6 +79,7 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
       workspace.config.resources?.maxInputBytes ?? 12 * 1024 * 1024,
     publishProvider: workspace.config.publish.adapter,
     publishConfigured: workspace.config.publish.adapter !== 'none',
+    frontMatterFields,
   };
 }
 
@@ -104,9 +122,27 @@ function storedCapabilities(
   ) {
     throw new Error('Stored Site capabilities are invalid');
   }
+  const frontMatterFields =
+    value.frontMatterFields === undefined ? [] : value.frontMatterFields;
+  if (
+    !Array.isArray(frontMatterFields) ||
+    frontMatterFields.some(
+      (field) =>
+        field === null ||
+        typeof field !== 'object' ||
+        typeof (field as { key?: unknown }).key !== 'string' ||
+        typeof (field as { label?: unknown }).label !== 'string' ||
+        !['string', 'number', 'boolean', 'list', 'object'].includes(
+          (field as { type?: unknown }).type as string,
+        ),
+    )
+  ) {
+    throw new Error('Stored Site capabilities are invalid');
+  }
   return {
     ...value,
     inlinePreviewResourceMediaTypes,
+    frontMatterFields,
   } as unknown as SiteCapabilities;
 }
 

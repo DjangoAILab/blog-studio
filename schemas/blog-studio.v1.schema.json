@@ -308,6 +308,50 @@
             "required": ["path"],
             "additionalProperties": false
           }
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "list", "object"]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 280
+              },
+              "required": { "type": "boolean" },
+              "searchable": { "type": "boolean" },
+              "sortable": { "type": "boolean" },
+              "enum": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "default": { "$ref": "#/$defs/__schema0" }
+            },
+            "required": ["label", "type"],
+            "additionalProperties": false
+          }
         }
       },
       "required": ["collections"],

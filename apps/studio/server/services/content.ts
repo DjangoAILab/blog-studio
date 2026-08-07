@@ -15,6 +15,7 @@ import {
   type DraftSnapshot,
   type SqliteDraftRepository,
 } from '@blog-studio/persistence';
+import { parseDocument } from 'yaml';
 
 import type { SiteService } from './sites.js';
 import type { WorkspaceService } from './workspaces.js';
@@ -30,6 +31,30 @@ export interface ContentQuery {
   readonly direction?: ContentSortDirection;
   readonly page?: number;
   readonly pageSize?: number;
+}
+
+function supportedFrontMatter(
+  value: unknown,
+): value is Readonly<Record<string, FrontMatterValue>> {
+  if (value === null || Array.isArray(value) || typeof value !== 'object')
+    return false;
+  const supportedValue = (
+    candidate: unknown,
+  ): candidate is FrontMatterValue => {
+    if (
+      candidate === null ||
+      typeof candidate === 'string' ||
+      typeof candidate === 'number' ||
+      typeof candidate === 'boolean'
+    )
+      return true;
+    if (Array.isArray(candidate)) return candidate.every(supportedValue);
+    return (
+      typeof candidate === 'object' &&
+      Object.values(candidate as Record<string, unknown>).every(supportedValue)
+    );
+  };
+  return Object.values(value).every(supportedValue);
 }
 
 export class SourceRevisionConflictError extends BlogStudioError {
@@ -397,6 +422,11 @@ export class ContentService {
         current.source.revision,
       );
     }
+    if (current.source.frontMatterParseError) {
+      throw new Error(
+        'This document has invalid front matter and must be repaired in source mode before it can be saved.',
+      );
+    }
     return this.drafts.save({
       workspaceId: current.source.ref.workspaceId,
       documentId: current.source.ref.documentId,
@@ -409,6 +439,55 @@ export class ContentService {
       body: input.body,
       savedAt: input.savedAt ?? new Date().toISOString(),
     });
+  }
+
+  public async repairFrontMatter(input: {
+    readonly siteId: string;
+    readonly collectionId: string;
+    readonly documentId: string;
+    readonly sourceRevision: string;
+    readonly frontMatterSource: string;
+  }) {
+    const current = await this.read(
+      input.siteId,
+      input.collectionId,
+      input.documentId,
+    );
+    if (current.source.revision !== input.sourceRevision) {
+      throw new SourceRevisionConflictError(
+        input.sourceRevision,
+        current.source.revision,
+      );
+    }
+    if (!current.source.frontMatterParseError)
+      throw new Error('Front matter is already valid and does not need repair');
+    if (current.draft)
+      throw new Error(
+        'Discard or resolve the existing working copy before repairing canonical front matter.',
+      );
+    const document = parseDocument(input.frontMatterSource);
+    if (document.errors.length > 0)
+      throw new Error(
+        `Front matter YAML is invalid: ${document.errors[0]?.message ?? 'unknown YAML error'}`,
+      );
+    const frontMatter = document.toJSON() as unknown;
+    if (!supportedFrontMatter(frontMatter))
+      throw new Error(
+        'Front matter YAML must be a mapping of supported values',
+      );
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    await workspace.generator.writeDocument(workspace.config.workspace.root, {
+      ref: current.source.ref,
+      expectedRevision: current.source.revision,
+      frontMatter,
+      frontMatterSource: input.frontMatterSource,
+      body: current.source.body,
+    });
+    return await workspace.generator.readDocument(
+      workspace.config.workspace.root,
+      current.source.ref,
+    );
   }
 
   public async discard(input: {

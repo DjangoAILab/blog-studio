@@ -1,5 +1,21 @@
 import type { AdapterDiagnostic } from '../adapters/common.js';
+import type { FrontMatterValue } from './documents.js';
 import type { ContentHash, SiteId, WorkspaceId } from './identifiers.js';
+
+export type FrontMatterFieldType =
+  'string' | 'number' | 'boolean' | 'list' | 'object';
+
+export interface FrontMatterField {
+  readonly key: string;
+  readonly label: string;
+  readonly type: FrontMatterFieldType;
+  readonly description?: string;
+  readonly required?: boolean;
+  readonly searchable?: boolean;
+  readonly sortable?: boolean;
+  readonly enum?: readonly string[];
+  readonly default?: FrontMatterValue;
+}
 
 export interface SiteCapabilities {
   readonly generator: string;
@@ -12,6 +28,7 @@ export interface SiteCapabilities {
   readonly maxResourceBytes: number;
   readonly publishProvider: string;
   readonly publishConfigured: boolean;
+  readonly frontMatterFields: readonly FrontMatterField[];
 }
 
 export interface Site {
