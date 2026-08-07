@@ -195,31 +195,37 @@ describe('blog-studio configuration schema', () => {
     ).toThrow();
   });
 
-  it('accepts a shell-free local development command and rejects unsafe forms', () => {
+  it('accepts host-defined development profiles and rejects unsafe commands', () => {
     expect(
       parseBlogStudioConfig({
         ...validConfig,
-        development: {
-          command: 'pnpm',
-          args: ['exec', 'hexo', 'server'],
-          baseUrl: 'http://127.0.0.1:4000',
-          readinessPath: '/',
-          environmentAllowlist: ['NODE_ENV'],
+        developmentProfiles: {
+          'hexo-preview': {
+            label: 'Hexo 本地预览',
+            command: 'pnpm',
+            args: ['exec', 'hexo', 'server'],
+            baseUrl: 'http://127.0.0.1:4000',
+            readinessPath: '/',
+            environmentAllowlist: ['NODE_ENV'],
+          },
         },
-      }).development,
+      }).developmentProfiles?.['hexo-preview'],
     ).toMatchObject({ command: 'pnpm', startupTimeoutMs: 30_000 });
     expect(() =>
       parseBlogStudioConfig({
         ...validConfig,
-        development: {
-          command: 'pnpm && rm -rf /',
-          baseUrl: 'http://127.0.0.1:4000',
+        developmentProfiles: {
+          unsafe: {
+            label: 'Unsafe',
+            command: 'pnpm && rm -rf /',
+            baseUrl: 'http://127.0.0.1:4000',
+          },
         },
       }),
     ).toThrow();
   });
 
-  it('limits owner Site configuration to content metadata and local development', () => {
+  it('limits owner Site configuration to content metadata and a profile selection', () => {
     expect(
       parseOwnerSiteConfiguration({
         version: 1,
@@ -233,6 +239,23 @@ describe('blog-studio configuration schema', () => {
         publish: { credentials: { password: 'not-allowed' } },
       }),
     ).toThrow();
+    expect(() =>
+      parseOwnerSiteConfiguration({
+        version: 1,
+        content: { fields: {} },
+        development: {
+          command: 'pnpm',
+          baseUrl: 'http://127.0.0.1:4000',
+        },
+      }),
+    ).toThrow();
+    expect(
+      parseOwnerSiteConfiguration({
+        version: 1,
+        content: { fields: {} },
+        development: { profile: 'hexo-preview' },
+      }).development,
+    ).toEqual({ profile: 'hexo-preview' });
     expect(() =>
       parseOwnerSiteConfiguration({
         version: 1,

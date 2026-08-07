@@ -67,9 +67,43 @@ latest version or explicitly retry the owner's values.
 A successful settings update never changes canonical content, configuration or
 the public Site. The same sheet includes a versioned **站点配置** editor: validate
 before activation, inspect its history, and recover an earlier version. Owner
-YAML may define content fields and the local development command only. Generator,
-storage, repository, credentials, workspace paths, and publishing policy remain
+YAML may define content fields and select one local-development profile only.
+Generator, storage, repository, credentials, workspace paths, executable
+commands, environment allowlists, base URLs, and publishing policy remain
 administrator-controlled configuration.
+
+### Local-development profiles
+
+The administrator declares safe, named profiles in the mounted host
+configuration. A profile is a complete command policy; Studio persists only the
+chosen profile ID in the owner configuration. This keeps an owner YAML edit
+from becoming command execution or an environment/URL override.
+
+```yaml
+# Mounted host configuration: /config/blog-studio.yml
+developmentProfiles:
+  hexo-preview:
+    label: Hexo 本地预览
+    command: /workspaces/blog/node_modules/.bin/hexo
+    args: [server]
+    baseUrl: http://127.0.0.1:4000/
+    readinessPath: /
+    startupTimeoutMs: 30000
+    environmentAllowlist: []
+```
+
+In **站点资料 → 站点配置**, choose `Hexo 本地预览`, then validate and activate.
+The resulting owner YAML intentionally contains only:
+
+```yaml
+development:
+  profile: hexo-preview
+```
+
+The overview’s **配置本地调试** button opens this exact control when profiles
+are available but none is active. Start, restart, and open the isolated preview
+from the overview after activation. The public URL remains the Site’s canonical
+URL; the local preview is proxied through Studio and is never published.
 
 Use the lifecycle controls when taking a Site out of service. **暂停站点** stops
 its local development process and blocks content, ChangeSet, build, and release

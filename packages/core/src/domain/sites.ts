@@ -17,6 +17,12 @@ export interface FrontMatterField {
   readonly default?: FrontMatterValue;
 }
 
+export interface DevelopmentProfileOption {
+  readonly id: string;
+  readonly label: string;
+  readonly baseUrl: string;
+}
+
 export interface SiteCapabilities {
   readonly generator: string;
   readonly generatorPreview: boolean;
@@ -31,6 +37,8 @@ export interface SiteCapabilities {
   readonly frontMatterFields: readonly FrontMatterField[];
   readonly developmentConfigured: boolean;
   readonly developmentBaseUrl?: string;
+  readonly developmentProfileId?: string;
+  readonly developmentProfiles: readonly DevelopmentProfileOption[];
 }
 
 export interface Site {

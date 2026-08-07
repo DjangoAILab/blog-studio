@@ -249,57 +249,59 @@ export function ContentLibrary({
         ) : null}
       </form>
 
-      <div className="studio3-sort-controls" aria-label="内容排序">
-        <label>
-          排序
-          <select
-            aria-label="排序属性"
-            value={sort}
-            onChange={(event) =>
-              onSortChange(event.target.value as ContentSortField, direction)
+      <section className="studio3-query-toolbar" aria-label="整理内容">
+        <div className="studio3-sort-controls" aria-label="内容排序">
+          <label>
+            排序
+            <select
+              aria-label="排序属性"
+              value={sort}
+              onChange={(event) =>
+                onSortChange(event.target.value as ContentSortField, direction)
+              }
+            >
+              {(Object.keys(sortLabels) as ContentSortField[]).map((field) => (
+                <option key={field} value={field}>
+                  {sortLabels[field]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            aria-label={direction === 'desc' ? '当前为降序' : '当前为升序'}
+            type="button"
+            onClick={() =>
+              onSortChange(sort, direction === 'desc' ? 'asc' : 'desc')
             }
           >
-            {(Object.keys(sortLabels) as ContentSortField[]).map((field) => (
-              <option key={field} value={field}>
-                {sortLabels[field]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          aria-label={direction === 'desc' ? '当前为降序' : '当前为升序'}
-          type="button"
-          onClick={() =>
-            onSortChange(sort, direction === 'desc' ? 'asc' : 'desc')
-          }
-        >
-          {direction === 'desc' ? '↓ 降序' : '↑ 升序'}
-        </button>
-      </div>
-
-      <div className="studio3-filter-actions">
-        <button
-          aria-controls="content-advanced-filters"
-          aria-expanded={filtersOpen}
-          type="button"
-          onClick={() => setFiltersOpen((value) => !value)}
-        >
-          筛选内容
-          {activeAdvancedFilters ? <b>{activeAdvancedFilters}</b> : null}
-        </button>
-        {activeAdvancedFilters ? (
-          <button
-            type="button"
-            onClick={() => {
-              const empty = { collection: '', tag: '', from: '', to: '' };
-              setDraftFilters(empty);
-              onAdvancedFiltersChange(empty);
-            }}
-          >
-            清除
+            {direction === 'desc' ? '↓ 降序' : '↑ 升序'}
           </button>
-        ) : null}
-      </div>
+        </div>
+
+        <div className="studio3-filter-actions">
+          <button
+            aria-controls="content-advanced-filters"
+            aria-expanded={filtersOpen}
+            type="button"
+            onClick={() => setFiltersOpen((value) => !value)}
+          >
+            筛选内容
+            {activeAdvancedFilters ? <b>{activeAdvancedFilters}</b> : null}
+          </button>
+          {activeAdvancedFilters ? (
+            <button
+              type="button"
+              onClick={() => {
+                const empty = { collection: '', tag: '', from: '', to: '' };
+                setDraftFilters(empty);
+                onAdvancedFiltersChange(empty);
+              }}
+            >
+              清除
+            </button>
+          ) : null}
+        </div>
+      </section>
 
       <AnimatePresence initial={false}>
         {filtersOpen ? (

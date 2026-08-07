@@ -14,6 +14,7 @@ import {
   parseBlogStudioConfigYaml,
   type AdapterRegistry,
   type BlogStudioConfig,
+  type LocalDevelopmentConfiguration,
   type OwnerSiteConfiguration,
 } from '@blog-studio/config';
 import type {
@@ -30,6 +31,7 @@ import { FilesystemAssetProvider } from '@blog-studio/storage-filesystem';
 export interface WorkspaceHandle {
   readonly configurationPath: string;
   readonly config: BlogStudioConfig;
+  readonly developmentProfileId?: string;
   readonly generator: GeneratorAdapter;
   readonly repository: RepositoryAdapter;
   readonly assetProvider: AssetProvider;
@@ -385,10 +387,17 @@ export class WorkspaceService {
   public ownerConfiguration(workspaceId: string): OwnerSiteConfiguration {
     const host = this.#hostConfigurations.get(workspaceId);
     if (!host) throw new Error(`Unknown workspace: ${workspaceId}`);
+    const selectedProfile = this.get(workspaceId).developmentProfileId;
     return {
       version: 1,
       content: { fields: host.content?.fields ?? {} },
-      ...(host.development ? { development: host.development } : {}),
+      ...(selectedProfile
+        ? {
+            development: {
+              profile: selectedProfile,
+            },
+          }
+        : {}),
     };
   }
 
@@ -400,20 +409,43 @@ export class WorkspaceService {
     const current = this.get(input.workspaceId);
     const host = this.#hostConfigurations.get(input.workspaceId);
     if (!host) throw new Error(`Unknown workspace: ${input.workspaceId}`);
+    const profileId = input.ownerConfiguration.development?.profile;
+    const profile = profileId
+      ? host.developmentProfiles?.[profileId]
+      : undefined;
+    if (profileId && !profile)
+      throw new Error(`Unknown host development profile: ${profileId}`);
+    const development: LocalDevelopmentConfiguration | undefined = profile
+      ? {
+          command: profile.command,
+          args: profile.args,
+          baseUrl: profile.baseUrl,
+          ...(profile.readinessPath
+            ? { readinessPath: profile.readinessPath }
+            : {}),
+          environmentAllowlist: profile.environmentAllowlist,
+          startupTimeoutMs: profile.startupTimeoutMs,
+          logLimit: profile.logLimit,
+        }
+      : host.development;
     const config: BlogStudioConfig = {
       ...host,
       content: {
         ...(host.content ?? { collections: {} }),
         fields: input.ownerConfiguration.content.fields,
       },
-      ...(input.ownerConfiguration.development
-        ? { development: input.ownerConfiguration.development }
-        : {}),
+      ...(development ? { development } : {}),
     };
+    const {
+      developmentProfileId: _ignoredProfileId,
+      ...workspaceWithoutProfile
+    } = current;
+    void _ignoredProfileId;
     this.#workspaces.set(input.workspaceId, {
-      ...current,
+      ...workspaceWithoutProfile,
       configurationPath: input.configurationPath,
       config,
+      ...(profileId ? { developmentProfileId: profileId } : {}),
     });
   }
 
@@ -423,8 +455,13 @@ export class WorkspaceService {
     const hostConfigurationPath = this.#hostConfigurationPaths.get(workspaceId);
     if (!host || !hostConfigurationPath)
       throw new Error(`Unknown workspace: ${workspaceId}`);
+    const {
+      developmentProfileId: _ignoredProfileId,
+      ...workspaceWithoutProfile
+    } = current;
+    void _ignoredProfileId;
     this.#workspaces.set(workspaceId, {
-      ...current,
+      ...workspaceWithoutProfile,
       configurationPath: hostConfigurationPath,
       config: host,
     });

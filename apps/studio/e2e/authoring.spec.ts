@@ -64,6 +64,14 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(
     page.getByRole('heading', { name: 'Browser Test Blog' }),
   ).toBeVisible();
+  await page.getByRole('button', { name: '配置本地调试' }).click();
+  await expect(page.getByRole('heading', { name: '站点资料' })).toBeVisible();
+  await page.getByLabel('本地调试档').selectOption('hexo-preview');
+  await page.getByRole('button', { name: '验证配置' }).click();
+  await expect(page.getByText('配置有效，尚未激活。')).toBeVisible();
+  await page.getByRole('button', { name: '激活配置' }).click();
+  await expect(page.getByText(/已激活配置版本/)).toBeVisible();
+  await page.getByLabel('关闭').click();
   await expectNoSeriousAccessibilityViolations(page);
 
   await page.getByRole('button', { name: '内容', exact: true }).click();
@@ -151,9 +159,18 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page
     .getByLabel('Markdown 源码')
     .fill(
-      '# 浏览器可靠草稿\n\n刷新后仍然存在。\n\n![Preview fixture](/static/reading.jpeg)\n',
+      '# 浏览器可靠草稿\n\n<!-- 隐藏的图片提示词\n\n![Hidden fixture](/static/reading.jpeg) -->\n\n刷新后仍然存在。\n\n![Preview fixture](/static/reading.jpeg)\n',
     );
   await expect(page.getByText('刚刚保存')).toBeVisible({ timeout: 5_000 });
+  await page.getByRole('button', { name: '所见即所得' }).click();
+  await expect(
+    page.getByLabel('已隐藏的 Markdown 源块；请切换到 Markdown 源码编辑。'),
+  ).toBeVisible();
+  await expect(page.getByText('隐藏的图片提示词')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Markdown 源码' }).click();
+  await expect(page.getByLabel('Markdown 源码')).toHaveValue(
+    /<!-- 隐藏的图片提示词[\s\S]*!\[Hidden fixture\][\s\S]*-->/,
+  );
 
   await page.route(
     '**/api/sites/*/content/*/resources?*',

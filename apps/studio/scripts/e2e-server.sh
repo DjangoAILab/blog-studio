@@ -101,6 +101,12 @@ content:
       default: calm
 verification:
   baseUrl: http://example.invalid/
+developmentProfiles:
+  hexo-preview:
+    label: Hexo 本地预览
+    command: $fixture/site/node_modules/.bin/hexo
+    args: []
+    baseUrl: http://127.0.0.1:4000/
 YAML
 
 git -C "$fixture/site" init --initial-branch=main >/dev/null

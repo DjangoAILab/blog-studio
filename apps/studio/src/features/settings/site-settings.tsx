@@ -10,6 +10,8 @@ import type {
 import { SiteConfigurationEditor } from './site-configuration-editor.js';
 
 interface SiteSettingsProps {
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
   readonly site: Site;
   readonly onLoadEvents: (siteId: string) => Promise<readonly SiteAuditEvent[]>;
   readonly onReload: (siteId: string) => Promise<Site>;
@@ -62,6 +64,8 @@ function formatEventTime(value: string): string {
 }
 
 export function SiteSettings({
+  open: controlledOpen,
+  onOpenChange,
   site,
   onLoadEvents,
   onReload,
@@ -73,7 +77,8 @@ export function SiteSettings({
   onActivateConfiguration,
   onRevertConfiguration,
 }: SiteSettingsProps) {
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
   const [displayName, setDisplayName] = useState(site.displayName);
   const [canonicalUrl, setCanonicalUrl] = useState(site.canonicalUrl ?? '');
   const [revision, setRevision] = useState(site.updatedAt);
@@ -88,7 +93,8 @@ export function SiteSettings({
   const [conflict, setConflict] = useState<ConflictState>();
 
   function changeOpen(nextOpen: boolean): void {
-    setOpen(nextOpen);
+    if (controlledOpen === undefined) setUncontrolledOpen(nextOpen);
+    onOpenChange?.(nextOpen);
     if (!nextOpen) return;
     setDisplayName(site.displayName);
     setCanonicalUrl(site.canonicalUrl ?? '');
@@ -378,7 +384,14 @@ export function SiteSettings({
             </section>
 
             <SiteConfigurationEditor
+              developmentProfiles={site.capabilities.developmentProfiles}
               siteId={site.id}
+              {...(site.capabilities.developmentProfileId
+                ? {
+                    developmentProfileId:
+                      site.capabilities.developmentProfileId,
+                  }
+                : {})}
               onLoad={onLoadConfiguration}
               onValidate={onValidateConfiguration}
               onLoadHistory={onLoadConfigurationHistory}

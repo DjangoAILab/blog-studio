@@ -1,14 +1,47 @@
 import { Crepe } from '@milkdown/crepe';
+import { htmlSchema } from '@milkdown/kit/preset/commonmark';
+import { $view } from '@milkdown/kit/utils';
 import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { useEffect, useRef } from 'react';
+
+import {
+  isProtectedHtmlSource,
+  protectedSourceLabel,
+} from './protected-source.js';
 
 interface VisualEditorProps {
   readonly markdown: string;
   readonly onChange: (markdown: string) => void;
   readonly resolveImageSource: (source: string) => string;
 }
+
+const protectedHtmlSourceView = $view(htmlSchema.node, () => (node) => {
+  const source = String(node.attrs.value ?? '');
+  const dom = document.createElement('span');
+  dom.dataset.type = 'html';
+  dom.dataset.value = source;
+
+  if (isProtectedHtmlSource(source)) {
+    dom.className = 'studio3-protected-source';
+    dom.contentEditable = 'false';
+    dom.setAttribute(
+      'aria-label',
+      '已隐藏的 Markdown 源块；请切换到 Markdown 源码编辑。',
+    );
+    dom.title = '此 HTML 注释会原样保留；请在 Markdown 源码中编辑。';
+    dom.textContent = protectedSourceLabel(source);
+  } else {
+    dom.className = 'studio3-raw-html';
+    dom.textContent = source;
+  }
+
+  return {
+    dom,
+    ignoreMutation: () => true,
+  };
+});
 
 function EditorSurface({
   markdown,
@@ -19,7 +52,9 @@ function EditorSurface({
   const surface = useRef<HTMLDivElement>(null);
   changeHandler.current = onChange;
   useEditor((root) => {
-    const crepe = new Crepe({ root, defaultValue: markdown });
+    const crepe = new Crepe({ root, defaultValue: markdown }).addFeature(
+      (editor) => editor.use(protectedHtmlSourceView),
+    );
     let initialized = false;
     crepe.on((listener) => {
       listener.markdownUpdated((_context, next, previous) => {
