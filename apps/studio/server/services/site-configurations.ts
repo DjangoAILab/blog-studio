@@ -66,13 +66,13 @@ export class SiteConfigurationService {
     if (active) {
       const ownerConfiguration = parseOwnerSiteConfigurationYaml(active.yaml);
       this.workspaces.applyOwnerConfiguration({
-        workspaceId: this.sites.workspaceId(siteId),
+        workspaceId: this.sites.managementWorkspaceId(siteId),
         configurationPath: this.path(siteId),
         ownerConfiguration,
       });
       return active;
     }
-    const workspaceId = this.sites.workspaceId(siteId);
+    const workspaceId = this.sites.managementWorkspaceId(siteId);
     const yaml = canonicalYaml(this.workspaces.ownerConfiguration(workspaceId));
     await this.#atomicWrite(this.path(siteId), yaml);
     const created = this.repository.activate({
@@ -132,7 +132,7 @@ export class SiteConfigurationService {
       throw error;
     }
     this.workspaces.applyOwnerConfiguration({
-      workspaceId: this.sites.workspaceId(input.siteId),
+      workspaceId: this.sites.managementWorkspaceId(input.siteId),
       configurationPath: path,
       ownerConfiguration,
     });

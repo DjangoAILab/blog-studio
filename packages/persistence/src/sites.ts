@@ -9,11 +9,14 @@ export interface SiteRecord {
   readonly canonicalUrl?: string;
   readonly configurationPath: string;
   readonly capabilities: Readonly<Record<string, unknown>>;
+  readonly lifecycleState: 'active' | 'paused' | 'unregistered';
   readonly createdAt: string;
   readonly updatedAt: string;
 }
 
-export type CreateSiteInput = SiteRecord;
+export type CreateSiteInput = Omit<SiteRecord, 'lifecycleState'> & {
+  readonly lifecycleState?: SiteRecord['lifecycleState'];
+};
 
 interface SiteRow {
   readonly id: string;
@@ -22,6 +25,7 @@ interface SiteRow {
   readonly canonical_url: string | null;
   readonly configuration_path: string;
   readonly capabilities_json: string;
+  readonly lifecycle_state: SiteRecord['lifecycleState'];
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -79,6 +83,7 @@ function siteFromRow(row: SiteRow): SiteRecord {
     ...(row.canonical_url === null ? {} : { canonicalUrl: row.canonical_url }),
     configurationPath: row.configuration_path,
     capabilities: parseCapabilities(row.capabilities_json),
+    lifecycleState: row.lifecycle_state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -141,6 +146,7 @@ function uniqueField(error: Error): SiteUniqueField | undefined {
 
 const selectSite = `SELECT id, workspace_id, display_name, canonical_url,
                             configuration_path, capabilities_json,
+                            lifecycle_state,
                             created_at, updated_at
                        FROM sites`;
 
@@ -154,8 +160,9 @@ export class SqliteSiteRepository {
         .prepare(
           `INSERT INTO sites (
              id, workspace_id, display_name, canonical_url,
-             configuration_path, capabilities_json, created_at, updated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+             configuration_path, capabilities_json, lifecycle_state,
+             created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           input.id,
@@ -164,6 +171,7 @@ export class SqliteSiteRepository {
           input.canonicalUrl ?? null,
           input.configurationPath,
           JSON.stringify(input.capabilities),
+          input.lifecycleState ?? 'active',
           input.createdAt,
           input.updatedAt,
         );
@@ -275,6 +283,28 @@ export class SqliteSiteRepository {
       }
       throw error;
     }
+    return this.get(input.id)!;
+  }
+
+  public updateLifecycle(input: {
+    readonly id: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: SiteRecord['lifecycleState'];
+    readonly updatedAt: string;
+  }): SiteRecord {
+    const result = this.database
+      .prepare(
+        `UPDATE sites
+            SET lifecycle_state = ?, updated_at = ?
+          WHERE id = ? AND updated_at = ?`,
+      )
+      .run(
+        input.lifecycleState,
+        input.updatedAt,
+        input.id,
+        input.expectedUpdatedAt,
+      );
+    if (result.changes !== 1) throw new SiteRevisionConflictError(input.id);
     return this.get(input.id)!;
   }
 }

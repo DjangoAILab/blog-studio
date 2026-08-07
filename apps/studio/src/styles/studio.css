@@ -3709,11 +3709,37 @@ select:focus-visible,
 }
 
 .studio2-site-capabilities,
+.studio2-site-lifecycle,
 .studio2-site-configuration {
   margin: 1.4rem 0;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   padding: 1rem 0;
+}
+.studio2-site-lifecycle h3,
+.studio2-site-lifecycle p {
+  margin: 0;
+}
+.studio2-site-lifecycle p {
+  color: var(--muted);
+  font-size: 0.75rem;
+  margin-top: 0.3rem;
+}
+.studio2-site-lifecycle > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.studio2-site-lifecycle button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  padding: 0.4rem 0.65rem;
+}
+.studio2-site-lifecycle button.is-primary {
+  background: var(--ink);
+  color: var(--paper);
 }
 .studio2-site-configuration > header {
   display: flex;

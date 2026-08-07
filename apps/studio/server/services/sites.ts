@@ -38,6 +38,20 @@ export class SiteValidationError extends Error {
   }
 }
 
+export class SiteInactiveError extends Error {
+  public constructor(
+    readonly siteId: string,
+    readonly lifecycleState: 'paused' | 'unregistered',
+  ) {
+    super(
+      lifecycleState === 'paused'
+        ? `Site ${siteId} is paused`
+        : `Site ${siteId} is unregistered`,
+    );
+    this.name = 'SiteInactiveError';
+  }
+}
+
 function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
   const frontMatterFields: readonly FrontMatterField[] = Object.entries(
     workspace.config.content?.fields ?? {},
@@ -173,6 +187,7 @@ function publicSite(
     ...(record.canonicalUrl ? { canonicalUrl: record.canonicalUrl } : {}),
     capabilities:
       currentCapabilities ?? storedCapabilities(record.capabilities),
+    lifecycleState: record.lifecycleState,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -219,6 +234,14 @@ export class SiteService {
   }
 
   public workspaceId(siteId: string): string {
+    const site = this.repository.get(siteId);
+    if (!site) throw new SiteNotFoundError(siteId);
+    if (site.lifecycleState !== 'active')
+      throw new SiteInactiveError(siteId, site.lifecycleState);
+    return site.workspaceId;
+  }
+
+  public managementWorkspaceId(siteId: string): string {
     const site = this.repository.get(siteId);
     if (!site) throw new SiteNotFoundError(siteId);
     return site.workspaceId;
@@ -324,6 +347,7 @@ export class SiteService {
         ...(nextUrl ? { canonicalUrl: nextUrl } : {}),
         configurationPath: workspace.configurationPath,
         capabilities: capabilityRecord(capabilities(workspace)),
+        lifecycleState: 'active',
         createdAt: at,
         updatedAt: at,
       }),
@@ -362,6 +386,29 @@ export class SiteService {
         displayName,
         ...(nextUrl ? { canonicalUrl: nextUrl } : {}),
         capabilities: existing.capabilities,
+        updatedAt,
+      }),
+      capabilities(this.workspaces.get(existing.workspaceId)),
+    );
+  }
+
+  public updateLifecycle(input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: 'active' | 'paused' | 'unregistered';
+    readonly at?: string;
+  }): Site {
+    const existing = this.repository.get(input.siteId);
+    if (!existing) throw new SiteNotFoundError(input.siteId);
+    const requestedAt = input.at ?? new Date().toISOString();
+    const updatedAt = new Date(
+      Math.max(Date.parse(requestedAt), Date.parse(existing.updatedAt) + 1),
+    ).toISOString();
+    return publicSite(
+      this.repository.updateLifecycle({
+        id: input.siteId,
+        expectedUpdatedAt: input.expectedUpdatedAt,
+        lifecycleState: input.lifecycleState,
         updatedAt,
       }),
       capabilities(this.workspaces.get(existing.workspaceId)),

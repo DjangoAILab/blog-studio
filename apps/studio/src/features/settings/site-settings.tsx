@@ -19,6 +19,11 @@ interface SiteSettingsProps {
     readonly displayName: string;
     readonly canonicalUrl?: string;
   }) => Promise<Site>;
+  readonly onUpdateLifecycle: (input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: 'active' | 'paused' | 'unregistered';
+  }) => Promise<Site>;
   readonly onLoadConfiguration: (
     siteId: string,
   ) => Promise<SiteConfigurationDetails>;
@@ -61,6 +66,7 @@ export function SiteSettings({
   onLoadEvents,
   onReload,
   onSave,
+  onUpdateLifecycle,
   onLoadConfiguration,
   onValidateConfiguration,
   onLoadConfigurationHistory,
@@ -150,6 +156,33 @@ export function SiteSettings({
       }
       setState('error');
       setMessage(reason instanceof Error ? reason.message : '站点资料保存失败');
+    }
+  }
+
+  async function updateLifecycle(
+    lifecycleState: 'active' | 'paused' | 'unregistered',
+  ): Promise<void> {
+    setState('saving');
+    setMessage('');
+    try {
+      const updated = await onUpdateLifecycle({
+        siteId: site.id,
+        expectedUpdatedAt: revision,
+        lifecycleState,
+      });
+      setRevision(updated.updatedAt);
+      setState('saved');
+      setMessage(
+        lifecycleState === 'active'
+          ? '站点已恢复运行。'
+          : lifecycleState === 'paused'
+            ? '站点已暂停；内容、构建与发布均已锁定。'
+            : '站点已解除注册；保留配置与历史以便日后恢复。',
+      );
+      await onReload(site.id);
+    } catch (reason: unknown) {
+      setState('error');
+      setMessage(reason instanceof Error ? reason.message : '站点状态更新失败');
     }
   }
 
@@ -301,6 +334,47 @@ export function SiteSettings({
                   <dd>{site.capabilities.publishProvider}</dd>
                 </div>
               </dl>
+            </section>
+
+            <section className="studio2-site-lifecycle">
+              <h3>站点生命周期</h3>
+              <p>
+                当前：
+                {site.lifecycleState === 'active'
+                  ? '运行中'
+                  : site.lifecycleState === 'paused'
+                    ? '已暂停'
+                    : '已解除注册'}
+              </p>
+              <div>
+                {site.lifecycleState !== 'active' ? (
+                  <button
+                    className="is-primary"
+                    disabled={state === 'saving'}
+                    type="button"
+                    onClick={() => void updateLifecycle('active')}
+                  >
+                    恢复站点
+                  </button>
+                ) : (
+                  <button
+                    disabled={state === 'saving'}
+                    type="button"
+                    onClick={() => void updateLifecycle('paused')}
+                  >
+                    暂停站点
+                  </button>
+                )}
+                {site.lifecycleState !== 'unregistered' ? (
+                  <button
+                    disabled={state === 'saving'}
+                    type="button"
+                    onClick={() => void updateLifecycle('unregistered')}
+                  >
+                    解除注册
+                  </button>
+                ) : null}
+              </div>
             </section>
 
             <SiteConfigurationEditor

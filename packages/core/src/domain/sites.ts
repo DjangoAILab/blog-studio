@@ -38,6 +38,7 @@ export interface Site {
   readonly displayName: string;
   readonly canonicalUrl?: string;
   readonly capabilities: SiteCapabilities;
+  readonly lifecycleState: 'active' | 'paused' | 'unregistered';
   readonly createdAt: string;
   readonly updatedAt: string;
 }

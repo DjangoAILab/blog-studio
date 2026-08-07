@@ -553,6 +553,46 @@ export function registerApiRoutes(
     }),
   );
 
+  app.post<{
+    Params: { siteId: string };
+    Body: {
+      expectedUpdatedAt: string;
+      lifecycleState: 'active' | 'paused' | 'unregistered';
+    };
+  }>(
+    '/api/sites/:siteId/lifecycle',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedUpdatedAt', 'lifecycleState'],
+          properties: {
+            expectedUpdatedAt: { type: 'string', format: 'date-time' },
+            lifecycleState: {
+              type: 'string',
+              enum: ['active', 'paused', 'unregistered'],
+            },
+          },
+        },
+      },
+    },
+    async (request) => {
+      const workspaceId = dependencies.sites.managementWorkspaceId(
+        request.params.siteId,
+      );
+      if (request.body.lifecycleState !== 'active')
+        await dependencies.development.stop(workspaceId);
+      return {
+        site: dependencies.sites.updateLifecycle({
+          siteId: request.params.siteId,
+          ...request.body,
+        }),
+      };
+    },
+  );
+
   app.get<{ Params: { siteId: string } }>(
     '/api/sites/:siteId/configuration',
     { schema: { params: siteParams } },

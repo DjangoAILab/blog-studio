@@ -854,6 +854,16 @@ export function StudioApp() {
                   );
                   return updated;
                 }}
+                onUpdateLifecycle={async (input) => {
+                  const updated = (await api.updateSiteLifecycle(input)).site;
+                  setSite(updated);
+                  setSites((items) =>
+                    items.map((item) =>
+                      item.id === updated.id ? updated : item,
+                    ),
+                  );
+                  return updated;
+                }}
               />
             ) : destination === 'settings' ? (
               <SystemSettings

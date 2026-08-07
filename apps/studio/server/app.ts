@@ -51,7 +51,11 @@ import {
   WorkspaceService,
   type AssetProviderFactory,
 } from './services/workspaces.js';
-import { SiteService, SiteValidationError } from './services/sites.js';
+import {
+  SiteInactiveError,
+  SiteService,
+  SiteValidationError,
+} from './services/sites.js';
 import { DevelopmentService } from './services/development.js';
 import { SiteConfigurationService } from './services/site-configurations.js';
 
@@ -578,36 +582,43 @@ export async function createStudioServer(
                     ? 422
                     : error instanceof SiteConfigurationRevisionConflictError
                       ? 409
-                      : error instanceof RevisionConflictError
+                      : error instanceof SiteInactiveError
                         ? 409
-                        : error instanceof BlogStudioError &&
-                            error.code === 'DOCUMENT_CONFLICT'
+                        : error instanceof RevisionConflictError
                           ? 409
-                          : error instanceof ActiveReleaseConflictError
+                          : error instanceof BlogStudioError &&
+                              error.code === 'DOCUMENT_CONFLICT'
                             ? 409
-                            : error instanceof BaselineAdoptionRequiredError ||
-                                error instanceof BaselineAlreadyAdoptedError ||
-                                message ===
-                                  'Existing deployment baseline must be adopted before publishing' ||
-                                message === 'A verified baseline already exists'
+                            : error instanceof ActiveReleaseConflictError
                               ? 409
-                              : error instanceof AssetPolicyError
-                                ? error.code === 'ASSET_TOO_LARGE'
-                                  ? 413
-                                  : 422
-                                : message === 'Draft source revision conflict'
-                                  ? 409
-                                  : message.startsWith(
-                                        'Invalid Hexo document date:',
-                                      )
-                                    ? 422
-                                    : validationError
-                                      ? 400
-                                      : declaredStatus !== undefined
-                                        ? declaredStatus
-                                        : /^(Unknown|Unsupported)/.test(message)
-                                          ? 404
-                                          : 500;
+                              : error instanceof
+                                    BaselineAdoptionRequiredError ||
+                                  error instanceof
+                                    BaselineAlreadyAdoptedError ||
+                                  message ===
+                                    'Existing deployment baseline must be adopted before publishing' ||
+                                  message ===
+                                    'A verified baseline already exists'
+                                ? 409
+                                : error instanceof AssetPolicyError
+                                  ? error.code === 'ASSET_TOO_LARGE'
+                                    ? 413
+                                    : 422
+                                  : message === 'Draft source revision conflict'
+                                    ? 409
+                                    : message.startsWith(
+                                          'Invalid Hexo document date:',
+                                        )
+                                      ? 422
+                                      : validationError
+                                        ? 400
+                                        : declaredStatus !== undefined
+                                          ? declaredStatus
+                                          : /^(Unknown|Unsupported)/.test(
+                                                message,
+                                              )
+                                            ? 404
+                                            : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
@@ -616,14 +627,19 @@ export async function createStudioServer(
       status,
       ...(error instanceof SiteRevisionConflictError
         ? { code: 'SITE_REVISION_CONFLICT' }
-        : error instanceof SiteConfigurationRevisionConflictError
-          ? { code: 'SITE_CONFIGURATION_REVISION_CONFLICT' }
-          : error instanceof SiteAlreadyExistsError
-            ? {
-                code: 'SITE_ALREADY_EXISTS',
-                details: { field: error.field },
-              }
-            : {}),
+        : error instanceof SiteInactiveError
+          ? {
+              code: 'SITE_INACTIVE',
+              details: { lifecycleState: error.lifecycleState },
+            }
+          : error instanceof SiteConfigurationRevisionConflictError
+            ? { code: 'SITE_CONFIGURATION_REVISION_CONFLICT' }
+            : error instanceof SiteAlreadyExistsError
+              ? {
+                  code: 'SITE_ALREADY_EXISTS',
+                  details: { field: error.field },
+                }
+              : {}),
       ...(error instanceof RevisionConflictError ||
       error instanceof BlogStudioError
         ? { code: error.code, details: error.details }

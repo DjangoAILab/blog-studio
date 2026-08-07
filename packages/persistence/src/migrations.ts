@@ -236,6 +236,14 @@ const migrations: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 8,
+    name: 'site-lifecycle-state',
+    sql: `
+      ALTER TABLE sites ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'active'
+        CHECK (lifecycle_state IN ('active', 'paused', 'unregistered'));
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

@@ -494,6 +494,17 @@ export class StudioApi {
     );
   }
 
+  public updateSiteLifecycle(input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: 'active' | 'paused' | 'unregistered';
+  }) {
+    return this.#request<{ site: Site }>(
+      `/api/sites/${input.siteId}/lifecycle`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+  }
+
   public revertSiteConfiguration(input: {
     readonly siteId: string;
     readonly expectedRevision: number;

@@ -1269,6 +1269,61 @@ content:
     });
   });
 
+  it('pauses, resumes, and retains a registered Site without allowing work while paused', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Lifecycle Site' },
+    });
+    const site = registered.json<{
+      site: { id: string; updatedAt: string; lifecycleState: string };
+    }>().site;
+    expect(site.lifecycleState).toBe('active');
+
+    const paused = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/lifecycle`,
+      headers,
+      payload: { expectedUpdatedAt: site.updatedAt, lifecycleState: 'paused' },
+    });
+    expect(paused.statusCode, paused.body).toBe(200);
+    const pausedSite = paused.json<{
+      site: { updatedAt: string; lifecycleState: string };
+    }>().site;
+    expect(pausedSite.lifecycleState).toBe('paused');
+    const content = await app.inject({
+      url: `/api/sites/${site.id}/content`,
+      headers,
+    });
+    expect(content.statusCode).toBe(409);
+    expect(content.json()).toMatchObject({
+      code: 'SITE_INACTIVE',
+      details: { lifecycleState: 'paused' },
+    });
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/lifecycle`,
+      headers,
+      payload: {
+        expectedUpdatedAt: pausedSite.updatedAt,
+        lifecycleState: 'active',
+      },
+    });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(resumed.json()).toMatchObject({
+      site: { lifecycleState: 'active' },
+    });
+  });
+
   it('repairs malformed canonical front matter only with a revision-checked YAML replacement', async () => {
     const { app, workspace } = await fixture();
     const session = await login(app);

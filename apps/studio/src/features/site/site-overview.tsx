@@ -29,6 +29,11 @@ interface SiteOverviewProps {
     readonly displayName: string;
     readonly canonicalUrl?: string;
   }) => Promise<Site>;
+  readonly onUpdateLifecycle: (input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: 'active' | 'paused' | 'unregistered';
+  }) => Promise<Site>;
   readonly onLoadDevelopment: (siteId: string) => Promise<DevelopmentDetails>;
   readonly onControlDevelopment: (
     siteId: string,
@@ -103,6 +108,7 @@ export function SiteOverview({
   onLoadSiteEvents,
   onReloadSite,
   onUpdateSite,
+  onUpdateLifecycle,
   onLoadDevelopment,
   onControlDevelopment,
   onLoadConfiguration,
@@ -143,6 +149,7 @@ export function SiteOverview({
             onLoadEvents={onLoadSiteEvents}
             onReload={onReloadSite}
             onSave={onUpdateSite}
+            onUpdateLifecycle={onUpdateLifecycle}
             onLoadConfiguration={onLoadConfiguration}
             onValidateConfiguration={onValidateConfiguration}
             onLoadConfigurationHistory={onLoadConfigurationHistory}
