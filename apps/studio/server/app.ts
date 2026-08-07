@@ -221,6 +221,15 @@ export async function createStudioServer(
       stateDirectory:
         options.releaseStateDirectory ??
         join(dirname(options.databasePath), 'release-state'),
+      protectedDirectories: [
+        options.databasePath,
+        options.siteConfigurationDirectory ??
+          join(dirname(options.databasePath), 'sites'),
+        options.previewStateDirectory ??
+          join(dirname(options.databasePath), 'preview-state'),
+        options.developmentStateDirectory ??
+          join(dirname(options.databasePath), 'development-state'),
+      ],
       ...(options.releaseVerifierFactory
         ? { verifierFactory: options.releaseVerifierFactory }
         : {}),

@@ -1767,6 +1767,34 @@ content:
         encoding: 'utf8',
       }),
     ).toBe(gitBefore);
+    const activatedConfiguration = await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        yaml: `version: 1
+content:
+  fields:
+    featured:
+      label: Featured
+      type: boolean
+`,
+      },
+    });
+    expect(activatedConfiguration.statusCode, activatedConfiguration.body).toBe(
+      200,
+    );
+    const invalidated = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${firstChangeSet.id}/apply`,
+      headers,
+    });
+    expect(invalidated.statusCode).toBe(409);
+    expect(invalidated.json()).toMatchObject({
+      code: 'CHANGE_SET_CONFLICT',
+      title: 'Site configuration changed after ChangeSet preparation',
+    });
     await mkdir(join(workspace, 'source', 'media'), { recursive: true });
     await writeFile(
       join(workspace, 'source', 'media', 'guide.pdf'),
@@ -1801,7 +1829,7 @@ content:
     }>().changeSets;
     expect(
       changeSetHistory.find((item) => item.id === firstChangeSet.id)?.status,
-    ).toBe('superseded');
+    ).toBe('invalidated');
     expect(
       changeSetHistory.find((item) => item.id === changedSet.id)?.status,
     ).toBe('prepared');

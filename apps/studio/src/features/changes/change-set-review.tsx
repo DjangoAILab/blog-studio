@@ -105,6 +105,10 @@ function ReviewDetails({ review }: { readonly review: ChangeSetReview }) {
           <dd>{shortHash(review.payload.baseRevision)}</dd>
         </div>
         <div>
+          <dt>站点配置</dt>
+          <dd>{shortHash(review.payload.configurationRevision)}</dd>
+        </div>
+        <div>
           <dt>冻结时间</dt>
           <dd>{formatTime(review.payload.preparedAt)}</dd>
         </div>

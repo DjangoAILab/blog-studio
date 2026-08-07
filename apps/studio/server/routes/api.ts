@@ -499,8 +499,9 @@ export function registerApiRoutes(
         },
       },
     },
-    (request, reply) => {
+    async (request, reply) => {
       const site = dependencies.sites.register(request.body);
+      await dependencies.siteConfigurations.get(site.id);
       return reply.code(201).send({ site });
     },
   );

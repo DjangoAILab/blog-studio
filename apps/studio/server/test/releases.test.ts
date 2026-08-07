@@ -79,12 +79,13 @@ function serviceWith(recoveryOutcome: 'not-started' | 'rolled-back') {
       workspace: { id: 'test-blog', root: '/unused' },
       publish: {
         adapter: 'filesystem',
-        options: { targetId: 'staging', directory: '/unused' },
+        options: { targetId: 'staging', directory: '/target' },
       },
     },
   } as unknown as WorkspaceHandle;
   const workspaces = {
     get: () => handle,
+    list: () => [handle],
   } as unknown as WorkspaceService;
   const releases = new ReleaseService({
     workspaces,

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, relative, resolve, sep, join } from 'node:path';
 
 import {
   createReleaseId,
@@ -61,6 +61,8 @@ export interface ReleaseServiceOptions {
   readonly sites: SiteService;
   readonly changeSets: SqliteChangeSetRepository;
   readonly stateDirectory: string;
+  /** Paths Studio owns which must never be used as a filesystem publish target. */
+  readonly protectedDirectories?: readonly string[];
   readonly verifierFactory?: (workspace: WorkspaceHandle) => ReleaseVerifier;
   readonly publisherFactories?: Readonly<
     Record<
@@ -112,6 +114,16 @@ function releaseTarget(workspace: WorkspaceHandle): string {
     workspace.config.publish.options,
     'targetId',
     workspace.config.publish.adapter === 'none' ? 'disabled' : 'production',
+  );
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  const relation = relative(left, right);
+  return (
+    relation === '' ||
+    (!relation.startsWith(`..${sep}`) &&
+      relation !== '..' &&
+      !isAbsolute(relation))
   );
 }
 
@@ -188,6 +200,7 @@ export class ReleaseService {
   #publisher(workspace: WorkspaceHandle): Publisher {
     const adapter = workspace.config.publish.adapter;
     if (adapter === 'none') throw new Error('Publishing is disabled');
+    if (adapter === 'filesystem') this.#assertSafeFilesystemTarget(workspace);
     const factory = this.options.publisherFactories?.[adapter];
     if (factory) return factory(workspace, this.options.stateDirectory);
     if (adapter === 'filesystem') {
@@ -208,6 +221,32 @@ export class ReleaseService {
       });
     }
     throw new Error(`Unsupported publish adapter: ${adapter}`);
+  }
+
+  #assertSafeFilesystemTarget(workspace: WorkspaceHandle): void {
+    const target = resolve(
+      stringOption(workspace.config.publish.options, 'directory'),
+    );
+    const protectedDirectories = [
+      workspace.config.workspace.root,
+      this.options.stateDirectory,
+      ...(this.options.protectedDirectories ?? []),
+      ...this.options.workspaces
+        .list()
+        .filter(
+          (candidate) =>
+            candidate.config.workspace.id !== workspace.config.workspace.id,
+        )
+        .map((candidate) => candidate.config.workspace.root),
+    ].map((directory) => resolve(directory));
+    const unsafe = protectedDirectories.find(
+      (directory) =>
+        pathsOverlap(target, directory) || pathsOverlap(directory, target),
+    );
+    if (unsafe)
+      throw new Error(
+        `Filesystem publish directory overlaps a Studio-managed path: ${unsafe}`,
+      );
   }
 
   #cache(workspace: WorkspaceHandle): CacheProvider | undefined {
