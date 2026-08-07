@@ -9,6 +9,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
+import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
 import {
   ContentLibrary,
   type ContentAdvancedFilters,
@@ -999,6 +1000,14 @@ export function StudioApp() {
                 setSaveState('changed');
               }}
               placeholder="无标题文章"
+            />
+            <FrontMatterEditor
+              disabled={Boolean(document?.stale)}
+              frontMatter={frontMatter}
+              onChange={(nextFrontMatter) => {
+                setFrontMatter(nextFrontMatter);
+                setSaveState('changed');
+              }}
             />
             <div className="editor-actions">
               {!document?.stale ? (

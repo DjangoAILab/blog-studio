@@ -458,6 +458,38 @@ body::before {
 .title-input::placeholder {
   color: #c2bcae;
 }
+.studio3-front-matter {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.studio3-front-matter label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.studio3-front-matter input {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--paper) 88%, var(--ink) 2%);
+  color: var(--ink);
+  font: inherit;
+  letter-spacing: normal;
+  padding: 0.45rem 0.6rem;
+}
+.studio3-front-matter input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 2px;
+}
 .mode-switch {
   display: inline-flex;
   border-bottom: 1px solid var(--line);
@@ -885,6 +917,9 @@ body::before {
   .preview-button {
     padding: 0.65rem 0.8rem;
     font-size: 0.72rem;
+  }
+  .studio3-front-matter {
+    grid-template-columns: 1fr;
   }
   .publish-button {
     padding: 0.65rem 0.8rem;

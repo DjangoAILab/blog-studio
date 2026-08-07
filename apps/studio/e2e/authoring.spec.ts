@@ -128,6 +128,18 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByLabel(/Slug/).fill('journey-draft');
   await page.getByRole('button', { name: '建立原生草稿' }).click();
   await expect(page.getByLabel('文章标题')).toHaveValue('浏览器旅程');
+  const articleProperties = page.getByLabel('文章属性');
+  await articleProperties.getByLabel('标签').fill('Browser, Draft');
+  await articleProperties.getByLabel('分类').fill('Engineering');
+  await expect(page.getByText('刚刚保存')).toBeVisible({ timeout: 5_000 });
+  await page.reload();
+  await page.getByRole('button', { name: '内容', exact: true }).click();
+  await expect(page.getByLabel('文章属性').getByLabel('标签')).toHaveValue(
+    'Browser, Draft',
+  );
+  await expect(page.getByLabel('文章属性').getByLabel('分类')).toHaveValue(
+    'Engineering',
+  );
 
   await page.getByRole('button', { name: 'Markdown 源码' }).click();
   await page
