@@ -3,6 +3,11 @@ import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import type { WorkspaceService } from './workspaces.js';
+import type {
+  ContentHash,
+  DocumentRef,
+  FrontMatterValue,
+} from '@blog-studio/core';
 import {
   createWorkspaceSandbox,
   type WorkspaceSandbox,
@@ -71,6 +76,19 @@ export class DevelopmentService {
       ...(active.message ? { message: active.message } : {}),
       logs: active.logs,
     };
+  }
+
+  public proxyTarget(workspaceId: string, path: string): string {
+    const active = this.#active.get(workspaceId);
+    if (!active || active.status !== 'ready')
+      throw new Error('Local development is not ready');
+    const base = new URL(active.baseUrl);
+    const target = new URL(path, base);
+    if (target.origin !== base.origin)
+      throw new Error(
+        'Local development proxy path must stay on the configured origin',
+      );
+    return target.toString();
   }
 
   public async start(workspaceId: string): Promise<DevelopmentSnapshot> {
@@ -188,6 +206,35 @@ export class DevelopmentService {
   public async restart(workspaceId: string): Promise<DevelopmentSnapshot> {
     await this.stop(workspaceId);
     return await this.start(workspaceId);
+  }
+
+  public async sync(input: {
+    readonly workspaceId: string;
+    readonly ref: DocumentRef;
+    readonly sourceRevision: ContentHash;
+    readonly frontMatter: Readonly<Record<string, FrontMatterValue>>;
+    readonly body: string;
+  }): Promise<DevelopmentSnapshot> {
+    const active = this.#active.get(input.workspaceId);
+    if (!active || active.status !== 'ready')
+      return this.snapshot(input.workspaceId);
+    const workspace = this.workspaces.get(input.workspaceId);
+    try {
+      await workspace.generator.writeDocument(active.sandbox.workspaceRoot, {
+        ref: input.ref,
+        expectedRevision: input.sourceRevision,
+        frontMatter: input.frontMatter,
+        body: input.body,
+      });
+      return this.snapshot(input.workspaceId);
+    } catch (error) {
+      active.status = 'failed';
+      active.message =
+        error instanceof Error
+          ? `Local working-copy sync failed: ${error.message}`
+          : 'Local working-copy sync failed';
+      return this.snapshot(input.workspaceId);
+    }
   }
 
   public async dispose(): Promise<void> {

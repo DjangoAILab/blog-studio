@@ -1,5 +1,12 @@
 import { createServer } from 'node:net';
-import { access, mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -32,6 +39,10 @@ describe('DevelopmentService', () => {
     await writeFile(
       join(workspace, '_config.yml'),
       'url: http://example.test\n',
+    );
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: Original\n---\nOriginal body\n',
     );
     await writeFile(
       join(workspace, 'development-server.mjs'),
@@ -72,15 +83,62 @@ development:
     const started = await service.start('development-test');
     expect(started.status).toBe('ready');
     await expect(
+      fetch(service.proxyTarget('development-test', '/')).then((response) =>
+        response.text(),
+      ),
+    ).resolves.toBe('ready');
+    expect(() =>
+      service.proxyTarget('development-test', 'https://example.com/'),
+    ).toThrow('must stay on the configured origin');
+    await expect(
       access(join(workspace, 'executed-in-sandbox')),
     ).rejects.toThrow();
+    const sandboxParent = join(stateDirectory, 'development-test');
+    const [sandboxDirectory] = await readdir(sandboxParent);
+    if (!sandboxDirectory) throw new Error('sandbox missing');
+    const summary = (
+      await workspaces
+        .get('development-test')
+        .generator.listDocuments(workspace, 'posts')
+    )[0];
+    if (!summary) throw new Error('fixture post missing');
+    const { ref } = await workspaces.findDocument(
+      'development-test',
+      'posts',
+      summary.ref.documentId,
+    );
+    const source = await workspaces
+      .get('development-test')
+      .generator.readDocument(workspace, ref);
     expect(
-      await readdir(join(stateDirectory, 'development-test')),
-    ).toHaveLength(1);
+      (
+        await service.sync({
+          workspaceId: 'development-test',
+          ref,
+          sourceRevision: source.revision,
+          frontMatter: { title: 'Synced' },
+          body: 'Updated through the working copy\n',
+        })
+      ).status,
+    ).toBe('ready');
+    await expect(
+      readFile(
+        join(
+          sandboxParent,
+          sandboxDirectory,
+          'workspace',
+          'source',
+          '_posts',
+          'hello.md',
+        ),
+        'utf8',
+      ),
+    ).resolves.toContain('Updated through the working copy');
+    expect(await readdir(sandboxParent)).toHaveLength(1);
 
     const stopped = await service.stop('development-test');
     expect(stopped.status).toBe('stopped');
-    expect(await readdir(join(stateDirectory, 'development-test'))).toEqual([]);
+    expect(await readdir(sandboxParent)).toEqual([]);
     await service.dispose();
   });
 });

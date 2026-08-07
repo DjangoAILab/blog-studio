@@ -73,6 +73,13 @@ export function LocalDevelopment({
       <div>
         {details.status === 'ready' ? (
           <>
+            <a
+              href={`/api/sites/${encodeURIComponent(siteId)}/development/proxy/`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              打开本地站点
+            </a>
             <button
               type="button"
               disabled={busy}

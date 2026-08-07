@@ -1638,15 +1638,18 @@ select:focus-visible,
 .studio2-local-development header > span.is-failed {
   color: #b44531;
 }
-.studio2-local-development button {
+.studio2-local-development button,
+.studio2-local-development a {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--paper);
   color: var(--ink);
   cursor: pointer;
+  display: inline-block;
   font: inherit;
   margin-right: 0.5rem;
   padding: 0.45rem 0.8rem;
+  text-decoration: none;
 }
 .studio2-local-development pre {
   max-height: 12rem;

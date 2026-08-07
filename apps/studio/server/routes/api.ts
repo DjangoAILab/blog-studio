@@ -715,6 +715,28 @@ export function registerApiRoutes(
     }),
   );
 
+  app.get<{ Params: { siteId: string; '*': string } }>(
+    '/api/sites/:siteId/development/proxy/*',
+    async (request, reply) => {
+      const query = request.url.indexOf('?');
+      const suffix = query === -1 ? '' : request.url.slice(query);
+      const target = dependencies.development.proxyTarget(
+        dependencies.sites.workspaceId(request.params.siteId),
+        `/${request.params['*']}${suffix}`,
+      );
+      const response = await fetch(target, { redirect: 'manual' });
+      const contentType = response.headers.get('content-type');
+      if (contentType) reply.type(contentType);
+      const location = response.headers.get('location');
+      if (location) reply.header('location', location);
+      return reply
+        .code(response.status)
+        .header('cache-control', 'private, no-store')
+        .header('x-content-type-options', 'nosniff')
+        .send(Buffer.from(await response.arrayBuffer()));
+    },
+  );
+
   app.get<{
     Params: { siteId: string; documentId: string };
     Querystring: { collection: string };
@@ -767,14 +789,28 @@ export function registerApiRoutes(
         },
       },
     },
-    async (request) => ({
-      draft: await dependencies.content.save({
+    async (request) => {
+      const draft = await dependencies.content.save({
         siteId: request.params.siteId,
         collectionId: request.query.collection,
         documentId: request.params.documentId,
         ...request.body,
-      }),
-    }),
+      });
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      const { ref } = await dependencies.workspaces.findDocument(
+        workspaceId,
+        request.query.collection,
+        request.params.documentId,
+      );
+      const development = await dependencies.development.sync({
+        workspaceId,
+        ref,
+        sourceRevision: createContentHash(request.body.sourceRevision),
+        frontMatter: request.body.frontMatter,
+        body: request.body.body,
+      });
+      return { draft, development };
+    },
   );
 
   app.post<{
