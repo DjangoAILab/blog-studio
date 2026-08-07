@@ -80,6 +80,10 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
     publishProvider: workspace.config.publish.adapter,
     publishConfigured: workspace.config.publish.adapter !== 'none',
     frontMatterFields,
+    developmentConfigured: workspace.config.development !== undefined,
+    ...(workspace.config.development
+      ? { developmentBaseUrl: workspace.config.development.baseUrl }
+      : {}),
   };
 }
 
@@ -139,10 +143,23 @@ function storedCapabilities(
   ) {
     throw new Error('Stored Site capabilities are invalid');
   }
+  const developmentConfigured =
+    value.developmentConfigured === undefined
+      ? false
+      : value.developmentConfigured;
+  if (typeof developmentConfigured !== 'boolean')
+    throw new Error('Stored Site capabilities are invalid');
+  if (
+    value.developmentBaseUrl !== undefined &&
+    typeof value.developmentBaseUrl !== 'string'
+  ) {
+    throw new Error('Stored Site capabilities are invalid');
+  }
   return {
     ...value,
     inlinePreviewResourceMediaTypes,
     frontMatterFields,
+    developmentConfigured,
   } as unknown as SiteCapabilities;
 }
 

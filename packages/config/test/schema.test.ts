@@ -194,6 +194,30 @@ describe('blog-studio configuration schema', () => {
     ).toThrow();
   });
 
+  it('accepts a shell-free local development command and rejects unsafe forms', () => {
+    expect(
+      parseBlogStudioConfig({
+        ...validConfig,
+        development: {
+          command: 'pnpm',
+          args: ['exec', 'hexo', 'server'],
+          baseUrl: 'http://127.0.0.1:4000',
+          readinessPath: '/',
+          environmentAllowlist: ['NODE_ENV'],
+        },
+      }).development,
+    ).toMatchObject({ command: 'pnpm', startupTimeoutMs: 30_000 });
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        development: {
+          command: 'pnpm && rm -rf /',
+          baseUrl: 'http://127.0.0.1:4000',
+        },
+      }),
+    ).toThrow();
+  });
+
   it('parses YAML using the same strict schema', () => {
     const result = parseBlogStudioConfigYaml(`
 version: 1

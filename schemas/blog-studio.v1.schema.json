@@ -357,6 +357,49 @@
       "required": ["collections"],
       "additionalProperties": false
     },
+    "development": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^(?:[A-Za-z0-9]|/)[A-Za-z0-9._/-]*$"
+        },
+        "args": {
+          "default": [],
+          "type": "array",
+          "maxItems": 40,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "readinessPath": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^\\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$"
+        },
+        "environmentAllowlist": {
+          "default": [],
+          "type": "array",
+          "maxItems": 40,
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        },
+        "startupTimeoutMs": {
+          "default": 30000,
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 120000
+        },
+        "logLimit": {
+          "default": 500,
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 2000
+        }
+      },
+      "required": ["command", "args", "baseUrl", "environmentAllowlist", "startupTimeoutMs", "logLimit"],
+      "additionalProperties": false
+    },
     "verification": {
       "type": "object",
       "properties": {

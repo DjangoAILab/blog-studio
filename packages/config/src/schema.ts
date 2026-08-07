@@ -140,6 +140,35 @@ const httpUrlSchema = z.url().refine((value) => {
   return protocol === 'http:' || protocol === 'https:';
 }, 'URL must use HTTP or HTTPS');
 
+const localDevelopmentSchema = z
+  .object({
+    command: z
+      .string()
+      .min(1)
+      .max(160)
+      .regex(
+        /^(?:[A-Za-z0-9]|\/)[A-Za-z0-9._/-]*$/,
+        'Development command must be an executable path, not a shell expression',
+      ),
+    args: z.array(z.string().min(1).max(500)).max(40).default([]),
+    baseUrl: httpUrlSchema,
+    readinessPath: z
+      .string()
+      .max(512)
+      .regex(
+        /^\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$/,
+        'Readiness path must be an absolute URL path',
+      )
+      .optional(),
+    environmentAllowlist: z
+      .array(environmentVariableSchema)
+      .max(40)
+      .default([]),
+    startupTimeoutMs: z.number().int().min(1_000).max(120_000).default(30_000),
+    logLimit: z.number().int().min(10).max(2_000).default(500),
+  })
+  .strict();
+
 export const blogStudioConfigSchema = z
   .object({
     version: z.literal(CONFIG_SCHEMA_VERSION),
@@ -225,6 +254,7 @@ export const blogStudioConfigSchema = z
       })
       .strict()
       .optional(),
+    development: localDevelopmentSchema.optional(),
     verification: z
       .object({
         baseUrl: httpUrlSchema,

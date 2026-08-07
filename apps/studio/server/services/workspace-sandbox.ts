@@ -18,7 +18,7 @@ export interface WorkspaceSandbox {
 
 export async function createWorkspaceSandbox(
   workspace: WorkspaceHandle,
-  purpose: 'preview' | 'release',
+  purpose: 'preview' | 'release' | 'development',
   commitId?: string,
   parentDirectory?: string,
 ): Promise<WorkspaceSandbox> {

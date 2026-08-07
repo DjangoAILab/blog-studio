@@ -79,6 +79,15 @@ export interface ReleaseDetails {
   }[];
 }
 
+export interface DevelopmentDetails {
+  readonly workspaceId: string;
+  readonly status: 'stopped' | 'starting' | 'ready' | 'failed';
+  readonly baseUrl?: string;
+  readonly startedAt?: string;
+  readonly message?: string;
+  readonly logs: readonly string[];
+}
+
 export interface DocumentSummary {
   readonly ref: {
     readonly documentId: string;
@@ -423,6 +432,27 @@ export class StudioApi {
     const suffix = parameters.size > 0 ? `?${parameters.toString()}` : '';
     return this.#request<{ content: ContentQueryResult }>(
       `/api/sites/${siteId}/content${suffix}`,
+    );
+  }
+
+  public development(siteId: string) {
+    return this.#request<{ development: DevelopmentDetails }>(
+      `/api/sites/${siteId}/development`,
+    );
+  }
+
+  public controlDevelopment(
+    siteId: string,
+    action: 'start' | 'restart' | 'stop',
+  ) {
+    if (action === 'stop')
+      return this.#request<{ development: DevelopmentDetails }>(
+        `/api/sites/${siteId}/development`,
+        { method: 'DELETE' },
+      );
+    return this.#request<{ development: DevelopmentDetails }>(
+      `/api/sites/${siteId}/development`,
+      { method: 'POST', body: JSON.stringify({ action }) },
     );
   }
 

@@ -1605,6 +1605,62 @@ select:focus-visible,
   letter-spacing: -0.01em;
 }
 
+.studio2-local-development {
+  margin: 2rem 0;
+  padding: 1.3rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--paper) 92%, var(--ink) 2%);
+}
+.studio2-local-development > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.studio2-local-development h2 {
+  margin: 0.2rem 0;
+  font-size: 1.05rem;
+}
+.studio2-local-development header p,
+.studio2-local-development > p {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+.studio2-local-development header > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.studio2-local-development header > span.is-ready {
+  color: #307e4d;
+}
+.studio2-local-development header > span.is-failed {
+  color: #b44531;
+}
+.studio2-local-development button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  margin-right: 0.5rem;
+  padding: 0.45rem 0.8rem;
+}
+.studio2-local-development pre {
+  max-height: 12rem;
+  overflow: auto;
+  padding: 0.7rem;
+  background: #27251f;
+  border-radius: 0.5rem;
+  color: #eee8d8;
+  font:
+    0.72rem/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
 .studio2-recent {
   margin-top: 44px;
 }

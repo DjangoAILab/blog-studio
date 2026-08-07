@@ -50,6 +50,7 @@ import {
   type AssetProviderFactory,
 } from './services/workspaces.js';
 import { SiteService, SiteValidationError } from './services/sites.js';
+import { DevelopmentService } from './services/development.js';
 
 const SESSION_COOKIE = 'blog_studio_session';
 const CSRF_COOKIE = 'blog_studio_csrf';
@@ -61,6 +62,7 @@ export interface StudioServerOptions {
   readonly databasePath: string;
   readonly releaseStateDirectory?: string;
   readonly previewStateDirectory?: string;
+  readonly developmentStateDirectory?: string;
   readonly authToken?: string;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
@@ -180,6 +182,11 @@ export async function createStudioServer(
       options.previewStateDirectory ??
         join(dirname(options.databasePath), 'preview-sandboxes'),
     );
+    const development = new DevelopmentService(
+      workspaces,
+      options.developmentStateDirectory ??
+        join(dirname(options.databasePath), 'development-sandboxes'),
+    );
     const recoveredPreviewSandboxes = await previews.recover();
     if (recoveredPreviewSandboxes > 0)
       app.log.warn(
@@ -223,11 +230,13 @@ export async function createStudioServer(
       markdownPreviews,
       previews,
       releases,
+      development,
       allowLegacyReleaseApi: options.allowLegacyReleaseApi ?? false,
     };
     disposeOperationalServices = async () => {
       clearInterval(previewReaper);
       markdownPreviews.dispose();
+      await development.dispose();
       await previews.dispose();
       await releases.dispose();
     };

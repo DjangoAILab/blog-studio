@@ -35,6 +35,7 @@ import {
   type PreviewService,
 } from '../services/previews.js';
 import type { SiteService } from '../services/sites.js';
+import type { DevelopmentService } from '../services/development.js';
 import {
   BASELINE_ADOPTION_CONFIRMATION,
   type ReleaseService,
@@ -50,6 +51,7 @@ export interface ApiDependencies {
   readonly markdownPreviews: MarkdownPreviewService;
   readonly previews: PreviewService;
   readonly releases: ReleaseService;
+  readonly development: DevelopmentService;
   readonly allowLegacyReleaseApi: boolean;
 }
 
@@ -664,6 +666,53 @@ export function registerApiRoutes(
       });
       return reply.code(201).send({ source: created.source, draft });
     },
+  );
+
+  app.get<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/development',
+    { schema: { params: siteParams } },
+    (request) => ({
+      development: dependencies.development.snapshot(
+        dependencies.sites.workspaceId(request.params.siteId),
+      ),
+    }),
+  );
+
+  app.post<{
+    Params: { siteId: string };
+    Body: { action: 'start' | 'restart' };
+  }>(
+    '/api/sites/:siteId/development',
+    {
+      schema: {
+        params: siteParams,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['action'],
+          properties: { action: { enum: ['start', 'restart'] } },
+        },
+      },
+    },
+    async (request) => {
+      const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
+      return {
+        development:
+          request.body.action === 'start'
+            ? await dependencies.development.start(workspaceId)
+            : await dependencies.development.restart(workspaceId),
+      };
+    },
+  );
+
+  app.delete<{ Params: { siteId: string } }>(
+    '/api/sites/:siteId/development',
+    { schema: { params: siteParams } },
+    async (request) => ({
+      development: await dependencies.development.stop(
+        dependencies.sites.workspaceId(request.params.siteId),
+      ),
+    }),
   );
 
   app.get<{

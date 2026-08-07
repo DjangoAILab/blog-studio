@@ -29,6 +29,8 @@ export interface SiteCapabilities {
   readonly publishProvider: string;
   readonly publishConfigured: boolean;
   readonly frontMatterFields: readonly FrontMatterField[];
+  readonly developmentConfigured: boolean;
+  readonly developmentBaseUrl?: string;
 }
 
 export interface Site {

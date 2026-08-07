@@ -810,6 +810,12 @@ export function StudioApp() {
                 onLoadSiteEvents={async (siteId) =>
                   (await api.siteEvents(siteId)).events
                 }
+                onLoadDevelopment={async (siteId) =>
+                  (await api.development(siteId)).development
+                }
+                onControlDevelopment={async (siteId, action) =>
+                  (await api.controlDevelopment(siteId, action)).development
+                }
                 onOpenContent={() => setDestination('content')}
                 onOpenDocument={openContentDocument}
                 onPrepareChanges={prepareChanges}

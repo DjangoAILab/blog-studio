@@ -1,7 +1,12 @@
 import type { Site, SiteAuditEvent } from '@blog-studio/core';
 import { motion } from 'motion/react';
 
-import type { ContentQueryResult, ContentSummary } from '../../app/api.js';
+import type {
+  ContentQueryResult,
+  ContentSummary,
+  DevelopmentDetails,
+} from '../../app/api.js';
+import { LocalDevelopment } from './local-development.js';
 import { SiteSettings } from '../settings/site-settings.js';
 
 interface SiteOverviewProps {
@@ -22,6 +27,11 @@ interface SiteOverviewProps {
     readonly displayName: string;
     readonly canonicalUrl?: string;
   }) => Promise<Site>;
+  readonly onLoadDevelopment: (siteId: string) => Promise<DevelopmentDetails>;
+  readonly onControlDevelopment: (
+    siteId: string,
+    action: 'start' | 'restart' | 'stop',
+  ) => Promise<DevelopmentDetails>;
 }
 
 const stateLabels: Readonly<Record<ContentSummary['state'], string>> = {
@@ -71,6 +81,8 @@ export function SiteOverview({
   onLoadSiteEvents,
   onReloadSite,
   onUpdateSite,
+  onLoadDevelopment,
+  onControlDevelopment,
 }: SiteOverviewProps) {
   const recent = content?.items.slice(0, 5) ?? [];
   const pendingChanges = content?.counts.modified ?? 0;
@@ -131,6 +143,13 @@ export function SiteOverview({
           </dd>
         </div>
       </dl>
+
+      <LocalDevelopment
+        configured={site.capabilities.developmentConfigured}
+        siteId={site.id}
+        onLoad={onLoadDevelopment}
+        onControl={onControlDevelopment}
+      />
 
       <section className="studio2-recent" aria-labelledby="recent-content">
         <header>
