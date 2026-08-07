@@ -117,6 +117,50 @@ describe('HexoGeneratorAdapter', () => {
     });
   });
 
+  it('edits only changed front-matter keys without normalizing unrelated YAML', async () => {
+    const root = await copySite();
+    const adapter = createAdapter();
+    const [summary] = await adapter.listDocuments(root, 'posts');
+    if (!summary) throw new Error('fixture post missing');
+    const path = join(root, summary.ref.path);
+    await writeFile(
+      path,
+      [
+        '---',
+        '# keep this note',
+        'title: "Original title"',
+        'categories: single-category',
+        'theme_options:',
+        '  hero: true # keep this inline note',
+        '---',
+        'Body',
+        '',
+      ].join('\n'),
+    );
+    const source = await adapter.readDocument(root, summary.ref);
+
+    await adapter.writeDocument(root, {
+      ref: summary.ref,
+      expectedRevision: source.revision,
+      frontMatter: { ...source.frontMatter, title: 'Edited title' },
+      body: source.body,
+    });
+
+    await expect(readFile(path, 'utf8')).resolves.toBe(
+      [
+        '---',
+        '# keep this note',
+        'title: "Edited title"',
+        'categories: single-category',
+        'theme_options:',
+        '  hero: true # keep this inline note',
+        '---',
+        'Body',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('creates portable native drafts exclusively and promotes by revision', async () => {
     const root = await copySite();
     const adapter = createAdapter();

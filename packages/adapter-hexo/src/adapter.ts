@@ -27,7 +27,11 @@ import {
 import { parse } from 'yaml';
 
 import { createManifest, hashContent, walkFiles } from './files.js';
-import { parseMarkdown, serializeMarkdown } from './front-matter.js';
+import {
+  parseMarkdown,
+  patchMarkdown,
+  serializeMarkdown,
+} from './front-matter.js';
 
 interface HexoConfiguration {
   readonly url?: string;
@@ -324,7 +328,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
     if (hashContent(current) !== input.expectedRevision) {
       throw new Error('Document revision conflict');
     }
-    const next = serializeMarkdown(input.frontMatter, input.body);
+    const next = patchMarkdown(current, input.frontMatter, input.body);
     const parsedCurrent = parseMarkdown(current);
     if (
       parsedCurrent.body === input.body &&
