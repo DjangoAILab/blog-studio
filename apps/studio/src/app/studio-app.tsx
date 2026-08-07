@@ -22,6 +22,7 @@ import {
 } from '../features/resources/resource-picker.js';
 import { SystemSettings } from '../features/settings/system-settings.js';
 import { SiteOverview } from '../features/site/site-overview.js';
+import { GlobalSearch } from '../features/search/global-search.js';
 import {
   StudioNavigation,
   type StudioDestination,
@@ -51,6 +52,11 @@ const VisualEditor = lazy(() =>
 );
 
 type ContentFilter = 'all' | ContentState;
+
+function initialContentSearch(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('contentSearch') ?? '';
+}
 
 function initialContentSort(): ContentSortField {
   if (typeof window === 'undefined') return 'activityAt';
@@ -175,7 +181,8 @@ export function StudioApp() {
     'idle' | 'loading' | 'ready' | 'error'
   >('idle');
   const [siteContentError, setSiteContentError] = useState('');
-  const [contentSearch, setContentSearch] = useState('');
+  const [contentSearch, setContentSearch] = useState(initialContentSearch);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [contentFilter, setContentFilter] = useState<ContentFilter>('all');
   const [contentAdvancedFilters, setContentAdvancedFilters] =
     useState<ContentAdvancedFilters>({
@@ -359,13 +366,15 @@ export function StudioApp() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
+    if (contentSearch) url.searchParams.set('contentSearch', contentSearch);
+    else url.searchParams.delete('contentSearch');
     if (contentSort === 'activityAt') url.searchParams.delete('contentSort');
     else url.searchParams.set('contentSort', contentSort);
     if (contentDirection === 'desc')
       url.searchParams.delete('contentDirection');
     else url.searchParams.set('contentDirection', contentDirection);
     window.history.replaceState(null, '', url);
-  }, [contentDirection, contentSort]);
+  }, [contentDirection, contentSearch, contentSort]);
   const contentQuery = useMemo(
     () => ({
       ...(contentSearch ? { search: contentSearch } : {}),
@@ -675,6 +684,10 @@ export function StudioApp() {
           }}
           onDestinationChange={setDestination}
           onPrepareChanges={prepareChanges}
+          onSearchOpen={() => {
+            setDestination('content');
+            setGlobalSearchOpen(true);
+          }}
           onSiteChange={(nextSite) => {
             setSite(nextSite);
             setDestination('site');
@@ -686,6 +699,23 @@ export function StudioApp() {
           preparing={changeSetState === 'loading'}
           site={site}
           sites={sites}
+        />
+
+        <GlobalSearch
+          content={siteContent}
+          error={siteContentError || undefined}
+          loading={siteContentState === 'loading'}
+          open={globalSearchOpen}
+          query={contentSearch}
+          onClose={() => setGlobalSearchOpen(false)}
+          onOpen={(item) => {
+            openContentDocument(item);
+            setPanel('write');
+          }}
+          onQueryChange={(query) => {
+            setContentSearch(query);
+            setContentPage(1);
+          }}
         />
 
         <ChangeSetReviewSheet

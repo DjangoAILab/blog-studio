@@ -69,6 +69,19 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '内容', exact: true }).click();
   const library = page.getByRole('complementary', { name: '内容库' });
   await expect(library).toBeVisible();
+  const globalSearch = page.getByRole('button', { name: '搜索内容' });
+  await globalSearch.click();
+  const globalSearchDialog = page.getByRole('dialog', { name: '搜索内容' });
+  const globalSearchInput = globalSearchDialog.getByLabel('全局搜索');
+  await expect(globalSearchInput).toBeFocused();
+  await globalSearchInput.fill('Existing');
+  await expect(
+    globalSearchDialog.getByRole('button', { name: /Existing article/ }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/contentSearch=Existing/);
+  await globalSearchInput.press('Escape');
+  await expect(globalSearchDialog).toHaveCount(0);
+  await expect(globalSearch).toBeFocused();
   const sortField = library.getByLabel('排序属性');
   await expect(sortField).toHaveValue('activityAt');
   await sortField.selectOption('title');

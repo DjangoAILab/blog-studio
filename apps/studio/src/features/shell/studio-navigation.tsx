@@ -14,6 +14,7 @@ interface StudioNavigationProps {
   readonly onSiteChange: (site: Site) => void;
   readonly onCreateDocument: () => void;
   readonly onPrepareChanges: () => void;
+  readonly onSearchOpen: () => void;
 }
 
 const destinations: readonly {
@@ -52,6 +53,7 @@ export function StudioNavigation({
   onSiteChange,
   onCreateDocument,
   onPrepareChanges,
+  onSearchOpen,
 }: StudioNavigationProps) {
   return (
     <header className="studio2-nav-wrap">
@@ -143,7 +145,7 @@ export function StudioNavigation({
             className="studio2-icon-button"
             type="button"
             aria-label="搜索内容"
-            onClick={() => onDestinationChange('content')}
+            onClick={onSearchOpen}
           >
             <SearchIcon />
           </button>

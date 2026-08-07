@@ -167,6 +167,9 @@ export class ContentService {
         summary.state === 'published' && draft ? 'modified' : summary.state;
       const title = stringValue(draft?.frontMatter.title) ?? summary.title;
       const tags = draft ? stringList(draft.frontMatter.tags) : summary.tags;
+      const categories = draft
+        ? stringList(draft.frontMatter.categories)
+        : (summary.categories ?? []);
       const publishedAt = summary.publishedAt;
       const contentUpdatedAt = summary.contentUpdatedAt ?? summary.updatedAt;
       const filesystemModifiedAt = summary.filesystemModifiedAt;
@@ -179,6 +182,7 @@ export class ContentService {
         path: summary.ref.path,
         title,
         tags,
+        categories,
         state,
         sourceState: summary.state,
         ...(publishedAt ? { publishedAt } : {}),
@@ -210,6 +214,7 @@ export class ContentService {
         path: '',
         title: stringValue(draft.frontMatter.title) ?? '无法定位的工作副本',
         tags: stringList(draft.frontMatter.tags),
+        categories: stringList(draft.frontMatter.categories),
         state: 'modified',
         sourceState: 'unavailable',
         workingCopySavedAt: draft.savedAt,
@@ -274,9 +279,13 @@ export class ContentService {
       .filter(
         (item) =>
           !search ||
-          [item.title, item.path, item.collectionId, ...item.tags].some(
-            (value) => normalize(value).includes(search),
-          ),
+          [
+            item.title,
+            item.path,
+            item.collectionId,
+            ...item.tags,
+            ...item.categories,
+          ].some((value) => normalize(value).includes(search)),
       )
       .filter(
         (item) => !tag || item.tags.some((value) => normalize(value) === tag),

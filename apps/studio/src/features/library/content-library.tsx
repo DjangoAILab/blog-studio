@@ -113,6 +113,14 @@ export function ContentLibrary({
   const [createBusy, setCreateBusy] = useState(false);
 
   useEffect(() => setSearchValue(search), [search]);
+  useEffect(() => {
+    if (searchValue === search) return;
+    const timer = window.setTimeout(
+      () => onSearchChange(searchValue.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timer);
+  }, [onSearchChange, search, searchValue]);
   useEffect(() => setDraftFilters(advancedFilters), [advancedFilters]);
   useEffect(() => {
     if (createRequest > 0) {

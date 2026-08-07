@@ -78,7 +78,7 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   );
   await writeFile(
     join(workspace, 'source', '_posts', 'hello.md'),
-    '---\ntitle: Hello\ndate: 2026-08-02 10:00:00\ncustom: keep\n---\nBody\n',
+    '---\ntitle: Hello\ndate: 2026-08-02 10:00:00\ncategories: [Infrastructure]\ncustom: keep\n---\nBody\n',
   );
   if (options.additionalOlderPost) {
     await writeFile(
@@ -863,6 +863,13 @@ describe('Studio workspace API', () => {
       headers,
     });
     expect(invalidSort.statusCode).toBe(400);
+    const categorySearch = await app.inject({
+      url: `/api/sites/${siteId}/content?search=infrastructure`,
+      headers,
+    });
+    expect(categorySearch.json()).toMatchObject({
+      content: { total: 1, items: [{ title: 'Hello' }] },
+    });
     const published = initialContent.items[0];
     if (!published) throw new Error('fixture post missing');
 

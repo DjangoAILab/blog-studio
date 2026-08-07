@@ -284,6 +284,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
           title:
             stringValue(frontMatter.title) ?? basename(path, extname(path)),
           tags: stringList(frontMatter.tags),
+          categories: stringList(frontMatter.categories),
           ...(publishedAt ? { publishedAt } : {}),
           ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
           filesystemModifiedAt: details.mtime.toISOString(),

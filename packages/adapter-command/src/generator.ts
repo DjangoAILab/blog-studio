@@ -267,6 +267,7 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
                 ? frontMatter.title
                 : basename(path, extname(path)),
             tags: stringList(frontMatter.tags),
+            categories: stringList(frontMatter.categories),
             ...(publishedAt ? { publishedAt } : {}),
             ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
             filesystemModifiedAt: details.mtime.toISOString(),

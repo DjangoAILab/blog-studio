@@ -70,6 +70,7 @@ export interface DocumentSummary {
   readonly revision: ContentHash;
   readonly title: string;
   readonly tags: readonly string[];
+  readonly categories?: readonly string[];
   /** Original publication time declared by the content source. */
   readonly publishedAt?: string;
   /** Content-maintained timestamp, such as front-matter `updated`. */
@@ -103,6 +104,7 @@ export interface ContentSummary {
   readonly path: string;
   readonly title: string;
   readonly tags: readonly string[];
+  readonly categories: readonly string[];
   readonly state: ContentState;
   readonly sourceState: 'draft' | 'published' | 'unavailable';
   readonly publishedAt?: string;

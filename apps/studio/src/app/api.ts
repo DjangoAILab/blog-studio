@@ -124,6 +124,7 @@ export interface ContentSummary {
   readonly path: string;
   readonly title: string;
   readonly tags: readonly string[];
+  readonly categories: readonly string[];
   readonly state: ContentState;
   readonly sourceState: 'draft' | 'published' | 'unavailable';
   readonly publishedAt?: string;
