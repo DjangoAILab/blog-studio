@@ -108,6 +108,15 @@ export interface DocumentPayload {
 }
 
 export type ContentState = 'draft' | 'published' | 'modified';
+export type ContentSortField =
+  | 'activityAt'
+  | 'publishedAt'
+  | 'contentUpdatedAt'
+  | 'filesystemModifiedAt'
+  | 'title'
+  | 'state'
+  | 'path';
+export type ContentSortDirection = 'asc' | 'desc';
 
 export interface ContentSummary {
   readonly documentId: string;
@@ -117,6 +126,11 @@ export interface ContentSummary {
   readonly tags: readonly string[];
   readonly state: ContentState;
   readonly sourceState: 'draft' | 'published' | 'unavailable';
+  readonly publishedAt?: string;
+  readonly contentUpdatedAt?: string;
+  readonly filesystemModifiedAt?: string;
+  readonly workingCopySavedAt?: string;
+  readonly activityAt?: string;
   readonly updatedAt?: string;
   readonly workingCopy?: {
     readonly version: number;
@@ -384,6 +398,8 @@ export class StudioApi {
       readonly tag?: string;
       readonly from?: string;
       readonly to?: string;
+      readonly sort?: ContentSortField;
+      readonly direction?: ContentSortDirection;
       readonly page?: number;
       readonly pageSize?: number;
     } = {},
@@ -395,6 +411,8 @@ export class StudioApi {
     if (query.tag) parameters.set('tag', query.tag);
     if (query.from) parameters.set('from', query.from);
     if (query.to) parameters.set('to', query.to);
+    if (query.sort) parameters.set('sort', query.sort);
+    if (query.direction) parameters.set('direction', query.direction);
     if (query.page !== undefined) parameters.set('page', String(query.page));
     if (query.pageSize !== undefined)
       parameters.set('pageSize', String(query.pageSize));

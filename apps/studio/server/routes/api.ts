@@ -558,6 +558,15 @@ export function registerApiRoutes(
       tag?: string;
       from?: string;
       to?: string;
+      sort?:
+        | 'activityAt'
+        | 'publishedAt'
+        | 'contentUpdatedAt'
+        | 'filesystemModifiedAt'
+        | 'title'
+        | 'state'
+        | 'path';
+      direction?: 'asc' | 'desc';
       page?: number;
       pageSize?: number;
     };
@@ -576,6 +585,18 @@ export function registerApiRoutes(
             tag: { type: 'string', minLength: 1, maxLength: 100 },
             from: { type: 'string', format: 'date-time' },
             to: { type: 'string', format: 'date-time' },
+            sort: {
+              enum: [
+                'activityAt',
+                'publishedAt',
+                'contentUpdatedAt',
+                'filesystemModifiedAt',
+                'title',
+                'state',
+                'path',
+              ],
+            },
+            direction: { enum: ['asc', 'desc'] },
             page: { type: 'integer', minimum: 1, maximum: 1_000_000 },
             pageSize: { type: 'integer', minimum: 1, maximum: 100 },
           },

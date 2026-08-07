@@ -4685,13 +4685,18 @@ select:focus-visible,
   height: 100%;
   padding: 18px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   overflow: hidden;
   border: 1px solid var(--studio-separator);
   border-radius: 30px 30px 0 0;
   background: var(--studio-paper-solid);
   box-shadow: var(--studio-shadow-panel);
+}
+
+.studio3-preview-intro {
+  display: grid;
+  gap: 12px;
 }
 
 .studio3-preview-header {
@@ -4778,6 +4783,41 @@ select:focus-visible,
   height: 100%;
   border: 0;
   background: white;
+}
+
+.studio3-sort-controls {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--studio-muted);
+  font-size: 10px;
+}
+
+.studio3-sort-controls label {
+  display: grid;
+  gap: 4px;
+}
+
+.studio3-sort-controls select,
+.studio3-sort-controls button {
+  min-height: 32px;
+  border: 1px solid var(--studio-separator);
+  border-radius: 9px;
+  color: #353331;
+  -webkit-text-fill-color: #353331;
+  background: white;
+  font: inherit;
+  font-size: 11px;
+}
+
+.studio3-sort-controls select {
+  padding: 0 8px;
+}
+
+.studio3-sort-controls button {
+  padding: 0 9px;
+  cursor: pointer;
 }
 
 .studio3-preview-state {
@@ -4867,6 +4907,7 @@ select:focus-visible,
   .studio3-library-slot.mobile-library,
   .studio2-shell .writing-panel.mobile-write,
   .studio3-preview-slot.mobile-preview {
+    height: 100%;
     display: block;
   }
 

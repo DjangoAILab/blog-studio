@@ -31,6 +31,8 @@ import {
   StudioApi,
   StudioApiError,
   type ContentQueryResult,
+  type ContentSortDirection,
+  type ContentSortField,
   type ContentState,
   type ContentSummary,
   type DocumentPayload,
@@ -49,6 +51,30 @@ const VisualEditor = lazy(() =>
 );
 
 type ContentFilter = 'all' | ContentState;
+
+function initialContentSort(): ContentSortField {
+  if (typeof window === 'undefined') return 'activityAt';
+  const sort = new URLSearchParams(window.location.search).get('contentSort');
+  return [
+    'activityAt',
+    'publishedAt',
+    'contentUpdatedAt',
+    'filesystemModifiedAt',
+    'title',
+    'state',
+    'path',
+  ].includes(sort ?? '')
+    ? (sort as ContentSortField)
+    : 'activityAt';
+}
+
+function initialContentDirection(): ContentSortDirection {
+  if (typeof window === 'undefined') return 'desc';
+  return new URLSearchParams(window.location.search).get('contentDirection') ===
+    'asc'
+    ? 'asc'
+    : 'desc';
+}
 
 function Login({
   onLogin,
@@ -159,6 +185,10 @@ export function StudioApp() {
       to: '',
     });
   const [contentPage, setContentPage] = useState(1);
+  const [contentSort, setContentSort] =
+    useState<ContentSortField>(initialContentSort);
+  const [contentDirection, setContentDirection] =
+    useState<ContentSortDirection>(initialContentDirection);
   const [candidates, setCandidates] = useState<
     readonly SiteDiscoveryCandidate[]
   >([]);
@@ -328,6 +358,45 @@ export function StudioApp() {
   }
 
   useEffect(() => {
+    const url = new URL(window.location.href);
+    if (contentSort === 'activityAt') url.searchParams.delete('contentSort');
+    else url.searchParams.set('contentSort', contentSort);
+    if (contentDirection === 'desc')
+      url.searchParams.delete('contentDirection');
+    else url.searchParams.set('contentDirection', contentDirection);
+    window.history.replaceState(null, '', url);
+  }, [contentDirection, contentSort]);
+  const contentQuery = useMemo(
+    () => ({
+      ...(contentSearch ? { search: contentSearch } : {}),
+      ...(contentFilter === 'all' ? {} : { state: contentFilter }),
+      ...(contentAdvancedFilters.collection
+        ? { collection: contentAdvancedFilters.collection }
+        : {}),
+      ...(contentAdvancedFilters.tag
+        ? { tag: contentAdvancedFilters.tag }
+        : {}),
+      ...(contentAdvancedFilters.from
+        ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
+        : {}),
+      ...(contentAdvancedFilters.to
+        ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
+        : {}),
+      sort: contentSort,
+      direction: contentDirection,
+      page: contentPage,
+      pageSize: 30,
+    }),
+    [
+      contentAdvancedFilters,
+      contentDirection,
+      contentFilter,
+      contentPage,
+      contentSearch,
+      contentSort,
+    ],
+  );
+  useEffect(() => {
     void Promise.all([api.setupStatus(), api.authStatus()])
       .then(async ([setup, auth]) => {
         setSetupStatus(setup);
@@ -357,24 +426,7 @@ export function StudioApp() {
     setSiteContentState('loading');
     setSiteContentError('');
     void api
-      .content(site.id, {
-        ...(contentSearch ? { search: contentSearch } : {}),
-        ...(contentFilter === 'all' ? {} : { state: contentFilter }),
-        ...(contentAdvancedFilters.collection
-          ? { collection: contentAdvancedFilters.collection }
-          : {}),
-        ...(contentAdvancedFilters.tag
-          ? { tag: contentAdvancedFilters.tag }
-          : {}),
-        ...(contentAdvancedFilters.from
-          ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
-          : {}),
-        ...(contentAdvancedFilters.to
-          ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
-          : {}),
-        page: contentPage,
-        pageSize: 30,
-      })
+      .content(site.id, contentQuery)
       .then(({ content }) => {
         if (cancelled) return;
         setSiteContent(content);
@@ -398,14 +450,7 @@ export function StudioApp() {
     return () => {
       cancelled = true;
     };
-  }, [
-    api,
-    contentAdvancedFilters,
-    contentFilter,
-    contentPage,
-    contentSearch,
-    site,
-  ]);
+  }, [api, contentQuery, site]);
   useEffect(() => {
     if (!site || !changeSetOpen || !changeSetRelease) return;
     if (
@@ -654,24 +699,7 @@ export function StudioApp() {
             if (!site) return;
             const result = await api.applyChangeSet(site.id, review.id);
             setChangeSet(result.changeSet);
-            const refreshed = await api.content(site.id, {
-              ...(contentSearch ? { search: contentSearch } : {}),
-              ...(contentFilter === 'all' ? {} : { state: contentFilter }),
-              ...(contentAdvancedFilters.collection
-                ? { collection: contentAdvancedFilters.collection }
-                : {}),
-              ...(contentAdvancedFilters.tag
-                ? { tag: contentAdvancedFilters.tag }
-                : {}),
-              ...(contentAdvancedFilters.from
-                ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
-                : {}),
-              ...(contentAdvancedFilters.to
-                ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
-                : {}),
-              page: contentPage,
-              pageSize: 30,
-            });
+            const refreshed = await api.content(site.id, contentQuery);
             setSiteContent(refreshed.content);
             setSelected((current) =>
               current
@@ -854,10 +882,14 @@ export function StudioApp() {
               loading={siteContentState === 'loading'}
               search={contentSearch}
               selectedDocumentId={selected?.documentId}
+              sort={contentSort}
+              direction={contentDirection}
               onCreate={async (input) => {
                 if (!site) throw new Error('当前站点不能新建文章');
                 const created = await api.createContent(site.id, input);
                 const refreshed = await api.content(site.id, {
+                  sort: contentSort,
+                  direction: contentDirection,
                   page: 1,
                   pageSize: 30,
                 });
@@ -899,30 +931,18 @@ export function StudioApp() {
                   documentId: item.documentId,
                   expectedVersion: item.workingCopy.version,
                 });
-                const refreshed = await api.content(site.id, {
-                  ...(contentSearch ? { search: contentSearch } : {}),
-                  ...(contentFilter === 'all' ? {} : { state: contentFilter }),
-                  ...(contentAdvancedFilters.collection
-                    ? { collection: contentAdvancedFilters.collection }
-                    : {}),
-                  ...(contentAdvancedFilters.tag
-                    ? { tag: contentAdvancedFilters.tag }
-                    : {}),
-                  ...(contentAdvancedFilters.from
-                    ? { from: `${contentAdvancedFilters.from}T00:00:00.000Z` }
-                    : {}),
-                  ...(contentAdvancedFilters.to
-                    ? { to: `${contentAdvancedFilters.to}T23:59:59.999Z` }
-                    : {}),
-                  page: contentPage,
-                  pageSize: 30,
-                });
+                const refreshed = await api.content(site.id, contentQuery);
                 setSiteContent(refreshed.content);
               }}
               onOpen={openContentDocument}
               onPageChange={setContentPage}
               onSearchChange={(nextSearch) => {
                 setContentSearch(nextSearch);
+                setContentPage(1);
+              }}
+              onSortChange={(sort, direction) => {
+                setContentSort(sort);
+                setContentDirection(direction);
                 setContentPage(1);
               }}
             />

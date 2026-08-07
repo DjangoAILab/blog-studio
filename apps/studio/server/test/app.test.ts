@@ -39,6 +39,7 @@ interface FixtureOptions {
   readonly invalidConfiguration?: boolean;
   readonly omitLegacyAuthToken?: boolean;
   readonly secondWorkspace?: boolean;
+  readonly additionalOlderPost?: boolean;
   readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
   readonly previewDelayMs?: number;
   readonly seedInterruptedPreviewSandbox?: boolean;
@@ -79,6 +80,12 @@ async function fixture(options: FixtureOptions = {}): Promise<{
     join(workspace, 'source', '_posts', 'hello.md'),
     '---\ntitle: Hello\ndate: 2026-08-02 10:00:00\ncustom: keep\n---\nBody\n',
   );
+  if (options.additionalOlderPost) {
+    await writeFile(
+      join(workspace, 'source', '_posts', 'alpha-old.md'),
+      '---\ntitle: Alpha old\ndate: 2024-01-01 10:00:00\n---\nOlder body\n',
+    );
+  }
   const fakeHexo = join(workspace, 'node_modules', '.bin', 'hexo');
   await writeFile(
     fakeHexo,
@@ -795,7 +802,7 @@ describe('Studio workspace API', () => {
   });
 
   it('queries published, draft, and modified content through the Site contract', async () => {
-    const { app, workspace } = await fixture();
+    const { app, workspace } = await fixture({ additionalOlderPost: true });
     const session = await login(app);
     const headers = {
       cookie: session.cookie,
@@ -826,10 +833,36 @@ describe('Studio workspace API', () => {
       };
     }>().content;
     expect(initialContent).toMatchObject({
-      counts: { all: 1, published: 1, draft: 0, modified: 0 },
-      items: [{ state: 'published', collectionId: 'posts' }],
+      counts: { all: 2, published: 2, draft: 0, modified: 0 },
+      items: [
+        { title: 'Hello', state: 'published', collectionId: 'posts' },
+        { title: 'Alpha old', state: 'published', collectionId: 'posts' },
+      ],
     });
     expect(JSON.stringify(initialContent)).not.toContain('Body');
+    const publishedAscending = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=publishedAt&direction=asc&page=1&pageSize=1`,
+      headers,
+    });
+    expect(publishedAscending.statusCode, publishedAscending.body).toBe(200);
+    expect(publishedAscending.json()).toMatchObject({
+      content: {
+        total: 2,
+        items: [{ title: 'Alpha old' }],
+      },
+    });
+    const publishedAscendingNext = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=publishedAt&direction=asc&page=2&pageSize=1`,
+      headers,
+    });
+    expect(publishedAscendingNext.json()).toMatchObject({
+      content: { items: [{ title: 'Hello' }] },
+    });
+    const invalidSort = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=unknown`,
+      headers,
+    });
+    expect(invalidSort.statusCode).toBe(400);
     const published = initialContent.items[0];
     if (!published) throw new Error('fixture post missing');
 
@@ -895,12 +928,12 @@ describe('Studio workspace API', () => {
     expect(mergedContent).toMatchObject({
       page: 1,
       pageSize: 10,
-      total: 2,
-      counts: { all: 2, published: 0, draft: 1, modified: 1 },
+      total: 3,
+      counts: { all: 3, published: 1, draft: 1, modified: 1 },
       facets: {
         collections: [
           { id: 'drafts', count: 1 },
-          { id: 'posts', count: 1 },
+          { id: 'posts', count: 2 },
         ],
         tags: [
           { name: 'Release', count: 1 },
@@ -917,12 +950,17 @@ describe('Studio workspace API', () => {
         }),
       ]),
     );
+    expect(mergedContent.items.at(-1)).toMatchObject({
+      title: 'Alpha old',
+      publishedAt: new Date('2024-01-01 10:00:00').toISOString(),
+      contentUpdatedAt: new Date('2024-01-01 10:00:00').toISOString(),
+    });
     const paged = await app.inject({
       url: `/api/sites/${siteId}/content?page=1&pageSize=1`,
       headers,
     });
     expect(paged.json()).toMatchObject({
-      content: { page: 1, pageSize: 1, total: 2 },
+      content: { page: 1, pageSize: 1, total: 3 },
     });
     expect(
       paged.json<{ content: { items: unknown[] } }>().content.items,
@@ -955,8 +993,11 @@ describe('Studio workspace API', () => {
       ).json(),
     ).toMatchObject({
       content: {
-        total: 1,
-        items: [{ documentId: published.documentId, state: 'modified' }],
+        total: 2,
+        items: [
+          { documentId: published.documentId, state: 'modified' },
+          { title: 'Alpha old', state: 'published' },
+        ],
       },
     });
     expect(

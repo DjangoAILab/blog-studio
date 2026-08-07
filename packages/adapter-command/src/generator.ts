@@ -72,6 +72,21 @@ function parseMarkdown(raw: string): MarkdownParts {
   };
 }
 
+function contentTimestamp(
+  value: FrontMatterValue | undefined,
+): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  const text =
+    typeof value === 'string' || typeof value === 'number'
+      ? String(value)
+      : undefined;
+  if (!text) return undefined;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
+}
+
 function serializeMarkdown(parts: MarkdownParts): string {
   return `---\n${stringify(parts.frontMatter, { lineWidth: 0 }).trimEnd()}\n---\n${parts.body}`;
 }
@@ -236,6 +251,9 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
           const { frontMatter } = parseMarkdown(raw);
           const documentPath = portable(relative(root, path));
           const details = await stat(path);
+          const publishedAt = contentTimestamp(frontMatter.date);
+          const contentUpdatedAt =
+            contentTimestamp(frontMatter.updated) ?? publishedAt;
           return {
             ref: {
               workspaceId: this.#workspaceId,
@@ -249,7 +267,10 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
                 ? frontMatter.title
                 : basename(path, extname(path)),
             tags: stringList(frontMatter.tags),
-            updatedAt: details.mtime.toISOString(),
+            ...(publishedAt ? { publishedAt } : {}),
+            ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
+            filesystemModifiedAt: details.mtime.toISOString(),
+            ...(contentUpdatedAt ? { updatedAt: contentUpdatedAt } : {}),
             state: collection.state ?? 'published',
           };
         }),

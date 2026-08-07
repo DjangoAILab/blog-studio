@@ -176,7 +176,7 @@ export function SiteOverview({
                         <span className={`is-${document.state}`} />
                         {stateLabels[document.state]}
                         <i>·</i>
-                        {formatDate(document.updatedAt)}
+                        {formatDate(document.activityAt)}
                       </small>
                     </span>
                     <span className="studio2-row-more" aria-hidden="true">

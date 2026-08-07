@@ -68,6 +68,18 @@ function stringList(value: FrontMatterValue | undefined): readonly string[] {
   return value.filter((item): item is string => typeof item === 'string');
 }
 
+function contentTimestamp(
+  value: FrontMatterValue | undefined,
+): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  const text = stringValue(value);
+  if (!text) return undefined;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
+}
+
 function hexoDateParts(
   value: string,
 ):
@@ -258,6 +270,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
         const { frontMatter } = parseMarkdown(raw);
         const relativePath = portablePath(relative(resolvedRoot, path));
         const details = await stat(path);
+        const publishedAt = contentTimestamp(frontMatter.date);
+        const contentUpdatedAt =
+          contentTimestamp(frontMatter.updated) ?? publishedAt;
         return {
           ref: {
             workspaceId: this.#workspaceId,
@@ -269,8 +284,10 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
           title:
             stringValue(frontMatter.title) ?? basename(path, extname(path)),
           tags: stringList(frontMatter.tags),
-          updatedAt:
-            stringValue(frontMatter.updated) ?? details.mtime.toISOString(),
+          ...(publishedAt ? { publishedAt } : {}),
+          ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
+          filesystemModifiedAt: details.mtime.toISOString(),
+          ...(contentUpdatedAt ? { updatedAt: contentUpdatedAt } : {}),
           state: collectionId === 'drafts' ? 'draft' : 'published',
         };
       }),

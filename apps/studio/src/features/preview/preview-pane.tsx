@@ -37,52 +37,54 @@ export function PreviewPane({
 }: PreviewPaneProps) {
   return (
     <section className="studio3-preview" aria-label="文章预览">
-      <header className="studio3-preview-header">
-        <div>
-          <p>PREVIEW</p>
-          <h2>全文预览</h2>
-        </div>
-        <div className="studio3-preview-controls">
-          <button
-            className="studio3-preview-back"
-            type="button"
-            onClick={onClose}
-          >
-            ← 返回编辑
-          </button>
-          <div className="studio3-preview-modes" aria-label="预览方式">
-            <button
-              aria-pressed={mode === 'markdown'}
-              className={mode === 'markdown' ? 'is-active' : ''}
-              type="button"
-              onClick={() => onPreview('markdown')}
-            >
-              Markdown
-            </button>
-            <button
-              aria-pressed={mode === 'enhanced'}
-              className={mode === 'enhanced' ? 'is-active' : ''}
-              disabled={!enhancedAvailable}
-              title={
-                enhancedAvailable
-                  ? '使用站点生成器和真实主题'
-                  : '当前站点不支持主题预览'
-              }
-              type="button"
-              onClick={() => onPreview('enhanced')}
-            >
-              站点主题
-            </button>
+      <div className="studio3-preview-intro">
+        <header className="studio3-preview-header">
+          <div>
+            <p>PREVIEW</p>
+            <h2>全文预览</h2>
           </div>
-        </div>
-      </header>
+          <div className="studio3-preview-controls">
+            <button
+              className="studio3-preview-back"
+              type="button"
+              onClick={onClose}
+            >
+              ← 返回编辑
+            </button>
+            <div className="studio3-preview-modes" aria-label="预览方式">
+              <button
+                aria-pressed={mode === 'markdown'}
+                className={mode === 'markdown' ? 'is-active' : ''}
+                type="button"
+                onClick={() => onPreview('markdown')}
+              >
+                Markdown
+              </button>
+              <button
+                aria-pressed={mode === 'enhanced'}
+                className={mode === 'enhanced' ? 'is-active' : ''}
+                disabled={!enhancedAvailable}
+                title={
+                  enhancedAvailable
+                    ? '使用站点生成器和真实主题'
+                    : '当前站点不支持主题预览'
+                }
+                type="button"
+                onClick={() => onPreview('enhanced')}
+              >
+                站点主题
+              </button>
+            </div>
+          </div>
+        </header>
 
-      {fallback ? (
-        <p className="studio3-preview-fallback" role="status">
-          <span aria-hidden="true">↘</span>
-          {fallbackMessages[fallback]}
-        </p>
-      ) : null}
+        {fallback ? (
+          <p className="studio3-preview-fallback" role="status">
+            <span aria-hidden="true">↘</span>
+            {fallbackMessages[fallback]}
+          </p>
+        ) : null}
+      </div>
 
       <div className="studio3-preview-canvas">
         {url && state === 'ready' ? (

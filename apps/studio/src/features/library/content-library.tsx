@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 
 import type {
   ContentQueryResult,
+  ContentSortDirection,
+  ContentSortField,
   ContentState,
   ContentSummary,
 } from '../../app/api.js';
@@ -22,6 +24,8 @@ interface ContentLibraryProps {
   readonly filter: ContentFilter;
   readonly advancedFilters: ContentAdvancedFilters;
   readonly loading: boolean;
+  readonly sort: ContentSortField;
+  readonly direction: ContentSortDirection;
   readonly search: string;
   readonly selectedDocumentId?: string | undefined;
   readonly canCreate: boolean;
@@ -36,6 +40,10 @@ interface ContentLibraryProps {
   readonly onOpen: (item: ContentSummary) => void;
   readonly onPageChange: (page: number) => void;
   readonly onSearchChange: (search: string) => void;
+  readonly onSortChange: (
+    sort: ContentSortField,
+    direction: ContentSortDirection,
+  ) => void;
 }
 
 const filters: readonly {
@@ -54,6 +62,16 @@ const stateLabels: Readonly<Record<ContentState, string>> = {
   modified: '工作副本',
 };
 
+const sortLabels: Readonly<Record<ContentSortField, string>> = {
+  activityAt: '最近活动',
+  publishedAt: '发布时间',
+  contentUpdatedAt: '内容更新时间',
+  filesystemModifiedAt: '文件修改时间',
+  title: '标题',
+  state: '状态',
+  path: '路径',
+};
+
 function formatDate(value?: string): string {
   if (!value) return '尚未记录时间';
   return new Intl.DateTimeFormat('zh-CN', {
@@ -69,6 +87,8 @@ export function ContentLibrary({
   filter,
   advancedFilters,
   loading,
+  sort,
+  direction,
   search,
   selectedDocumentId,
   canCreate,
@@ -80,6 +100,7 @@ export function ContentLibrary({
   onOpen,
   onPageChange,
   onSearchChange,
+  onSortChange,
 }: ContentLibraryProps) {
   const [searchValue, setSearchValue] = useState(search);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -219,6 +240,34 @@ export function ContentLibrary({
           </button>
         ) : null}
       </form>
+
+      <div className="studio3-sort-controls" aria-label="内容排序">
+        <label>
+          排序
+          <select
+            aria-label="排序属性"
+            value={sort}
+            onChange={(event) =>
+              onSortChange(event.target.value as ContentSortField, direction)
+            }
+          >
+            {(Object.keys(sortLabels) as ContentSortField[]).map((field) => (
+              <option key={field} value={field}>
+                {sortLabels[field]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          aria-label={direction === 'desc' ? '当前为降序' : '当前为升序'}
+          type="button"
+          onClick={() =>
+            onSortChange(sort, direction === 'desc' ? 'asc' : 'desc')
+          }
+        >
+          {direction === 'desc' ? '↓ 降序' : '↑ 升序'}
+        </button>
+      </div>
 
       <div className="studio3-filter-actions">
         <button
@@ -410,7 +459,7 @@ export function ContentLibrary({
                         {item.workingCopy?.stale
                           ? '工作副本 · 需处理冲突'
                           : stateLabels[item.state]}{' '}
-                        · {formatDate(item.updatedAt)}
+                        · {formatDate(item.activityAt)}
                       </small>
                     </span>
                     <span aria-hidden="true" className="studio3-row-arrow">

@@ -70,11 +70,31 @@ export interface DocumentSummary {
   readonly revision: ContentHash;
   readonly title: string;
   readonly tags: readonly string[];
+  /** Original publication time declared by the content source. */
+  readonly publishedAt?: string;
+  /** Content-maintained timestamp, such as front-matter `updated`. */
+  readonly contentUpdatedAt?: string;
+  /** Filesystem mtime used only for diagnostics and external-change detection. */
+  readonly filesystemModifiedAt?: string;
+  /** @deprecated Use contentUpdatedAt or filesystemModifiedAt explicitly. */
   readonly updatedAt?: string;
   readonly state: 'draft' | 'published';
 }
 
 export type ContentState = 'draft' | 'published' | 'modified';
+
+export const contentSortFields = [
+  'activityAt',
+  'publishedAt',
+  'contentUpdatedAt',
+  'filesystemModifiedAt',
+  'title',
+  'state',
+  'path',
+] as const;
+
+export type ContentSortField = (typeof contentSortFields)[number];
+export type ContentSortDirection = 'asc' | 'desc';
 
 export interface ContentSummary {
   readonly siteId: SiteId;
@@ -85,6 +105,13 @@ export interface ContentSummary {
   readonly tags: readonly string[];
   readonly state: ContentState;
   readonly sourceState: 'draft' | 'published' | 'unavailable';
+  readonly publishedAt?: string;
+  readonly contentUpdatedAt?: string;
+  readonly filesystemModifiedAt?: string;
+  readonly workingCopySavedAt?: string;
+  /** The meaningful most-recent activity time used by the default sort. */
+  readonly activityAt?: string;
+  /** @deprecated Use activityAt explicitly. */
   readonly updatedAt?: string;
   readonly workingCopy?: {
     readonly version: number;

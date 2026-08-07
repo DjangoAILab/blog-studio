@@ -69,6 +69,15 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '内容', exact: true }).click();
   const library = page.getByRole('complementary', { name: '内容库' });
   await expect(library).toBeVisible();
+  const sortField = library.getByLabel('排序属性');
+  await expect(sortField).toHaveValue('activityAt');
+  await sortField.selectOption('title');
+  await expect(page).toHaveURL(/contentSort=title/);
+  await library.getByRole('button', { name: '当前为降序' }).click();
+  await expect(page).toHaveURL(/contentDirection=asc/);
+  await sortField.selectOption('activityAt');
+  await library.getByRole('button', { name: '当前为升序' }).click();
+  await expect(page).not.toHaveURL(/contentSort|contentDirection/);
   await expect(
     library.getByRole('button', { name: /Existing article/ }),
   ).toBeVisible();
@@ -174,6 +183,12 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(page.getByTitle('文章全文预览')).toBeVisible({
     timeout: 10_000,
   });
+  await expect
+    .poll(async () => {
+      const box = await page.getByTitle('文章全文预览').boundingBox();
+      return box?.height ?? 0;
+    })
+    .toBeGreaterThan(300);
   const markdownFrame = page.frameLocator('iframe[title="文章全文预览"]');
   const previewImage = markdownFrame.getByRole('img', {
     name: 'Preview fixture',
@@ -188,6 +203,20 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .toBe(true);
   await page.getByRole('button', { name: '站点主题' }).click();
   await expect(page.getByRole('status')).toContainText('Markdown 预览');
+  await expect
+    .poll(async () => {
+      const box = await page.getByTitle('文章全文预览').boundingBox();
+      return box?.height ?? 0;
+    })
+    .toBeGreaterThan(300);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(async () => {
+      const box = await page.getByTitle('文章全文预览').boundingBox();
+      return box?.height ?? 0;
+    })
+    .toBeGreaterThan(300);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.getByRole('button', { name: '返回编辑' }).click();
   await expectNoSeriousAccessibilityViolations(page);
 

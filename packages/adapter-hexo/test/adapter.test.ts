@@ -57,6 +57,11 @@ describe('HexoGeneratorAdapter', () => {
     expect(posts[0]?.title).toBe('你好，世界');
     expect(posts[0]?.revision).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(posts[0]?.tags).toEqual(['测试']);
+    expect(posts[0]).toMatchObject({
+      publishedAt: new Date('2026-08-02 09:30:00').toISOString(),
+      contentUpdatedAt: new Date('2026-08-02 09:30:00').toISOString(),
+    });
+    expect(posts[0]?.filesystemModifiedAt).toEqual(expect.any(String));
     expect(drafts[0]?.state).toBe('draft');
   });
 

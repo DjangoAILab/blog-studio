@@ -3,6 +3,8 @@ import {
   createContentHash,
   createDocumentId,
   createWorkspaceId,
+  type ContentSortDirection,
+  type ContentSortField,
   type ContentQueryResult,
   type ContentState,
   type ContentSummary,
@@ -24,6 +26,8 @@ export interface ContentQuery {
   readonly tag?: string;
   readonly from?: string;
   readonly to?: string;
+  readonly sort?: ContentSortField;
+  readonly direction?: ContentSortDirection;
   readonly page?: number;
   readonly pageSize?: number;
 }
@@ -66,6 +70,45 @@ function withinDate(
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase();
+}
+
+function sortValue(
+  item: ContentSummary,
+  sort: ContentSortField,
+): string | undefined {
+  switch (sort) {
+    case 'activityAt':
+      return item.activityAt;
+    case 'publishedAt':
+      return item.publishedAt;
+    case 'contentUpdatedAt':
+      return item.contentUpdatedAt;
+    case 'filesystemModifiedAt':
+      return item.filesystemModifiedAt;
+    case 'title':
+      return item.title;
+    case 'state':
+      return item.state;
+    case 'path':
+      return item.path;
+  }
+}
+
+function compareContent(
+  left: ContentSummary,
+  right: ContentSummary,
+  sort: ContentSortField,
+  direction: ContentSortDirection,
+): number {
+  const leftValue = sortValue(left, sort);
+  const rightValue = sortValue(right, sort);
+  if (!leftValue && rightValue) return 1;
+  if (leftValue && !rightValue) return -1;
+  if (leftValue && rightValue) {
+    const comparison = leftValue.localeCompare(rightValue);
+    if (comparison !== 0) return direction === 'asc' ? comparison : -comparison;
+  }
+  return left.documentId.localeCompare(right.documentId);
 }
 
 export class ContentService {
@@ -124,6 +167,11 @@ export class ContentService {
         summary.state === 'published' && draft ? 'modified' : summary.state;
       const title = stringValue(draft?.frontMatter.title) ?? summary.title;
       const tags = draft ? stringList(draft.frontMatter.tags) : summary.tags;
+      const publishedAt = summary.publishedAt;
+      const contentUpdatedAt = summary.contentUpdatedAt ?? summary.updatedAt;
+      const filesystemModifiedAt = summary.filesystemModifiedAt;
+      const workingCopySavedAt = draft?.savedAt;
+      const activityAt = workingCopySavedAt ?? contentUpdatedAt ?? publishedAt;
       return {
         siteId: site.id,
         documentId: summary.ref.documentId,
@@ -133,9 +181,11 @@ export class ContentService {
         tags,
         state,
         sourceState: summary.state,
-        ...(draft?.savedAt || summary.updatedAt
-          ? { updatedAt: draft?.savedAt ?? summary.updatedAt }
-          : {}),
+        ...(publishedAt ? { publishedAt } : {}),
+        ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
+        ...(filesystemModifiedAt ? { filesystemModifiedAt } : {}),
+        ...(workingCopySavedAt ? { workingCopySavedAt } : {}),
+        ...(activityAt ? { activityAt, updatedAt: activityAt } : {}),
         ...(draft
           ? {
               workingCopy: {
@@ -162,6 +212,8 @@ export class ContentService {
         tags: stringList(draft.frontMatter.tags),
         state: 'modified',
         sourceState: 'unavailable',
+        workingCopySavedAt: draft.savedAt,
+        activityAt: draft.savedAt,
         updatedAt: draft.savedAt,
         workingCopy: {
           version: draft.version,
@@ -194,8 +246,8 @@ export class ContentService {
         if (current) current.count += 1;
         else tagCounts.set(key, { name, count: 1 });
       }
-      if (item.updatedAt && Number.isFinite(Date.parse(item.updatedAt)))
-        dates.push(item.updatedAt);
+      if (item.activityAt && Number.isFinite(Date.parse(item.activityAt)))
+        dates.push(item.activityAt);
     }
     dates.sort();
     const firstDate = dates[0];
@@ -229,11 +281,14 @@ export class ContentService {
       .filter(
         (item) => !tag || item.tags.some((value) => normalize(value) === tag),
       )
-      .filter((item) => withinDate(item.updatedAt, query.from, query.to))
-      .sort(
-        (left, right) =>
-          (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '') ||
-          left.title.localeCompare(right.title),
+      .filter((item) => withinDate(item.activityAt, query.from, query.to))
+      .sort((left, right) =>
+        compareContent(
+          left,
+          right,
+          query.sort ?? 'activityAt',
+          query.direction ?? 'desc',
+        ),
       );
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 25;
