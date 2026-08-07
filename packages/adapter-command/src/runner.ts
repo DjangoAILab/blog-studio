@@ -13,6 +13,7 @@ export interface CommandRequest {
   readonly environmentAllowlist?: readonly string[];
   readonly environment?: Readonly<Record<string, string>>;
   readonly maxOutputBytes?: number;
+  readonly signal?: AbortSignal;
 }
 
 export interface CommandResult {
@@ -36,13 +37,22 @@ export class CommandOutputLimitError extends Error {
   }
 }
 
+export class CommandAbortedError extends Error {
+  public constructor() {
+    super('Command was canceled');
+    this.name = 'CommandAbortedError';
+  }
+}
+
 export async function runCommand(
   request: CommandRequest,
 ): Promise<CommandResult> {
+  if (request.signal?.aborted) throw new CommandAbortedError();
   const cwd = await resolveWorkspacePath(
     request.workspaceRoot,
     request.cwd ?? '.',
   );
+  if (request.signal?.aborted) throw new CommandAbortedError();
   const timeoutMs = request.timeoutMs ?? 120_000;
   const maxOutputBytes = request.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   // PATH is the only inherited default: package-manager shims and /usr/bin/env
@@ -68,19 +78,26 @@ export async function runCommand(
     const stderr: Buffer[] = [];
     let outputBytes = 0;
     let settled = false;
+    let terminalError: Error | undefined;
 
-    const finishWithError = (error: Error): void => {
-      if (settled) return;
-      settled = true;
+    const cleanup = (): void => {
       clearTimeout(timer);
-      child.kill('SIGKILL');
-      reject(error);
+      request.signal?.removeEventListener('abort', abort);
     };
+
+    const terminateWithError = (error: Error): void => {
+      if (settled || terminalError) return;
+      terminalError = error;
+      cleanup();
+      child.kill('SIGKILL');
+    };
+
+    const abort = (): void => terminateWithError(new CommandAbortedError());
 
     const collect = (target: Buffer[], chunk: Buffer): void => {
       outputBytes += chunk.byteLength;
       if (outputBytes > maxOutputBytes) {
-        finishWithError(new CommandOutputLimitError(maxOutputBytes));
+        terminateWithError(new CommandOutputLimitError(maxOutputBytes));
         return;
       }
       target.push(chunk);
@@ -88,17 +105,28 @@ export async function runCommand(
 
     child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk));
     child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk));
-    child.on('error', finishWithError);
+    child.on('error', (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(terminalError ?? error);
+    });
 
     const timer = setTimeout(() => {
-      finishWithError(new CommandTimeoutError(timeoutMs));
+      terminateWithError(new CommandTimeoutError(timeoutMs));
     }, timeoutMs);
     timer.unref();
+    request.signal?.addEventListener('abort', abort, { once: true });
+    if (request.signal?.aborted) abort();
 
     child.on('close', (exitCode) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      cleanup();
+      if (terminalError) {
+        reject(terminalError);
+        return;
+      }
       resolve({
         exitCode: exitCode ?? 1,
         stdout: Buffer.concat(stdout).toString('utf8'),

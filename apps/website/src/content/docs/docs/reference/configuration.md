@@ -10,6 +10,8 @@ description: Generated top-level reference for the strict Blog Studio workspace 
 | Field          | Required | Type         | Constraint             |
 | -------------- | -------- | ------------ | ---------------------- |
 | `version`      | yes      | constant `1` | Must equal `1`         |
+| `site`         | no       | object       | Unknown keys rejected. |
+| `resources`    | no       | object       | Unknown keys rejected. |
 | `workspace`    | yes      | object       | Unknown keys rejected. |
 | `generator`    | yes      | object       | Unknown keys rejected. |
 | `repository`   | yes      | object       | Unknown keys rejected. |

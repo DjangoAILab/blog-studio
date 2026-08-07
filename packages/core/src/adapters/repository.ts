@@ -7,10 +7,23 @@ export interface RepositoryStatus {
   readonly dirtyPaths: readonly string[];
   readonly ahead: number;
   readonly behind: number;
+  readonly changes: readonly RepositoryChange[];
+}
+
+export type RepositoryChangeState =
+  'added' | 'modified' | 'deleted' | 'conflicted' | 'unmanaged' | 'ignored';
+
+export interface RepositoryChange {
+  readonly path: string;
+  readonly state: RepositoryChangeState;
+  readonly staged: boolean;
+  readonly currentHash?: ContentHash;
+  readonly diff?: string;
 }
 
 export interface RepositoryCheckpoint {
   readonly head: ContentHash;
+  readonly commitId: string;
   readonly message: string;
   readonly createdAt: string;
 }

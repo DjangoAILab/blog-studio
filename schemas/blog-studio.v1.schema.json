@@ -6,6 +6,63 @@
       "type": "number",
       "const": 1
     },
+    "site": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "canonicalUrl": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "required": ["displayName"],
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "maxInputBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 104857600
+        },
+        "allowedMediaTypes": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf",
+              "application/zip",
+              "text/plain"
+            ]
+          }
+        },
+        "inlinePreviewMediaTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "application/pdf",
+              "application/zip",
+              "text/plain"
+            ]
+          }
+        }
+      },
+      "required": ["maxInputBytes", "allowedMediaTypes"],
+      "additionalProperties": false
+    },
     "workspace": {
       "type": "object",
       "properties": {
@@ -251,9 +308,103 @@
             "required": ["path"],
             "additionalProperties": false
           }
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "list", "object"]
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 280
+              },
+              "required": { "type": "boolean" },
+              "searchable": { "type": "boolean" },
+              "sortable": { "type": "boolean" },
+              "enum": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "default": { "$ref": "#/$defs/__schema0" }
+            },
+            "required": ["label", "type"],
+            "additionalProperties": false
+          }
         }
       },
       "required": ["collections"],
+      "additionalProperties": false
+    },
+    "development": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "pattern": "^(?:[A-Za-z0-9]|\\/)[A-Za-z0-9._/-]*$"
+        },
+        "args": {
+          "default": [],
+          "type": "array",
+          "maxItems": 40,
+          "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+        },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "readinessPath": {
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^\\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]*$"
+        },
+        "environmentAllowlist": {
+          "default": [],
+          "type": "array",
+          "maxItems": 40,
+          "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" }
+        },
+        "startupTimeoutMs": {
+          "default": 30000,
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 120000
+        },
+        "logLimit": {
+          "default": 500,
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 2000
+        }
+      },
+      "required": [
+        "command",
+        "args",
+        "baseUrl",
+        "environmentAllowlist",
+        "startupTimeoutMs",
+        "logLimit"
+      ],
       "additionalProperties": false
     },
     "verification": {

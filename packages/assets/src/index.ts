@@ -8,6 +8,8 @@ import {
   type AssetRecord,
   type AssetScope,
   type DocumentId,
+  type ResourcePutInput,
+  type ResourceRecord,
   type WorkspaceId,
 } from '@blog-studio/core';
 
@@ -18,7 +20,9 @@ export type AssetPolicyErrorCode =
   | 'ASSET_MEDIA_MISMATCH'
   | 'ASSET_PIXEL_LIMIT'
   | 'ASSET_PROCESSING_TIMEOUT'
-  | 'ASSET_PROCESSING_FAILED';
+  | 'ASSET_PROCESSING_FAILED'
+  | 'RESOURCE_EXECUTABLE_REJECTED'
+  | 'RESOURCE_EXTENSION_MISMATCH';
 
 export class AssetPolicyError extends Error {
   public constructor(
@@ -303,5 +307,220 @@ export class AssetPipeline {
       bytes: processed,
       contentHash: createContentHash(`sha256:${digest}`),
     });
+  }
+}
+
+export interface ResourcePipelinePolicy {
+  readonly maxInputBytes?: number;
+  readonly allowedMediaTypes?: readonly string[];
+  readonly inlinePreviewMediaTypes?: readonly string[];
+  readonly image?: AssetPipelinePolicy;
+}
+
+const genericResourceExtensions: Readonly<Record<string, readonly string[]>> = {
+  'application/pdf': ['.pdf'],
+  'application/zip': ['.zip'],
+  'text/plain': ['.txt', '.md', '.csv', '.log'],
+};
+
+function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
+  return signature.every((value, index) => bytes[index] === value);
+}
+
+function rejectExecutable(bytes: Uint8Array): void {
+  if (
+    startsWith(bytes, [0x4d, 0x5a]) ||
+    startsWith(bytes, [0x7f, 0x45, 0x4c, 0x46]) ||
+    startsWith(bytes, [0x23, 0x21]) ||
+    startsWith(bytes, [0xcf, 0xfa, 0xed, 0xfe]) ||
+    startsWith(bytes, [0xfe, 0xed, 0xfa, 0xcf])
+  ) {
+    throw new AssetPolicyError(
+      'RESOURCE_EXECUTABLE_REJECTED',
+      'Executable resources are not accepted',
+    );
+  }
+}
+
+function sniffGenericMediaType(
+  bytes: Uint8Array,
+  claimedMediaType: string,
+): string {
+  rejectExecutable(bytes);
+  if (startsWith(bytes, [0x25, 0x50, 0x44, 0x46, 0x2d])) {
+    return 'application/pdf';
+  }
+  if (
+    startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]) ||
+    startsWith(bytes, [0x50, 0x4b, 0x05, 0x06])
+  ) {
+    return 'application/zip';
+  }
+  if (normalizeClaimedMediaType(claimedMediaType) === 'text/plain') {
+    if (
+      bytes.includes(0) ||
+      bytes.some((value) => value < 0x09 || (value > 0x0d && value < 0x20))
+    ) {
+      throw new AssetPolicyError(
+        'ASSET_MEDIA_MISMATCH',
+        'Claimed text resource contains binary control bytes',
+      );
+    }
+    try {
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      throw new AssetPolicyError(
+        'ASSET_MEDIA_MISMATCH',
+        'Claimed text resource is not valid UTF-8',
+      );
+    }
+    return 'text/plain';
+  }
+  throw new AssetPolicyError(
+    'ASSET_MEDIA_UNSUPPORTED',
+    'Resource content type is not allowed by the current policy',
+  );
+}
+
+function markdownLabel(value: string): string {
+  return value.replaceAll('[', '_').replaceAll(']', '_').replaceAll('\\', '_');
+}
+
+function originalFilename(value: string): string {
+  const leaf = value.replaceAll('\\', '/').split('/').at(-1)?.trim() ?? '';
+  const sanitized = [...leaf]
+    .map((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 0x1f || code === 0x7f ? '_' : character;
+    })
+    .join('')
+    .slice(0, 180);
+  if (!sanitized) {
+    throw new AssetPolicyError(
+      'RESOURCE_EXTENSION_MISMATCH',
+      'Resource filename must contain a portable leaf name',
+    );
+  }
+  return sanitized;
+}
+
+export class ResourcePipeline {
+  readonly #maxInputBytes: number;
+  readonly #allowedMediaTypes: ReadonlySet<string>;
+  readonly #inlinePreviewMediaTypes: ReadonlySet<string>;
+  readonly #images: AssetPipeline;
+
+  public constructor(
+    private readonly provider: AssetProvider,
+    policy: ResourcePipelinePolicy = {},
+  ) {
+    this.#maxInputBytes = policy.maxInputBytes ?? 12 * 1024 * 1024;
+    this.#allowedMediaTypes = new Set(
+      policy.allowedMediaTypes ?? [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'application/pdf',
+        'application/zip',
+        'text/plain',
+      ],
+    );
+    this.#inlinePreviewMediaTypes = new Set(
+      policy.inlinePreviewMediaTypes ?? [
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'application/pdf',
+      ],
+    );
+    this.#images = new AssetPipeline(provider, {
+      ...policy.image,
+      maxInputBytes: Math.min(
+        policy.image?.maxInputBytes ?? this.#maxInputBytes,
+        this.#maxInputBytes,
+      ),
+    });
+  }
+
+  public async ingest(input: ResourcePutInput): Promise<ResourceRecord> {
+    if (!input.scope.documentId) {
+      throw new AssetPolicyError(
+        'ASSET_SCOPE_REQUIRED',
+        'New resources require an immutable document scope',
+      );
+    }
+    if (input.bytes.byteLength > this.#maxInputBytes) {
+      throw new AssetPolicyError(
+        'ASSET_TOO_LARGE',
+        `Resource exceeds the ${this.#maxInputBytes} byte input limit`,
+      );
+    }
+    const displayFilename = originalFilename(input.filename);
+    let imageMediaType: string | undefined;
+    try {
+      imageMediaType = sniffImageMediaType(input.bytes);
+    } catch {
+      imageMediaType = undefined;
+    }
+    if (imageMediaType) {
+      if (!this.#allowedMediaTypes.has(imageMediaType)) {
+        throw new AssetPolicyError(
+          'ASSET_MEDIA_UNSUPPORTED',
+          `${imageMediaType} is not allowed by the current resource policy`,
+        );
+      }
+      const stored = await this.#images.ingest({
+        ...input,
+        filename: displayFilename,
+      });
+      return {
+        ...stored,
+        kind: 'image',
+        originalFilename: displayFilename,
+        inlinePreview: this.#inlinePreviewMediaTypes.has(imageMediaType),
+        insertion: `![${markdownLabel(displayFilename)}](${stored.publicUrl})`,
+      };
+    }
+
+    const detectedMediaType = sniffGenericMediaType(
+      input.bytes,
+      input.claimedMediaType,
+    );
+    const claimedMediaType = normalizeClaimedMediaType(input.claimedMediaType);
+    if (claimedMediaType !== detectedMediaType) {
+      throw new AssetPolicyError(
+        'ASSET_MEDIA_MISMATCH',
+        `Claimed media type ${input.claimedMediaType} does not match ${detectedMediaType}`,
+      );
+    }
+    if (!this.#allowedMediaTypes.has(detectedMediaType)) {
+      throw new AssetPolicyError(
+        'ASSET_MEDIA_UNSUPPORTED',
+        `${detectedMediaType} is not allowed by the current resource policy`,
+      );
+    }
+    const extension = extname(displayFilename).toLowerCase();
+    if (!genericResourceExtensions[detectedMediaType]?.includes(extension)) {
+      throw new AssetPolicyError(
+        'RESOURCE_EXTENSION_MISMATCH',
+        `Filename extension ${extension || '(none)'} does not match ${detectedMediaType}`,
+      );
+    }
+    const digest = createHash('sha256').update(input.bytes).digest('hex');
+    const basename = displayFilename.slice(0, -extension.length);
+    const stored = await this.provider.put({
+      scope: input.scope,
+      filename: `${digest}-${sanitizeAssetFilename(basename)}${extension}`,
+      mediaType: detectedMediaType,
+      bytes: input.bytes,
+      contentHash: createContentHash(`sha256:${digest}`),
+    });
+    return {
+      ...stored,
+      kind: 'attachment',
+      originalFilename: displayFilename,
+      inlinePreview: this.#inlinePreviewMediaTypes.has(detectedMediaType),
+      insertion: `[${markdownLabel(displayFilename)}](${stored.publicUrl})`,
+    };
   }
 }

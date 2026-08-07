@@ -32,7 +32,6 @@ mkdir -p config data secrets workspace backups
 cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
 umask 077
-openssl rand -base64 32 > secrets/auth_token
 openssl rand -base64 48 > secrets/cookie_secret
 chown -R 1000:1000 data workspace
 ```
@@ -54,19 +53,42 @@ as a local Git repository. This uses the built-in command generator and
 `publish.adapter: none`: writing, durable autosave, and real preview work, while
 the release button remains disabled until a verified target is configured.
 
-Validate and start:
+Validate the deployment, build the image, and initialize the first owner
+password from a trusted terminal. The password is read twice without echo and
+is stored only as a memory-hard verifier in SQLite:
 
 ```sh
 docker compose config --quiet
 docker compose build --pull
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-Open the configured HTTPS hostname and enter the value in
-`secrets/auth_token`. A successful health response alone does not bypass the
-session and CSRF boundary used by the remaining API.
+Open the configured HTTPS hostname and enter the owner password. A successful
+health response alone does not bypass the session and CSRF boundary used by the
+remaining API. The first authenticated journey discovers the configured
+workspace as a Site candidate. Review its identity, content counts, Git state
+and capabilities before registration; registration does not rewrite the Site
+checkout or publish anything. See [Sites and first run](sites-and-first-run.md).
+
+Inspect credential state or recover a forgotten password from the trusted host:
+
+```sh
+docker compose run --rm studio \
+  node dist/server/cli.js auth status \
+  --database /data/blog-studio.sqlite
+docker compose run --rm studio \
+  node dist/server/cli.js auth reset \
+  --database /data/blog-studio.sqlite
+```
+
+Reset increments the credential generation and revokes every browser session.
+The legacy `BLOG_STUDIO_AUTH_TOKEN` fallback is for bounded v0.1 migration only:
+once owner credentials exist, token login is rejected automatically.
 
 ## Tencent provider secrets
 
@@ -145,7 +167,7 @@ browser-facing HTTPS origin; a wildcard is deliberately unsupported.
 | `data/`                  | `/data`                   | SQLite drafts, releases, jobs     | required                 |
 | `config/blog-studio.yml` | `/config/blog-studio.yml` | administrator policy              | required                 |
 | `workspace/`             | `/workspaces/blog`        | canonical files/Git and generator | required plus remote Git |
-| `secrets/*`              | `/run/secrets/*`          | login and cookie secrets          | external secret store    |
+| `secrets/*`              | `/run/secrets/*`          | cookie/provider secrets           | external secret store    |
 
 The backup deliberately excludes generated `node_modules`, `public`, and
 `.published` directories. Reinstall locked dependencies after a restore. Media
@@ -180,5 +202,6 @@ docker compose up -d studio
 ```
 
 The repository's `pnpm container:smoke` reproduces the container security and
-cold-restart checks with an isolated synthetic Hexo site. It never uses a real
-workspace or provider.
+cold-restart checks with an isolated synthetic Hexo Site. The quick-start and
+operations smokes also prove Site discovery/registration and backup/restore
+through the public Site contract. They never use a real workspace or Provider.

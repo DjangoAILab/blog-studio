@@ -1,3 +1,11 @@
+import type {
+  ChangeSetReview,
+  Site,
+  SiteAuditEvent,
+  SiteDiscoveryCandidate,
+  StudioSetupStatus,
+} from '@blog-studio/core';
+
 export interface WorkspaceSummary {
   readonly id: string;
   readonly generator: string;
@@ -26,6 +34,23 @@ export type ReleaseStatus =
   | 'rolled-back'
   | 'canceled';
 
+export type PreviewFallbackReason =
+  | 'missing-output'
+  | 'route-error'
+  | 'build-error'
+  | 'timeout'
+  | 'unsupported-engine'
+  | 'canceled'
+  | 'restart';
+
+interface ReadyPreview {
+  readonly id: string;
+  readonly mode: 'markdown' | 'enhanced';
+  readonly status: 'ready';
+  readonly url: string;
+  readonly fallbackReason?: PreviewFallbackReason;
+}
+
 export interface ReleaseDetails {
   readonly release: {
     readonly id: string;
@@ -34,6 +59,8 @@ export interface ReleaseDetails {
     readonly createdAt: string;
     readonly updatedAt: string;
     readonly previousReleaseId?: string;
+    readonly sourceChangeSetId?: string;
+    readonly sourceCommitId?: string;
     readonly stages: readonly {
       readonly name: string;
       readonly status:
@@ -52,6 +79,32 @@ export interface ReleaseDetails {
   }[];
 }
 
+export interface DevelopmentDetails {
+  readonly workspaceId: string;
+  readonly status: 'stopped' | 'starting' | 'ready' | 'failed';
+  readonly baseUrl?: string;
+  readonly startedAt?: string;
+  readonly message?: string;
+  readonly logs: readonly string[];
+}
+
+export interface SiteConfigurationDetails {
+  readonly siteId: string;
+  readonly revision: number;
+  readonly yaml: string;
+  readonly source: 'legacy' | 'owner' | 'revert';
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface SiteConfigurationRevision {
+  readonly siteId: string;
+  readonly revision: number;
+  readonly yaml: string;
+  readonly source: 'legacy' | 'owner' | 'revert';
+  readonly createdAt: string;
+}
+
 export interface DocumentSummary {
   readonly ref: {
     readonly documentId: string;
@@ -63,6 +116,7 @@ export interface DocumentSummary {
 }
 
 export interface DocumentPayload {
+  readonly stale?: boolean;
   readonly source: {
     readonly ref: {
       readonly documentId: string;
@@ -70,13 +124,71 @@ export interface DocumentPayload {
     };
     readonly revision: string;
     readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly frontMatterSource?: string;
+    readonly frontMatterParseError?: string;
     readonly body: string;
   };
   readonly draft: null | {
     readonly version: number;
     readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly frontMatterSource?: string;
     readonly body: string;
   };
+}
+
+export type ContentState = 'draft' | 'published' | 'modified';
+export type ContentSortField =
+  | 'activityAt'
+  | 'publishedAt'
+  | 'contentUpdatedAt'
+  | 'filesystemModifiedAt'
+  | 'title'
+  | 'state'
+  | 'path';
+export type ContentSortDirection = 'asc' | 'desc';
+
+export interface ContentSummary {
+  readonly documentId: string;
+  readonly collectionId: string;
+  readonly path: string;
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly categories: readonly string[];
+  readonly state: ContentState;
+  readonly sourceState: 'draft' | 'published' | 'unavailable';
+  readonly publishedAt?: string;
+  readonly contentUpdatedAt?: string;
+  readonly filesystemModifiedAt?: string;
+  readonly workingCopySavedAt?: string;
+  readonly activityAt?: string;
+  readonly updatedAt?: string;
+  readonly workingCopy?: {
+    readonly version: number;
+    readonly savedAt: string;
+    readonly sourceRevision: string;
+    readonly stale: boolean;
+  };
+}
+
+export interface ContentQueryResult {
+  readonly items: readonly ContentSummary[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly counts: Readonly<Record<'all' | ContentState, number>>;
+  readonly facets: {
+    readonly collections: readonly {
+      readonly id: string;
+      readonly count: number;
+    }[];
+    readonly tags: readonly { readonly name: string; readonly count: number }[];
+    readonly dateRange: { readonly from?: string; readonly to?: string };
+  };
+  readonly issues: readonly {
+    readonly collectionId: string;
+    readonly kind: 'collection-unavailable';
+    readonly message: string;
+  }[];
 }
 
 export interface OrphanAssetPlan {
@@ -90,6 +202,19 @@ export interface OrphanAssetPlan {
     readonly byteLength: number;
     readonly contentHash: string;
   }[];
+  readonly storage?: 'local' | 'remote';
+}
+
+export class StudioApiError extends Error {
+  public constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly details?: Readonly<Record<string, unknown>>,
+  ) {
+    super(message);
+    this.name = 'StudioApiError';
+  }
 }
 
 export class StudioApi {
@@ -111,24 +236,414 @@ export class StudioApi {
         ...init.headers,
       },
     });
-    const result = (await response.json()) as T & { title?: string };
+    const result = (await response.json()) as T & {
+      title?: string;
+      code?: string;
+      details?: Readonly<Record<string, unknown>>;
+    };
     if (!response.ok)
-      throw new Error(result.title ?? `Request failed: ${response.status}`);
+      throw new StudioApiError(
+        result.title ?? `Request failed: ${response.status}`,
+        response.status,
+        result.code,
+        result.details,
+      );
     return result;
   }
 
-  public async login(token: string): Promise<void> {
+  public authStatus() {
+    return this.#request<{ initialized: boolean; generation?: number }>(
+      '/api/auth/status',
+    );
+  }
+
+  public setupStatus() {
+    return this.#request<StudioSetupStatus>('/api/setup/status');
+  }
+
+  public async login(password: string): Promise<void> {
     const result = await this.#request<{ csrfToken: string }>('/api/session', {
       method: 'POST',
-      body: JSON.stringify({ token }),
+      body: JSON.stringify({ password }),
     });
     this.setCsrfToken(result.csrfToken);
+  }
+
+  public async changePassword(input: {
+    readonly currentPassword: string;
+    readonly newPassword: string;
+  }): Promise<{ readonly credentialGeneration: number }> {
+    const result = await this.#request<{
+      credentialGeneration: number;
+      csrfToken: string;
+    }>('/api/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    });
+    this.setCsrfToken(result.csrfToken);
+    return { credentialGeneration: result.credentialGeneration };
+  }
+
+  public logout() {
+    return this.#request<{ authenticated: false }>('/api/session', {
+      method: 'DELETE',
+    });
   }
 
   public workspaces() {
     return this.#request<{ workspaces: readonly WorkspaceSummary[] }>(
       '/api/workspaces',
     );
+  }
+
+  public sites() {
+    return this.#request<{ sites: readonly Site[] }>('/api/sites');
+  }
+
+  public discoverSites() {
+    return this.#request<{
+      candidates: readonly SiteDiscoveryCandidate[];
+    }>('/api/sites/discover');
+  }
+
+  public site(siteId: string) {
+    return this.#request<{ site: Site }>(`/api/sites/${siteId}`);
+  }
+
+  public registerSite(input: {
+    readonly candidateId: string;
+    readonly displayName: string;
+    readonly canonicalUrl?: string;
+  }) {
+    return this.#request<{ site: Site }>('/api/sites', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  public updateSite(input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly displayName: string;
+    readonly canonicalUrl?: string;
+  }) {
+    const { siteId, ...body } = input;
+    return this.#request<{ site: Site }>(`/api/sites/${siteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  public siteEvents(siteId: string) {
+    return this.#request<{ events: readonly SiteAuditEvent[] }>(
+      `/api/sites/${siteId}/events`,
+    );
+  }
+
+  public changeSets(siteId: string) {
+    return this.#request<{ changeSets: readonly ChangeSetReview[] }>(
+      `/api/sites/${siteId}/change-sets`,
+    );
+  }
+
+  public prepareChangeSet(siteId: string) {
+    return this.#request<{ changeSet: ChangeSetReview }>(
+      `/api/sites/${siteId}/change-sets/prepare`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public applyChangeSet(siteId: string, changeSetId: string) {
+    return this.#request<{ changeSet: ChangeSetReview }>(
+      `/api/sites/${siteId}/change-sets/${changeSetId}/apply`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public commitChangeSet(input: {
+    readonly siteId: string;
+    readonly changeSetId: string;
+    readonly message: string;
+    readonly paths: readonly string[];
+  }) {
+    return this.#request<{ changeSet: ChangeSetReview }>(
+      `/api/sites/${input.siteId}/change-sets/${input.changeSetId}/commit`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message: input.message, paths: input.paths }),
+      },
+    );
+  }
+
+  public releaseChangeSet(input: {
+    readonly siteId: string;
+    readonly changeSetId: string;
+    readonly confirmation: string;
+    readonly targetId?: string;
+  }) {
+    return this.#request<{ release: ReleaseDetails }>(
+      `/api/sites/${input.siteId}/change-sets/${input.changeSetId}/release`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          confirmation: input.confirmation,
+          ...(input.targetId ? { targetId: input.targetId } : {}),
+        }),
+      },
+    );
+  }
+
+  public siteReleases(siteId: string) {
+    return this.#request<{ releases: readonly ReleaseDetails[] }>(
+      `/api/sites/${siteId}/releases`,
+    );
+  }
+
+  public siteRelease(siteId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/sites/${siteId}/releases/${releaseId}`,
+    );
+  }
+
+  public cancelSiteRelease(siteId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/sites/${siteId}/releases/${releaseId}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  public rollbackSiteRelease(siteId: string, releaseId: string) {
+    return this.#request<ReleaseDetails>(
+      `/api/sites/${siteId}/releases/${releaseId}/rollback`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public content(
+    siteId: string,
+    query: {
+      readonly search?: string;
+      readonly collection?: string;
+      readonly state?: ContentState;
+      readonly tag?: string;
+      readonly from?: string;
+      readonly to?: string;
+      readonly sort?: ContentSortField;
+      readonly direction?: ContentSortDirection;
+      readonly page?: number;
+      readonly pageSize?: number;
+    } = {},
+  ) {
+    const parameters = new URLSearchParams();
+    if (query.search) parameters.set('search', query.search);
+    if (query.collection) parameters.set('collection', query.collection);
+    if (query.state) parameters.set('state', query.state);
+    if (query.tag) parameters.set('tag', query.tag);
+    if (query.from) parameters.set('from', query.from);
+    if (query.to) parameters.set('to', query.to);
+    if (query.sort) parameters.set('sort', query.sort);
+    if (query.direction) parameters.set('direction', query.direction);
+    if (query.page !== undefined) parameters.set('page', String(query.page));
+    if (query.pageSize !== undefined)
+      parameters.set('pageSize', String(query.pageSize));
+    const suffix = parameters.size > 0 ? `?${parameters.toString()}` : '';
+    return this.#request<{ content: ContentQueryResult }>(
+      `/api/sites/${siteId}/content${suffix}`,
+    );
+  }
+
+  public development(siteId: string) {
+    return this.#request<{ development: DevelopmentDetails }>(
+      `/api/sites/${siteId}/development`,
+    );
+  }
+
+  public siteConfiguration(siteId: string) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${siteId}/configuration`,
+    );
+  }
+
+  public validateSiteConfiguration(siteId: string, yaml: string) {
+    return this.#request<{ valid: true }>(
+      `/api/sites/${siteId}/configuration/validate`,
+      { method: 'POST', body: JSON.stringify({ yaml }) },
+    );
+  }
+
+  public siteConfigurationHistory(siteId: string) {
+    return this.#request<{
+      revisions: readonly SiteConfigurationRevision[];
+    }>(`/api/sites/${siteId}/configuration/history`);
+  }
+
+  public activateSiteConfiguration(input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly yaml: string;
+  }) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${input.siteId}/configuration`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedRevision: input.expectedRevision,
+          yaml: input.yaml,
+        }),
+      },
+    );
+  }
+
+  public updateSiteLifecycle(input: {
+    readonly siteId: string;
+    readonly expectedUpdatedAt: string;
+    readonly lifecycleState: 'active' | 'paused' | 'unregistered';
+  }) {
+    return this.#request<{ site: Site }>(
+      `/api/sites/${input.siteId}/lifecycle`,
+      { method: 'POST', body: JSON.stringify(input) },
+    );
+  }
+
+  public revertSiteConfiguration(input: {
+    readonly siteId: string;
+    readonly expectedRevision: number;
+    readonly revision: number;
+  }) {
+    return this.#request<{ configuration: SiteConfigurationDetails }>(
+      `/api/sites/${input.siteId}/configuration/revert`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          expectedRevision: input.expectedRevision,
+          revision: input.revision,
+        }),
+      },
+    );
+  }
+
+  public controlDevelopment(
+    siteId: string,
+    action: 'start' | 'restart' | 'stop',
+  ) {
+    if (action === 'stop')
+      return this.#request<{ development: DevelopmentDetails }>(
+        `/api/sites/${siteId}/development`,
+        { method: 'DELETE' },
+      );
+    return this.#request<{ development: DevelopmentDetails }>(
+      `/api/sites/${siteId}/development`,
+      { method: 'POST', body: JSON.stringify({ action }) },
+    );
+  }
+
+  public siteDocument(siteId: string, documentId: string, collection: string) {
+    return this.#request<DocumentPayload & { readonly stale: boolean }>(
+      `/api/sites/${siteId}/content/${documentId}?collection=${encodeURIComponent(collection)}`,
+    );
+  }
+
+  public createContent(
+    siteId: string,
+    input: { readonly title: string; readonly slug?: string },
+  ) {
+    return this.#request<DocumentPayload>(`/api/sites/${siteId}/content`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  }
+
+  public saveWorkingCopy(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedVersion: number;
+    readonly sourceRevision: string;
+    readonly frontMatter: Readonly<Record<string, unknown>>;
+    readonly body: string;
+  }) {
+    return this.#request<{ draft: { version: number } }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({
+          expectedVersion: input.expectedVersion,
+          sourceRevision: input.sourceRevision,
+          frontMatter: input.frontMatter,
+          body: input.body,
+        }),
+      },
+    );
+  }
+
+  public repairFrontMatter(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly sourceRevision: string;
+    readonly frontMatterSource: string;
+  }) {
+    return this.#request<{ source: DocumentPayload['source'] }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/repair-front-matter?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceRevision: input.sourceRevision,
+          frontMatterSource: input.frontMatterSource,
+        }),
+      },
+    );
+  }
+
+  public discardWorkingCopy(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedVersion: number;
+  }) {
+    return this.#request<{ discarded: true }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ expectedVersion: input.expectedVersion }),
+      },
+    );
+  }
+
+  public discardUnavailableWorkingCopy(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly expectedVersion: number;
+  }) {
+    return this.#request<{ discarded: true }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/unavailable-working-copy`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ expectedVersion: input.expectedVersion }),
+      },
+    );
+  }
+
+  public startContentPreview(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly mode?: 'markdown' | 'enhanced';
+  }) {
+    const parameters = new URLSearchParams({ collection: input.collection });
+    if (input.mode) parameters.set('mode', input.mode);
+    return this.#request<{
+      preview: ReadyPreview;
+    }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/preview?${parameters.toString()}`,
+      { method: 'POST' },
+    );
+  }
+
+  public stopContentPreview(siteId: string) {
+    return this.#request<{ stopped: boolean }>(`/api/sites/${siteId}/preview`, {
+      method: 'DELETE',
+    });
   }
 
   public documents(workspaceId: string, collection = 'posts') {
@@ -203,7 +718,7 @@ export class StudioApi {
     documentId: string,
     collection = 'posts',
   ) {
-    return this.#request<{ preview: { id: string; url: string } }>(
+    return this.#request<{ preview: ReadyPreview }>(
       `/api/workspaces/${workspaceId}/documents/${documentId}/preview?collection=${collection}`,
       { method: 'POST' },
     );
@@ -286,6 +801,60 @@ export class StudioApi {
           'content-type': input.file.type,
           'x-blog-studio-filename': encodeURIComponent(input.file.name),
         },
+      },
+    );
+  }
+
+  public uploadResource(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly file: File;
+  }) {
+    return this.#request<{
+      resource: {
+        readonly id: string;
+        readonly kind: 'image' | 'attachment';
+        readonly publicUrl: string;
+        readonly mediaType: string;
+        readonly insertion: string;
+        readonly inlinePreview: boolean;
+        readonly storage: 'local' | 'remote';
+      };
+    }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/resources?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: input.file,
+        headers: {
+          'content-type': input.file.type || 'application/octet-stream',
+          'x-blog-studio-filename': encodeURIComponent(input.file.name),
+        },
+      },
+    );
+  }
+
+  public orphanResources(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+  }) {
+    return this.#request<{ plan: OrphanAssetPlan }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/resources/orphans?collection=${encodeURIComponent(input.collection)}`,
+    );
+  }
+
+  public deleteOrphanResources(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly confirmation: string;
+  }) {
+    return this.#request<{ deleted: readonly string[]; count: number }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/resources/orphans?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: input.confirmation }),
       },
     );
   }

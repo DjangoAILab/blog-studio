@@ -5,11 +5,24 @@ sidebar:
   order: 4
 ---
 
-## Release stages
+## Prepare and commit first
 
-The visible timeline moves through preflight, build, plan, asset upload, page
-upload, cache invalidation, and public verification. Release and event records
-are persisted before execution so a restart has deterministic recovery data.
+`Prepare changes` is the low-risk boundary. It freezes source, draft, referenced
+resource, Site configuration, and Git revisions into an immutable ChangeSet. It
+does not build, upload, invalidate cache, push Git, or change the public Site.
+
+After review, apply the ChangeSet and create a local commit with an editable
+message and exact file selection. Unrelated staged or working-tree changes are
+preserved. Remote release requires that committed ChangeSet plus a separate
+confirmation phrase.
+
+## Remote release stages
+
+The release builds from a detached worktree at the recorded commit, never the
+current live files. Its timeline moves through preflight, build, plan, asset
+upload, page upload, cache invalidation, and public verification. Release and
+event records are persisted before execution so a restart has deterministic
+recovery data.
 
 ## Manifest planning
 

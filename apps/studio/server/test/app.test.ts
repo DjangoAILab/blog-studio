@@ -3,13 +3,21 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   stat,
+  unlink,
   writeFile,
 } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { FastifyInstance } from 'fastify';
+import {
+  openStudioDatabase,
+  SqliteOwnerCredentialRepository,
+  SqliteOwnerSessionRepository,
+} from '@blog-studio/persistence';
 import {
   TencentCosPublisher,
   type CosPublisherClient,
@@ -17,7 +25,8 @@ import {
 import sharp from 'sharp';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { createStudioServer } from '../app.js';
+import { createStudioServer, type StudioServerOptions } from '../app.js';
+import { OwnerAuthService } from '../auth/owner-auth.js';
 
 const origin = 'https://studio.example.test';
 const authToken = 'test-auth-token-at-least-sixteen';
@@ -26,12 +35,24 @@ const apps: FastifyInstance[] = [];
 
 interface FixtureOptions {
   readonly existingCosObjects?: Map<string, Uint8Array>;
+  readonly ownerPassword?: string;
+  readonly invalidConfiguration?: boolean;
+  readonly omitLegacyAuthToken?: boolean;
+  readonly secondWorkspace?: boolean;
+  readonly additionalOlderPost?: boolean;
+  readonly previewFailure?: 'build-error' | 'missing-output' | 'route-error';
+  readonly previewDelayMs?: number;
+  readonly seedInterruptedPreviewSandbox?: boolean;
+  readonly logger?: StudioServerOptions['logger'];
+  readonly legacyReleaseApi?: boolean;
+  readonly contentFields?: string;
 }
 
 async function fixture(options: FixtureOptions = {}): Promise<{
   readonly app: FastifyInstance;
   readonly workspace: string;
   readonly publishTarget: string;
+  readonly previewStateDirectory: string;
   readonly cosObjects?: Map<string, Uint8Array>;
 }> {
   const parent = await mkdtemp(join(tmpdir(), 'blog-studio-api-'));
@@ -58,36 +79,65 @@ async function fixture(options: FixtureOptions = {}): Promise<{
   );
   await writeFile(
     join(workspace, 'source', '_posts', 'hello.md'),
-    '---\ntitle: Hello\ndate: 2026-08-02 10:00:00\ncustom: keep\n---\nBody\n',
+    '---\ntitle: Hello\ndate: 2026-08-02 10:00:00\ncategories: [Infrastructure]\ncustom: keep\n---\nBody\n',
   );
+  if (options.additionalOlderPost) {
+    await writeFile(
+      join(workspace, 'source', '_posts', 'alpha-old.md'),
+      '---\ntitle: Alpha old\ndate: 2024-01-01 10:00:00\n---\nOlder body\n',
+    );
+  }
   const fakeHexo = join(workspace, 'node_modules', '.bin', 'hexo');
   await writeFile(
     fakeHexo,
     [
       '#!/usr/bin/env node',
       "const{mkdir,readdir,readFile,writeFile}=await import('node:fs/promises');",
+      ...(options.previewDelayMs
+        ? [
+            `await new Promise(resolve=>setTimeout(resolve,${options.previewDelayMs}));`,
+          ]
+        : []),
+      ...(options.previewFailure === 'build-error'
+        ? ["throw new Error('fixture preview build failed');"]
+        : []),
       "await mkdir('public/css',{recursive:true});",
       "await writeFile('public/index.html','preview');",
       "await writeFile('public/css/site.css','body{background:url(../../static/reading.jpeg)}');",
-      "for(const name of await readdir('source/_posts')){",
-      "if(!name.endsWith('.md'))continue;",
-      "const body=await readFile('source/_posts/'+name,'utf8');",
-      'const date=body.match(/date:\\s*[\\"\']?(\\d{4})-(\\d{2})-(\\d{2})/);',
-      "if(!date)throw new Error('missing fixture date: '+name);",
-      'const slug=name.slice(0,-3);',
-      "const directory='public/'+date[1]+'/'+date[2]+'/'+date[3]+'/'+slug;",
-      'await mkdir(directory,{recursive:true});',
-      'await writeFile(directory+\'/index.html\',\'<link href="/css/site.css"><img src="../../../../static/reading.jpeg">\'+body);',
-      '}',
+      ...(options.previewFailure === 'missing-output'
+        ? []
+        : [
+            "for(const name of await readdir('source/_posts')){",
+            "if(!name.endsWith('.md'))continue;",
+            "const body=await readFile('source/_posts/'+name,'utf8');",
+            'const date=body.match(/date:\\s*[\\"\']?(\\d{4})-(\\d{2})-(\\d{2})/);',
+            "if(!date)throw new Error('missing fixture date: '+name);",
+            'const slug=name.slice(0,-3);',
+            "const directory='public/'+date[1]+'/'+date[2]+'/'+date[3]+'/'+slug;",
+            'await mkdir(directory,{recursive:true});',
+            options.previewFailure === 'route-error'
+              ? "await writeFile(directory+'/index.html','rendered without marker');"
+              : 'await writeFile(directory+\'/index.html\',\'<link href="/css/site.css"><img src="../../../../static/reading.jpeg">\'+body);',
+            '}',
+          ]),
       '',
     ].join('\n'),
   );
   await chmod(fakeHexo, 0o755);
   const configPath = join(parent, 'blog-studio.yml');
   const usesCosBaseline = options.existingCosObjects !== undefined;
-  await writeFile(
-    configPath,
-    `version: 1
+  const contentModel = options.contentFields
+    ? `content:
+  collections:
+    posts:
+      path: source/_posts
+      draftPath: source/_drafts
+  fields:
+${options.contentFields}`
+    : '';
+  const configuration = options.invalidConfiguration
+    ? 'version: invalid\n'
+    : `version: 1
 workspace:
   id: test-blog
   root: ${workspace}
@@ -116,8 +166,18 @@ publish:
     }
 verification:
   baseUrl: https://blog.example.test
-`,
-  );
+${contentModel}
+`;
+  await writeFile(configPath, configuration);
+  const configurationPaths = [configPath];
+  if (options.secondWorkspace) {
+    const secondConfigPath = join(parent, 'blog-studio-second.yml');
+    await writeFile(
+      secondConfigPath,
+      configuration.replace('id: test-blog', 'id: second-blog'),
+    );
+    configurationPaths.push(secondConfigPath);
+  }
 
   const cosObjects = options.existingCosObjects;
   const cosClient: CosPublisherClient | undefined = cosObjects
@@ -156,15 +216,37 @@ verification:
       }
     : undefined;
 
+  const databasePath = join(parent, 'studio.sqlite');
+  const previewStateDirectory = join(parent, 'preview-sandboxes');
+  if (options.seedInterruptedPreviewSandbox) {
+    await mkdir(join(previewStateDirectory, 'preview-interrupted'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(previewStateDirectory, 'preview-interrupted', 'partial'),
+      'partial',
+    );
+  }
+  if (options.ownerPassword) {
+    const database = openStudioDatabase(databasePath);
+    await new OwnerAuthService(
+      new SqliteOwnerCredentialRepository(database),
+      new SqliteOwnerSessionRepository(database),
+    ).initialize(options.ownerPassword);
+    database.close();
+  }
   const app = await createStudioServer({
-    configurationPaths: [configPath],
+    configurationPaths,
     allowedWorkspaceRoot: parent,
-    databasePath: join(parent, 'studio.sqlite'),
-    authToken,
+    databasePath,
+    previewStateDirectory,
+    ...(options.omitLegacyAuthToken ? {} : { authToken }),
     cookieSecret,
     allowedOrigins: [origin],
     secureCookies: false,
+    allowLegacyReleaseApi: options.legacyReleaseApi ?? true,
     clientDirectory: client,
+    ...(options.logger ? { logger: options.logger } : {}),
     releaseVerifierFactory: () => ({
       verify: () => Promise.resolve(true),
     }),
@@ -191,6 +273,7 @@ verification:
     app,
     workspace,
     publishTarget,
+    previewStateDirectory,
     ...(cosObjects ? { cosObjects } : {}),
   };
 }
@@ -214,6 +297,31 @@ async function login(app: FastifyInstance): Promise<{
   };
 }
 
+function cookies(
+  response: Awaited<ReturnType<FastifyInstance['inject']>>,
+): string {
+  const setCookie = response.headers['set-cookie'];
+  const values = Array.isArray(setCookie) ? setCookie : [setCookie ?? ''];
+  return values.map((value) => value.split(';')[0]).join('; ');
+}
+
+async function loginWithPassword(
+  app: FastifyInstance,
+  password: string,
+): Promise<{ readonly cookie: string; readonly csrfToken: string }> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/session',
+    headers: { origin },
+    payload: { password },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  return {
+    cookie: cookies(response),
+    csrfToken: response.json<{ csrfToken: string }>().csrfToken,
+  };
+}
+
 interface ReleaseDetails {
   readonly release: {
     readonly id: string;
@@ -229,7 +337,7 @@ async function waitForRelease(
   cookie: string,
   releaseId: string,
 ): Promise<ReleaseDetails> {
-  for (let attempt = 0; attempt < 80; attempt++) {
+  for (let attempt = 0; attempt < 200; attempt++) {
     const response = await app.inject({
       url: `/api/workspaces/test-blog/releases/${releaseId}`,
       headers: { cookie },
@@ -251,6 +359,215 @@ afterEach(async () => {
 });
 
 describe('Studio workspace API', () => {
+  it('reports uninitialized owner state without allowing browser ownership claim', async () => {
+    const { app } = await fixture({ omitLegacyAuthToken: true });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: {
+        state: 'not-ready',
+        nextAction: 'initialize-owner-credentials',
+      },
+      configuration: { state: 'valid' },
+      site: { state: 'not-registered', nextAction: 'discover-site' },
+    });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: false,
+    });
+    const attemptedClaim = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: 'browser selected password' },
+    });
+    expect(attemptedClaim.statusCode).toBe(503);
+    expect(attemptedClaim.json()).toMatchObject({
+      code: 'OWNER_NOT_INITIALIZED',
+    });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: false,
+    });
+  });
+
+  it('starts fail-closed with a public repair action when configuration is invalid', async () => {
+    const ownerPassword = 'owner password for degraded configuration';
+    const { app } = await fixture({
+      invalidConfiguration: true,
+      omitLegacyAuthToken: true,
+      ownerPassword,
+    });
+    const health = await app.inject('/api/health');
+    expect(health.statusCode).toBe(503);
+    expect(health.json()).toEqual({
+      status: 'degraded',
+      code: 'CONFIGURATION_INVALID',
+    });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: { state: 'ready' },
+      configuration: {
+        state: 'invalid',
+        nextAction: 'repair-configuration',
+      },
+      site: { state: 'unavailable', nextAction: 'repair-configuration' },
+    });
+    const { cookie } = await loginWithPassword(app, ownerPassword);
+    const sites = await app.inject({ url: '/api/sites', headers: { cookie } });
+    expect(sites.statusCode).toBe(503);
+    expect(sites.json()).toMatchObject({ code: 'CONFIGURATION_INVALID' });
+  });
+
+  it('redacts credential, session, cookie, CSRF, and authorization log fields', async () => {
+    const lines: string[] = [];
+    const secrets = {
+      authorization: 'Bearer authorization-secret',
+      cookie: 'cookie-secret',
+      csrf: 'csrf-secret',
+      password: 'password-secret',
+      currentPassword: 'current-password-secret',
+      newPassword: 'new-password-secret',
+      token: 'legacy-token-secret',
+      verifier: 'stored-verifier-secret',
+      sessionToken: 'session-token-secret',
+    };
+    const { app } = await fixture({
+      logger: {
+        level: 'info',
+        stream: { write: (line: string) => lines.push(line) },
+      },
+    });
+    app.log.info(
+      {
+        req: {
+          headers: {
+            authorization: secrets.authorization,
+            cookie: secrets.cookie,
+            'x-csrf-token': secrets.csrf,
+          },
+          body: {
+            password: secrets.password,
+            currentPassword: secrets.currentPassword,
+            newPassword: secrets.newPassword,
+            token: secrets.token,
+          },
+        },
+        body: secrets,
+        res: { headers: { 'set-cookie': 'response-cookie-secret' } },
+      },
+      'credential redaction probe',
+    );
+    const output = lines.join('\n');
+    for (const secret of [
+      ...Object.values(secrets),
+      'response-cookie-secret',
+    ]) {
+      expect(output).not.toContain(secret);
+    }
+    expect(output).toContain('[REDACTED]');
+  });
+
+  it('disables the legacy token after CLI-equivalent password initialization', async () => {
+    const ownerPassword = 'owner initialized passphrase';
+    const { app } = await fixture({ ownerPassword });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      initialized: true,
+      generation: 1,
+    });
+    const legacy = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { token: authToken },
+    });
+    expect(legacy.statusCode).toBe(401);
+    const session = await loginWithPassword(app, ownerPassword);
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces',
+          headers: { cookie: session.cookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('rate limits repeated owner password failures', async () => {
+    const { app } = await fixture({
+      ownerPassword: 'owner rate limit passphrase',
+    });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/session',
+        headers: { origin },
+        payload: { password: 'incorrect owner passphrase' },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+    const limited = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: 'owner rate limit passphrase' },
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBeDefined();
+  });
+
+  it('changes the owner password and revokes every prior browser session', async () => {
+    const initialPassword = 'initial browser passphrase';
+    const replacementPassword = 'replacement browser passphrase';
+    const { app } = await fixture({ ownerPassword: initialPassword });
+    const first = await loginWithPassword(app, initialPassword);
+    const second = await loginWithPassword(app, initialPassword);
+    const changed = await app.inject({
+      method: 'PATCH',
+      url: '/api/auth/password',
+      headers: {
+        cookie: first.cookie,
+        origin,
+        'x-csrf-token': first.csrfToken,
+      },
+      payload: {
+        currentPassword: initialPassword,
+        newPassword: replacementPassword,
+      },
+    });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.json()).toMatchObject({
+      changed: true,
+      credentialGeneration: 2,
+    });
+    const replacementCookie = cookies(changed);
+    for (const old of [first.cookie, second.cookie]) {
+      expect(
+        (
+          await app.inject({
+            url: '/api/workspaces',
+            headers: { cookie: old },
+          })
+        ).statusCode,
+      ).toBe(401);
+    }
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces',
+          headers: { cookie: replacementCookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const oldLogin = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: { password: initialPassword },
+    });
+    expect(oldLogin.statusCode).toBe(401);
+    await expect(
+      loginWithPassword(app, replacementPassword),
+    ).resolves.toBeDefined();
+  });
+
   it('keeps health public and requires a signed session elsewhere', async () => {
     const { app } = await fixture();
     expect((await app.inject('/api/health')).statusCode).toBe(200);
@@ -271,8 +588,801 @@ describe('Studio workspace API', () => {
     expect(rejected.statusCode).toBe(403);
   });
 
-  it('scans, lists, reads, and autosaves with optimistic conflicts', async () => {
+  it('discovers and confirms a v0.1 workspace as a user-facing Site', async () => {
+    const ownerPassword = 'owner password for Site onboarding';
+    const { app, workspace } = await fixture({
+      omitLegacyAuthToken: true,
+      ownerPassword,
+    });
+    execFileSync('git', ['-C', workspace, 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.name',
+      'Studio Test',
+    ]);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.email',
+      'studio@example.invalid',
+    ]);
+    execFileSync('git', ['-C', workspace, 'add', '.']);
+    execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
+    const session = await loginWithPassword(app, ownerPassword);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    expect((await app.inject({ url: '/api/sites', headers })).json()).toEqual({
+      sites: [],
+    });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: { state: 'ready' },
+      configuration: { state: 'valid' },
+      site: { state: 'not-registered', nextAction: 'discover-site' },
+    });
+    const discovery = await app.inject({
+      url: '/api/sites/discover',
+      headers,
+    });
+    expect(discovery.statusCode, discovery.body).toBe(200);
+    const candidate = discovery.json<{
+      candidates: Array<{
+        candidateId: string;
+        proposedDisplayName: string;
+        canonicalUrl: string;
+        contentCounts: Record<string, number>;
+        repository: {
+          available: boolean;
+          head: string;
+          dirtyCount: number;
+        };
+        advanced: { workspaceRoot: string; configurationPath: string };
+      }>;
+    }>().candidates[0];
+    expect(candidate).toMatchObject({
+      candidateId: 'test-blog',
+      proposedDisplayName: 'test-blog',
+      canonicalUrl: 'https://blog.example.test/',
+      contentCounts: { posts: 1, drafts: 0 },
+      advanced: { workspaceRoot: workspace },
+    });
+    expect(candidate?.advanced.configurationPath).toMatch(/blog-studio\.yml$/);
+    expect(candidate?.repository).toMatchObject({
+      available: true,
+      dirtyCount: 0,
+    });
+    expect(candidate?.repository.head).toMatch(/^sha256:[a-f0-9]{64}$/);
+
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'test-blog',
+        displayName: '测试博客',
+        canonicalUrl: 'https://blog.example.test',
+      },
+    });
+    expect(registered.statusCode, registered.body).toBe(201);
+    const site = registered.json<{
+      site: {
+        id: string;
+        displayName: string;
+        canonicalUrl: string;
+        updatedAt: string;
+        workspaceId?: string;
+      };
+    }>().site;
+    expect(site).toMatchObject({
+      displayName: '测试博客',
+      canonicalUrl: 'https://blog.example.test/',
+    });
+    expect(site.id).toMatch(/^site-[a-f0-9-]+$/);
+    expect(site.workspaceId).toBeUndefined();
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: true,
+      credentials: { state: 'ready' },
+      configuration: { state: 'valid' },
+      site: { state: 'registered' },
+    });
+    expect(
+      (await app.inject({ url: '/api/sites/discover', headers })).json(),
+    ).toEqual({ candidates: [] });
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: site.updatedAt,
+        displayName: '测试博客 Studio',
+        canonicalUrl: 'https://writing.example.test',
+      },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json()).toMatchObject({
+      site: {
+        displayName: '测试博客 Studio',
+        canonicalUrl: 'https://writing.example.test/',
+      },
+    });
+    const stale = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: site.updatedAt,
+        displayName: '陈旧设置',
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json()).toMatchObject({
+      code: 'SITE_REVISION_CONFLICT',
+    });
+    const audit = await app.inject({
+      url: `/api/sites/${site.id}/events`,
+      headers,
+    });
+    expect(audit.statusCode, audit.body).toBe(200);
+    expect(audit.json()).toMatchObject({
+      events: [
+        {
+          siteId: site.id,
+          type: 'registered',
+          actor: 'owner',
+          after: {
+            displayName: '测试博客',
+            canonicalUrl: 'https://blog.example.test/',
+          },
+        },
+        {
+          siteId: site.id,
+          type: 'settings-updated',
+          actor: 'owner',
+          before: {
+            displayName: '测试博客',
+            canonicalUrl: 'https://blog.example.test/',
+          },
+          after: {
+            displayName: '测试博客 Studio',
+            canonicalUrl: 'https://writing.example.test/',
+          },
+        },
+      ],
+    });
+    expect(audit.json<{ events: unknown[] }>().events).toHaveLength(2);
+    expect(
+      await readFile(join(workspace, '..', 'blog-studio.yml'), 'utf8'),
+    ).not.toContain('测试博客 Studio');
+  });
+
+  it('rejects duplicate Site identity and unsupported canonical URLs', async () => {
+    const { app } = await fixture({ secondWorkspace: true });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'test-blog',
+        displayName: 'Same Site',
+      },
+    });
+    expect(first.statusCode, first.body).toBe(201);
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: {
+        candidateId: 'second-blog',
+        displayName: 'same site',
+      },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      title: 'A Site already exists with the same displayName',
+    });
+
+    const unsupportedUrl = await app.inject({
+      method: 'PATCH',
+      url: `/api/sites/${first.json<{ site: { id: string } }>().site.id}`,
+      headers,
+      payload: {
+        expectedUpdatedAt: first.json<{ site: { updatedAt: string } }>().site
+          .updatedAt,
+        displayName: 'Same Site',
+        canonicalUrl: 'ftp://blog.example.test',
+      },
+    });
+    expect(unsupportedUrl.statusCode).toBe(422);
+    expect(unsupportedUrl.json()).toMatchObject({
+      title: 'Site canonical URL must use HTTP or HTTPS',
+    });
+  });
+
+  it('queries published, draft, and modified content through the Site contract', async () => {
+    const { app, workspace } = await fixture({ additionalOlderPost: true });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Content Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const initial = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    expect(initial.statusCode, initial.body).toBe(200);
+    const initialContent = initial.json<{
+      content: {
+        items: Array<{
+          documentId: string;
+          collectionId: string;
+          state: string;
+          path: string;
+        }>;
+        counts: Record<string, number>;
+      };
+    }>().content;
+    expect(initialContent).toMatchObject({
+      counts: { all: 2, published: 2, draft: 0, modified: 0 },
+      items: [
+        { title: 'Hello', state: 'published', collectionId: 'posts' },
+        { title: 'Alpha old', state: 'published', collectionId: 'posts' },
+      ],
+    });
+    expect(JSON.stringify(initialContent)).not.toContain('Body');
+    const publishedAscending = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=publishedAt&direction=asc&page=1&pageSize=1`,
+      headers,
+    });
+    expect(publishedAscending.statusCode, publishedAscending.body).toBe(200);
+    expect(publishedAscending.json()).toMatchObject({
+      content: {
+        total: 2,
+        items: [{ title: 'Alpha old' }],
+      },
+    });
+    const publishedAscendingNext = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=publishedAt&direction=asc&page=2&pageSize=1`,
+      headers,
+    });
+    expect(publishedAscendingNext.json()).toMatchObject({
+      content: { items: [{ title: 'Hello' }] },
+    });
+    const invalidSort = await app.inject({
+      url: `/api/sites/${siteId}/content?sort=unknown`,
+      headers,
+    });
+    expect(invalidSort.statusCode).toBe(400);
+    const categorySearch = await app.inject({
+      url: `/api/sites/${siteId}/content?search=infrastructure`,
+      headers,
+    });
+    expect(categorySearch.json()).toMatchObject({
+      content: { total: 1, items: [{ title: 'Hello' }] },
+    });
+    const published = initialContent.items[0];
+    if (!published) throw new Error('fixture post missing');
+
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${published.documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+        body: string;
+      };
+    }>().source;
+    const workingCopyUrl = `/api/sites/${siteId}/content/${published.documentId}/working-copy?collection=posts`;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: workingCopyUrl,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: {
+          ...source.frontMatter,
+          title: 'Edited Hello',
+          tags: ['Release', '中文'],
+        },
+        body: 'SQLite working copy only\n',
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(saved.json()).toMatchObject({ draft: { version: 1 } });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Body');
+
+    const nativeDraft = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Native idea', slug: 'native-idea' },
+    });
+    expect(nativeDraft.statusCode, nativeDraft.body).toBe(201);
+
+    const merged = await app.inject({
+      url: `/api/sites/${siteId}/content?page=1&pageSize=10`,
+      headers,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+    const mergedContent = merged.json<{
+      content: {
+        items: Array<{ title: string; state: string }>;
+        page: number;
+        pageSize: number;
+        total: number;
+        counts: Record<string, number>;
+        facets: {
+          collections: Array<{ id: string; count: number }>;
+          tags: Array<{ name: string; count: number }>;
+        };
+      };
+    }>().content;
+    expect(mergedContent).toMatchObject({
+      page: 1,
+      pageSize: 10,
+      total: 3,
+      counts: { all: 3, published: 1, draft: 1, modified: 1 },
+      facets: {
+        collections: [
+          { id: 'drafts', count: 1 },
+          { id: 'posts', count: 2 },
+        ],
+        tags: [
+          { name: 'Release', count: 1 },
+          { name: '中文', count: 1 },
+        ],
+      },
+    });
+    expect(mergedContent.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Native idea', state: 'draft' }),
+        expect.objectContaining({
+          title: 'Edited Hello',
+          state: 'modified',
+        }),
+      ]),
+    );
+    expect(mergedContent.items.at(-1)).toMatchObject({
+      title: 'Alpha old',
+      publishedAt: new Date('2024-01-01 10:00:00').toISOString(),
+      contentUpdatedAt: new Date('2024-01-01 10:00:00').toISOString(),
+    });
+    const paged = await app.inject({
+      url: `/api/sites/${siteId}/content?page=1&pageSize=1`,
+      headers,
+    });
+    expect(paged.json()).toMatchObject({
+      content: { page: 1, pageSize: 1, total: 3 },
+    });
+    expect(
+      paged.json<{ content: { items: unknown[] } }>().content.items,
+    ).toHaveLength(1);
+    const filtered = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified&tag=release&search=edited&pageSize=10`,
+      headers,
+    });
+    expect(filtered.json()).toMatchObject({
+      content: {
+        total: 1,
+        items: [
+          {
+            documentId: published.documentId,
+            title: 'Edited Hello',
+            state: 'modified',
+            sourceState: 'published',
+            tags: ['Release', '中文'],
+            workingCopy: { version: 1, stale: false },
+          },
+        ],
+      },
+    });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?search=source%2F_posts&collection=posts`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({
+      content: {
+        total: 2,
+        items: [
+          { documentId: published.documentId, state: 'modified' },
+          { title: 'Alpha old', state: 'published' },
+        ],
+      },
+    });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?collection=drafts`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 1, items: [{ state: 'draft' }] } });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?to=2000-01-01T00%3A00%3A00.000Z`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 0 } });
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: Canonical changed\ndate: 2026-08-02 10:00:00\n---\nChanged elsewhere\n',
+    );
+    const staleList = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified`,
+      headers,
+    });
+    expect(staleList.json()).toMatchObject({
+      content: { items: [{ workingCopy: { version: 1, stale: true } }] },
+    });
+    const staleSave = await app.inject({
+      method: 'PUT',
+      url: workingCopyUrl,
+      headers,
+      payload: {
+        expectedVersion: 1,
+        sourceRevision: source.revision,
+        frontMatter: { title: 'Must not overwrite' },
+        body: 'stale',
+      },
+    });
+    expect(staleSave.statusCode).toBe(409);
+    expect(staleSave.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
+
+    const unavailableDiscardUrl = `/api/sites/${siteId}/content/${published.documentId}/unavailable-working-copy`;
+    const sourceStillAvailable = await app.inject({
+      method: 'DELETE',
+      url: unavailableDiscardUrl,
+      headers,
+      payload: { expectedVersion: 1 },
+    });
+    expect(sourceStillAvailable.statusCode).toBe(409);
+    expect(sourceStillAvailable.json()).toMatchObject({
+      code: 'DOCUMENT_CONFLICT',
+    });
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: [\n---\nincompatible front matter\n',
+    );
+    const partial = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    expect(partial.statusCode, partial.body).toBe(200);
+    const partialContent = partial.json<{
+      content: {
+        issues: Array<{ collectionId: string; kind: string }>;
+        items: Array<{
+          documentId: string;
+          title: string;
+          state: string;
+          sourceState: string;
+        }>;
+      };
+    }>().content;
+    expect(partialContent.issues).toEqual([]);
+    expect(partialContent.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Native idea', state: 'draft' }),
+        expect.objectContaining({
+          documentId: published.documentId,
+          sourceState: 'published',
+        }),
+      ]),
+    );
+    const malformedSource = await app.inject({
+      url: `/api/sites/${siteId}/content/${published.documentId}?collection=posts`,
+      headers,
+    });
+    expect(malformedSource.statusCode, malformedSource.body).toBe(200);
+    expect(
+      typeof malformedSource.json<{
+        source: { frontMatterParseError?: unknown };
+      }>().source.frontMatterParseError,
+    ).toBe('string');
+
+    await unlink(join(workspace, 'source', '_posts', 'hello.md'));
+    const unavailableList = await app.inject({
+      url: `/api/sites/${siteId}/content?state=modified`,
+      headers,
+    });
+    expect(unavailableList.statusCode, unavailableList.body).toBe(200);
+    expect(unavailableList.json()).toMatchObject({
+      content: {
+        counts: { modified: 1 },
+        items: [
+          {
+            documentId: published.documentId,
+            title: 'Edited Hello',
+            state: 'modified',
+            sourceState: 'unavailable',
+            workingCopy: { version: 1, stale: true },
+          },
+        ],
+      },
+    });
+    expect(unavailableList.body).not.toContain('SQLite working copy only');
+
+    const staleDiscard = await app.inject({
+      method: 'DELETE',
+      url: unavailableDiscardUrl,
+      headers,
+      payload: { expectedVersion: 2 },
+    });
+    expect(staleDiscard.statusCode).toBe(409);
+    const discarded = await app.inject({
+      method: 'DELETE',
+      url: unavailableDiscardUrl,
+      headers,
+      payload: { expectedVersion: 1 },
+    });
+    expect(discarded.statusCode, discarded.body).toBe(200);
+  });
+
+  it('exposes configured front-matter fields and applies their defaults to a native draft', async () => {
+    const { app } = await fixture({
+      contentFields: `    featured:
+      label: 精选
+      type: boolean
+      default: false
+    mood:
+      label: 心情
+      type: string
+      enum: [calm, focused]
+      default: calm`,
+    });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Metadata Site' },
+    });
+    expect(registered.statusCode, registered.body).toBe(201);
+    const site = registered.json<{
+      site: { id: string; capabilities: { frontMatterFields: unknown } };
+    }>().site;
+    expect(site.capabilities.frontMatterFields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'featured', default: false }),
+        expect.objectContaining({ key: 'mood', default: 'calm' }),
+      ]),
+    );
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/content`,
+      headers,
+      payload: { title: 'Schema draft', slug: 'schema-draft' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({
+      draft: { frontMatter: { featured: false, mood: 'calm' } },
+    });
+  });
+
+  it('activates owner Site configuration atomically without exposing host policy', async () => {
     const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Dynamic Config Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const initial = await app.inject({
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+    });
+    expect(initial.statusCode, initial.body).toBe(200);
+    expect(initial.json()).toMatchObject({
+      configuration: { revision: 1, source: 'legacy' },
+    });
+    const invalid = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/configuration/validate`,
+      headers,
+      payload: {
+        yaml: 'version: 1\ncredentials:\n  password: not-allowed\n',
+      },
+    });
+    expect(invalid.statusCode).toBe(422);
+    const activated = await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        yaml: `version: 1
+content:
+  fields:
+    featured:
+      label: 精选
+      type: boolean
+      default: false
+`,
+      },
+    });
+    expect(activated.statusCode, activated.body).toBe(200);
+    expect(activated.json()).toMatchObject({
+      configuration: { revision: 2, source: 'owner' },
+    });
+    const site = await app.inject({ url: `/api/sites/${siteId}`, headers });
+    expect(site.json()).toMatchObject({
+      site: {
+        capabilities: {
+          frontMatterFields: [
+            { key: 'featured', type: 'boolean', default: false },
+          ],
+        },
+      },
+    });
+    const history = await app.inject({
+      url: `/api/sites/${siteId}/configuration/history`,
+      headers,
+    });
+    expect(history.json()).toMatchObject({
+      revisions: [
+        { revision: 2, source: 'owner' },
+        { revision: 1, source: 'legacy' },
+      ],
+    });
+  });
+
+  it('pauses, resumes, and retains a registered Site without allowing work while paused', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Lifecycle Site' },
+    });
+    const site = registered.json<{
+      site: { id: string; updatedAt: string; lifecycleState: string };
+    }>().site;
+    expect(site.lifecycleState).toBe('active');
+
+    const paused = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/lifecycle`,
+      headers,
+      payload: { expectedUpdatedAt: site.updatedAt, lifecycleState: 'paused' },
+    });
+    expect(paused.statusCode, paused.body).toBe(200);
+    const pausedSite = paused.json<{
+      site: { updatedAt: string; lifecycleState: string };
+    }>().site;
+    expect(pausedSite.lifecycleState).toBe('paused');
+    const content = await app.inject({
+      url: `/api/sites/${site.id}/content`,
+      headers,
+    });
+    expect(content.statusCode).toBe(409);
+    expect(content.json()).toMatchObject({
+      code: 'SITE_INACTIVE',
+      details: { lifecycleState: 'paused' },
+    });
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${site.id}/lifecycle`,
+      headers,
+      payload: {
+        expectedUpdatedAt: pausedSite.updatedAt,
+        lifecycleState: 'active',
+      },
+    });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(resumed.json()).toMatchObject({
+      site: { lifecycleState: 'active' },
+    });
+  });
+
+  it('repairs malformed canonical front matter only with a revision-checked YAML replacement', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Repair Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: [\n---\nBody\n',
+    );
+    const malformed = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = malformed.json<{
+      source: { revision: string; frontMatterParseError?: string };
+    }>().source;
+    expect(source.frontMatterParseError).toEqual(expect.any(String));
+    const repaired = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/repair-front-matter?collection=posts`,
+      headers,
+      payload: {
+        sourceRevision: source.revision,
+        frontMatterSource: 'title: Repaired\ncategories: Engineering',
+      },
+    });
+    expect(repaired.statusCode, repaired.body).toBe(200);
+    expect(repaired.json()).toMatchObject({
+      source: { frontMatter: { title: 'Repaired', categories: 'Engineering' } },
+    });
+    await expect(
+      readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).resolves.toBe(
+      '---\ntitle: Repaired\ncategories: Engineering\n---\nBody\n',
+    );
+  });
+
+  it('scans, lists, reads, and autosaves with optimistic conflicts', async () => {
+    const { app, workspace } = await fixture();
     const session = await login(app);
     const getHeaders = { cookie: session.cookie };
     const mutationHeaders = {
@@ -324,7 +1434,727 @@ describe('Studio workspace API', () => {
     });
     expect(conflict.statusCode, conflict.body).toBe(409);
     expect(conflict.json()).toMatchObject({ code: 'REVISION_CONFLICT' });
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      '---\ntitle: Changed outside Studio\ndate: 2026-08-02 10:00:00\n---\nExternal change\n',
+    );
+    const sourceConflict = await app.inject({
+      method: 'PUT',
+      url,
+      headers: mutationHeaders,
+      payload: { ...payload, expectedVersion: 1 },
+    });
+    expect(sourceConflict.statusCode, sourceConflict.body).toBe(409);
+    expect(sourceConflict.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
   });
+
+  it('serves immediate sanitized Markdown and marker-verified enhanced previews', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Preview Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: { revision: string; frontMatter: Record<string, unknown> };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: source.frontMatter,
+        body: '# Markdown works\n\n<script>alert(1)</script>\n\n![Reading](/static/reading.jpeg)\n',
+      },
+    });
+
+    const markdownStarted = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts&mode=markdown`,
+      headers,
+    });
+    expect(markdownStarted.statusCode, markdownStarted.body).toBe(200);
+    const markdownPreview = markdownStarted.json<{
+      preview: { id: string; mode: string; status: string; url: string };
+    }>().preview;
+    expect(markdownPreview).toMatchObject({
+      mode: 'markdown',
+      status: 'ready',
+    });
+    const markdown = await app.inject({
+      url: markdownPreview.url,
+      headers,
+    });
+    expect(markdown.statusCode, markdown.body).toBe(200);
+    expect(markdown.body).toContain('<h1>Markdown works</h1>');
+    expect(markdown.body).not.toContain('<script>');
+    expect(markdown.body).toContain(
+      `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Freading.jpeg`,
+    );
+    expect(markdown.headers['content-security-policy']).toContain(
+      "script-src 'none'",
+    );
+    const resource = await app.inject({
+      url: `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Freading.jpeg`,
+    });
+    expect(resource.statusCode, resource.body).toBe(200);
+    expect(resource.headers['content-type']).toContain('image/jpeg');
+    expect(resource.headers['cache-control']).toBe('no-store');
+
+    const unreferencedResource = await app.inject({
+      url: `/api/markdown-previews/${markdownPreview.id}/resource?source=%2Fstatic%2Funreferenced.jpeg`,
+    });
+    expect(unreferencedResource.statusCode).toBe(404);
+    const normalResourceWithoutSession = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}/resource?collection=posts&source=%2Fstatic%2Freading.jpeg`,
+    });
+    expect(normalResourceWithoutSession.statusCode).toBe(401);
+
+    const enhancedStarted = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+      headers,
+    });
+    expect(enhancedStarted.statusCode, enhancedStarted.body).toBe(200);
+    const enhancedPreview = enhancedStarted.json<{
+      preview: { mode: string; status: string; url: string };
+    }>().preview;
+    expect(enhancedPreview).toMatchObject({
+      mode: 'enhanced',
+      status: 'ready',
+    });
+    const enhanced = await app.inject({ url: enhancedPreview.url, headers });
+    expect(enhanced.statusCode, enhanced.body).toBe(200);
+    expect(enhanced.body).toContain('blog-studio-preview:');
+    expect(enhanced.body).toContain('# Markdown works');
+  });
+
+  it('stores policy-approved non-image resources with portable insertion syntax', async () => {
+    const { app } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Resource Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const url = `/api/sites/${siteId}/content/${documentId}/resources?collection=posts`;
+
+    const uploaded = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        ...headers,
+        'content-type': 'application/pdf',
+        'x-blog-studio-filename': encodeURIComponent('写作 Guide.pdf'),
+      },
+      payload: Buffer.from('%PDF-1.7\nresource body'),
+    });
+    expect(uploaded.statusCode, uploaded.body).toBe(201);
+    expect(uploaded.json()).toMatchObject({
+      resource: {
+        kind: 'attachment',
+        originalFilename: '写作 Guide.pdf',
+        mediaType: 'application/pdf',
+        inlinePreview: true,
+        storage: 'local',
+      },
+    });
+    expect(
+      uploaded.json<{ resource: { insertion: string } }>().resource.insertion,
+    ).toMatch(/^\[写作 Guide\.pdf\]\(https:\/\//);
+
+    const executable = await app.inject({
+      method: 'POST',
+      url,
+      headers: {
+        ...headers,
+        'content-type': 'text/plain',
+        'x-blog-studio-filename': encodeURIComponent('harmless.txt'),
+      },
+      payload: Buffer.from([0x4d, 0x5a, 0x90, 0x00]),
+    });
+    expect(executable.statusCode).toBe(422);
+    expect(executable.json()).toMatchObject({
+      title: 'Executable resources are not accepted',
+      code: 'RESOURCE_EXECUTABLE_REJECTED',
+    });
+
+    const orphanUrl = `/api/sites/${siteId}/content/${documentId}/resources/orphans?collection=posts`;
+    const orphaned = await app.inject({ url: orphanUrl, headers });
+    expect(orphaned.statusCode, orphaned.body).toBe(200);
+    const plan = orphaned.json<{
+      plan: {
+        confirmation: string;
+        storage: string;
+        assets: Array<{ id: string }>;
+      };
+    }>().plan;
+    expect(plan).toMatchObject({ storage: 'local' });
+    expect(plan.assets).toHaveLength(1);
+    const stalePlan = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation: `sha256:${'0'.repeat(64)}` },
+    });
+    expect(stalePlan.statusCode).toBe(409);
+    expect(stalePlan.json()).toMatchObject({ code: 'ASSET_PLAN_CONFLICT' });
+    const deleted = await app.inject({
+      method: 'DELETE',
+      url: orphanUrl,
+      headers,
+      payload: { confirmation: plan.confirmation },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json()).toMatchObject({ count: 1 });
+    expect(
+      (await app.inject({ url: orphanUrl, headers })).json(),
+    ).toMatchObject({ plan: { assets: [] } });
+  });
+
+  it('prepares immutable idempotent ChangeSets without applying or publishing', async () => {
+    const { app, workspace, publishTarget } = await fixture();
+    execFileSync('git', ['-C', workspace, 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.name',
+      'Blog Studio Test',
+    ]);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.email',
+      'studio@example.invalid',
+    ]);
+    execFileSync('git', ['-C', workspace, 'add', '.']);
+    execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
+
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'ChangeSet Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const opened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const source = opened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+      };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: source.revision,
+        frontMatter: { ...source.frontMatter, title: 'Prepared title' },
+        body: 'Prepared body\n',
+      },
+    });
+    const canonicalBefore = await readFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      'utf8',
+    );
+    const gitBefore = execFileSync(
+      'git',
+      ['-C', workspace, 'status', '--porcelain=v1'],
+      { encoding: 'utf8' },
+    );
+
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    expect(first.statusCode, first.body).toBe(201);
+    const firstChangeSet = first.json<{
+      changeSet: {
+        id: string;
+        status: string;
+        fingerprint: string;
+        payload: {
+          documents: Array<Record<string, unknown>>;
+          repositoryChanges: unknown[];
+        };
+      };
+    }>().changeSet;
+    expect(firstChangeSet).toMatchObject({
+      status: 'prepared',
+      payload: {
+        documents: [
+          expect.objectContaining({
+            documentId,
+            draftVersion: 1,
+            state: 'modified',
+            body: 'Prepared body\n',
+          }),
+        ],
+        repositoryChanges: [],
+      },
+    });
+    expect(firstChangeSet.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
+    const repeated = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    expect(repeated.json<{ changeSet: { id: string } }>().changeSet.id).toBe(
+      firstChangeSet.id,
+    );
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toBe(canonicalBefore);
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toBe(gitBefore);
+    const activatedConfiguration = await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/configuration`,
+      headers,
+      payload: {
+        expectedRevision: 1,
+        yaml: `version: 1
+content:
+  fields:
+    featured:
+      label: Featured
+      type: boolean
+`,
+      },
+    });
+    expect(activatedConfiguration.statusCode, activatedConfiguration.body).toBe(
+      200,
+    );
+    const invalidated = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${firstChangeSet.id}/apply`,
+      headers,
+    });
+    expect(invalidated.statusCode).toBe(409);
+    expect(invalidated.json()).toMatchObject({
+      code: 'CHANGE_SET_CONFLICT',
+      title: 'Site configuration changed after ChangeSet preparation',
+    });
+    await mkdir(join(workspace, 'source', 'media'), { recursive: true });
+    await writeFile(
+      join(workspace, 'source', 'media', 'guide.pdf'),
+      '%PDF-1.7',
+    );
+    const changed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    const changedSet = changed.json<{
+      changeSet: {
+        id: string;
+        payload: { repositoryChanges: Array<Record<string, unknown>> };
+      };
+    }>().changeSet;
+    expect(changedSet.id).not.toBe(firstChangeSet.id);
+    expect(changedSet.payload.repositoryChanges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: 'source/media/guide.pdf',
+          state: 'unmanaged',
+        }),
+      ]),
+    );
+    const history = await app.inject({
+      url: `/api/sites/${siteId}/change-sets`,
+      headers,
+    });
+    const changeSetHistory = history.json<{
+      changeSets: Array<{ id: string; status: string }>;
+    }>().changeSets;
+    expect(
+      changeSetHistory.find((item) => item.id === firstChangeSet.id)?.status,
+    ).toBe('invalidated');
+    expect(
+      changeSetHistory.find((item) => item.id === changedSet.id)?.status,
+    ).toBe('prepared');
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/apply`,
+      headers,
+    });
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect(applied.json()).toMatchObject({
+      changeSet: { id: changedSet.id, status: 'applied' },
+    });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('Prepared body');
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/content?state=published`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ content: { total: 1 } });
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toContain('source/media/');
+    await expect(stat(join(workspace, 'public'))).rejects.toThrow();
+
+    const committed = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/commit`,
+      headers,
+      payload: {
+        message: 'Apply reviewed article',
+        paths: ['source/_posts/hello.md'],
+      },
+    });
+    expect(committed.statusCode, committed.body).toBe(200);
+    const committedChangeSet = committed.json<{
+      changeSet: { status: string; commitId: string };
+    }>().changeSet;
+    expect(committedChangeSet.status).toBe('committed');
+    expect(committedChangeSet.commitId).toMatch(/^[a-f0-9]{40,64}$/);
+    expect(
+      execFileSync(
+        'git',
+        ['-C', workspace, 'show', '--pretty=', '--name-only', 'HEAD'],
+        { encoding: 'utf8' },
+      ).trim(),
+    ).toBe('source/_posts/hello.md');
+    expect(
+      execFileSync('git', ['-C', workspace, 'status', '--porcelain=v1'], {
+        encoding: 'utf8',
+      }),
+    ).toContain('source/media/');
+
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      `${await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8')}working tree only\n`,
+    );
+    const remote = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${changedSet.id}/release`,
+      headers,
+      payload: { confirmation: 'RELEASE COMMITTED CHANGESET' },
+    });
+    expect(remote.statusCode, remote.body).toBe(202);
+    const remoteRelease = remote.json<{
+      release: {
+        release: {
+          id: string;
+          sourceChangeSetId: string;
+          sourceCommitId: string;
+        };
+      };
+    }>().release.release;
+    expect(remoteRelease).toMatchObject({
+      sourceChangeSetId: changedSet.id,
+      sourceCommitId: committedChangeSet.commitId,
+    });
+    const siteRelease = await app.inject({
+      method: 'GET',
+      url: `/api/sites/${siteId}/releases/${remoteRelease.id}`,
+      headers,
+    });
+    expect(siteRelease.statusCode, siteRelease.body).toBe(200);
+    expect(
+      siteRelease.json<{ release: { sourceChangeSetId: string } }>().release
+        .sourceChangeSetId,
+    ).toBe(changedSet.id);
+    const siteReleases = await app.inject({
+      method: 'GET',
+      url: `/api/sites/${siteId}/releases`,
+      headers,
+    });
+    expect(siteReleases.statusCode, siteReleases.body).toBe(200);
+    expect(
+      siteReleases
+        .json<{ releases: { release: { id: string } }[] }>()
+        .releases.some((item) => item.release.id === remoteRelease.id),
+    ).toBe(true);
+    expect(
+      (await waitForRelease(app, session.cookie, remoteRelease.id)).release
+        .status,
+    ).toBe('succeeded');
+    const releasedPage = await readFile(
+      join(publishTarget, '2026', '08', '02', 'hello', 'index.html'),
+      'utf8',
+    );
+    expect(releasedPage).toContain('Prepared body');
+    expect(releasedPage).not.toContain('working tree only');
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      execFileSync(
+        'git',
+        ['-C', workspace, 'show', 'HEAD:source/_posts/hello.md'],
+        { encoding: 'utf8' },
+      ),
+    );
+
+    const reopened = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=posts`,
+      headers,
+    });
+    const currentSource = reopened.json<{
+      source: {
+        revision: string;
+        frontMatter: Record<string, unknown>;
+        body: string;
+      };
+    }>().source;
+    await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=posts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: currentSource.revision,
+        frontMatter: currentSource.frontMatter,
+        body: `${currentSource.body}second edit\n`,
+      },
+    });
+    const stalePrepared = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/prepare`,
+      headers,
+    });
+    const staleId = stalePrepared.json<{ changeSet: { id: string } }>()
+      .changeSet.id;
+    await writeFile(
+      join(workspace, 'source', '_posts', 'hello.md'),
+      `${await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8')}external edit\n`,
+    );
+    const rejected = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/change-sets/${staleId}/apply`,
+      headers,
+    });
+    expect(rejected.statusCode, rejected.body).toBe(409);
+    expect(rejected.json()).toMatchObject({ code: 'CHANGE_SET_CONFLICT' });
+    expect(
+      (
+        await app.inject({
+          url: `/api/sites/${siteId}/change-sets/${staleId}`,
+          headers,
+        })
+      ).json(),
+    ).toMatchObject({ changeSet: { status: 'invalidated' } });
+    expect(
+      await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
+    ).toContain('external edit');
+  });
+
+  it('reclaims interrupted preview sandboxes before the server becomes ready', async () => {
+    const { previewStateDirectory } = await fixture({
+      seedInterruptedPreviewSandbox: true,
+    });
+
+    expect(await readdir(previewStateDirectory)).toEqual([]);
+  });
+
+  it('cancels an in-flight Site preview and returns the ready Markdown fallback', async () => {
+    const { app, previewStateDirectory } = await fixture({
+      previewDelayMs: 10_000,
+    });
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Cancelable Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+
+    const started = app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+      headers,
+    });
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if ((await readdir(previewStateDirectory)).length > 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(await readdir(previewStateDirectory)).toHaveLength(1);
+
+    const canceled = await app.inject({
+      method: 'DELETE',
+      url: `/api/sites/${siteId}/preview`,
+      headers,
+    });
+    expect(canceled.statusCode, canceled.body).toBe(200);
+    expect(canceled.json()).toEqual({ stopped: true });
+    const fallback = await started;
+    expect(fallback.statusCode, fallback.body).toBe(200);
+    expect(fallback.json()).toMatchObject({
+      preview: {
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason: 'canceled',
+      },
+    });
+    expect(await readdir(previewStateDirectory)).toEqual([]);
+  });
+
+  it.each([
+    ['missing-output', 'missing-output'],
+    ['route-error', 'route-error'],
+    ['build-error', 'build-error'],
+  ] as const)(
+    'falls back to Markdown when enhanced preview reports %s',
+    async (previewFailure, fallbackReason) => {
+      const { app } = await fixture({ previewFailure });
+      const session = await login(app);
+      const headers = {
+        cookie: session.cookie,
+        origin,
+        'x-csrf-token': session.csrfToken,
+      };
+      const registered = await app.inject({
+        method: 'POST',
+        url: '/api/sites',
+        headers,
+        payload: { candidateId: 'test-blog', displayName: 'Fallback Site' },
+      });
+      const siteId = registered.json<{ site: { id: string } }>().site.id;
+      const listed = await app.inject({
+        url: `/api/sites/${siteId}/content`,
+        headers,
+      });
+      const documentId = listed.json<{
+        content: { items: Array<{ documentId: string }> };
+      }>().content.items[0]?.documentId;
+      if (!documentId) throw new Error('fixture post missing');
+
+      const started = await app.inject({
+        method: 'POST',
+        url: `/api/sites/${siteId}/content/${documentId}/preview?collection=posts`,
+        headers,
+      });
+      expect(started.statusCode, started.body).toBe(200);
+      const preview = started.json<{
+        preview: {
+          mode: string;
+          status: string;
+          fallbackReason: string;
+          url: string;
+        };
+      }>().preview;
+      expect(preview).toMatchObject({
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason,
+      });
+      expect((await app.inject({ url: preview.url, headers })).statusCode).toBe(
+        200,
+      );
+
+      const compatibilityStarted = await app.inject({
+        method: 'POST',
+        url: `/api/workspaces/test-blog/documents/${documentId}/preview?collection=posts`,
+        headers,
+      });
+      expect(compatibilityStarted.statusCode, compatibilityStarted.body).toBe(
+        200,
+      );
+      const compatibilityPreview = compatibilityStarted.json<{
+        preview: {
+          mode: string;
+          status: string;
+          fallbackReason: string;
+          url: string;
+        };
+      }>().preview;
+      expect(compatibilityPreview).toMatchObject({
+        mode: 'markdown',
+        status: 'ready',
+        fallbackReason,
+      });
+      expect(
+        (
+          await app.inject({
+            url: compatibilityPreview.url,
+            headers,
+          })
+        ).statusCode,
+      ).toBe(200);
+    },
+  );
 
   it('creates native drafts and discards only a version-matched snapshot', async () => {
     const { app, workspace } = await fixture();
@@ -780,6 +2610,34 @@ describe('Studio workspace API', () => {
         'utf8',
       ),
     ).toContain('Published draft body');
+  });
+
+  it('disables the legacy live-tree release API by default policy', async () => {
+    const { app, publishTarget } = await fixture({ legacyReleaseApi: false });
+    const session = await login(app);
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/releases',
+      headers: {
+        cookie: session.cookie,
+        origin,
+        'x-csrf-token': session.csrfToken,
+      },
+      payload: { targetId: 'production' },
+    });
+    expect(rejected.statusCode, rejected.body).toBe(410);
+    expect(rejected.json()).toMatchObject({
+      code: 'LEGACY_RELEASE_DISABLED',
+    });
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces/test-blog/releases',
+          headers: { cookie: session.cookie },
+        })
+      ).json(),
+    ).toEqual({ releases: [] });
+    await expect(stat(publishTarget)).rejects.toThrow();
   });
 
   it('promotes exactly one native draft only after a verified release', async () => {

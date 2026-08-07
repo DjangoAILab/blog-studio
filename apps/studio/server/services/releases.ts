@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { isAbsolute, relative, resolve, sep, join } from 'node:path';
 
 import {
   createReleaseId,
@@ -15,6 +15,7 @@ import {
 } from '@blog-studio/core';
 import type {
   DraftSnapshot,
+  SqliteChangeSetRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
   StoredRelease,
@@ -30,6 +31,7 @@ import {
 } from '@blog-studio/release';
 
 import type { WorkspaceHandle, WorkspaceService } from './workspaces.js';
+import type { SiteService } from './sites.js';
 import { createWorkspaceSandbox } from './workspace-sandbox.js';
 
 export interface ReleaseDetails extends StoredRelease {
@@ -56,7 +58,11 @@ export interface ReleaseServiceOptions {
   readonly workspaces: WorkspaceService;
   readonly repository: SqliteReleaseRepository;
   readonly drafts: SqliteDraftRepository;
+  readonly sites: SiteService;
+  readonly changeSets: SqliteChangeSetRepository;
   readonly stateDirectory: string;
+  /** Paths Studio owns which must never be used as a filesystem publish target. */
+  readonly protectedDirectories?: readonly string[];
   readonly verifierFactory?: (workspace: WorkspaceHandle) => ReleaseVerifier;
   readonly publisherFactories?: Readonly<
     Record<
@@ -108,6 +114,16 @@ function releaseTarget(workspace: WorkspaceHandle): string {
     workspace.config.publish.options,
     'targetId',
     workspace.config.publish.adapter === 'none' ? 'disabled' : 'production',
+  );
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  const relation = relative(left, right);
+  return (
+    relation === '' ||
+    (!relation.startsWith(`..${sep}`) &&
+      relation !== '..' &&
+      !isAbsolute(relation))
   );
 }
 
@@ -184,6 +200,7 @@ export class ReleaseService {
   #publisher(workspace: WorkspaceHandle): Publisher {
     const adapter = workspace.config.publish.adapter;
     if (adapter === 'none') throw new Error('Publishing is disabled');
+    if (adapter === 'filesystem') this.#assertSafeFilesystemTarget(workspace);
     const factory = this.options.publisherFactories?.[adapter];
     if (factory) return factory(workspace, this.options.stateDirectory);
     if (adapter === 'filesystem') {
@@ -204,6 +221,32 @@ export class ReleaseService {
       });
     }
     throw new Error(`Unsupported publish adapter: ${adapter}`);
+  }
+
+  #assertSafeFilesystemTarget(workspace: WorkspaceHandle): void {
+    const target = resolve(
+      stringOption(workspace.config.publish.options, 'directory'),
+    );
+    const protectedDirectories = [
+      workspace.config.workspace.root,
+      this.options.stateDirectory,
+      ...(this.options.protectedDirectories ?? []),
+      ...this.options.workspaces
+        .list()
+        .filter(
+          (candidate) =>
+            candidate.config.workspace.id !== workspace.config.workspace.id,
+        )
+        .map((candidate) => candidate.config.workspace.root),
+    ].map((directory) => resolve(directory));
+    const unsafe = protectedDirectories.find(
+      (directory) =>
+        pathsOverlap(target, directory) || pathsOverlap(directory, target),
+    );
+    if (unsafe)
+      throw new Error(
+        `Filesystem publish directory overlaps a Studio-managed path: ${unsafe}`,
+      );
   }
 
   #cache(workspace: WorkspaceHandle): CacheProvider | undefined {
@@ -244,6 +287,7 @@ export class ReleaseService {
       readonly documentId: string;
       readonly version: number;
     },
+    source?: { readonly changeSetId: string; readonly commitId: string },
   ): Promise<ReleaseDetails> {
     const workspace = this.options.workspaces.get(workspaceId);
     const configuredTarget = releaseTarget(workspace);
@@ -292,6 +336,12 @@ export class ReleaseService {
       updatedAt: now,
       stages: [],
       ...(previous ? { previousReleaseId: previous.release.id } : {}),
+      ...(source
+        ? {
+            sourceChangeSetId: source.changeSetId,
+            sourceCommitId: source.commitId,
+          }
+        : {}),
     };
     const stored = this.options.repository.create(release);
     const controller = new AbortController();
@@ -310,6 +360,40 @@ export class ReleaseService {
       () => this.#runs.delete(run),
     );
     return { ...stored, events: [] };
+  }
+
+  public async startCommittedChangeSet(input: {
+    readonly siteId: string;
+    readonly changeSetId: string;
+    readonly targetId?: string;
+    readonly confirmation: string;
+  }): Promise<ReleaseDetails> {
+    if (input.confirmation !== 'RELEASE COMMITTED CHANGESET')
+      throw new Error('Remote release confirmation did not match');
+    const site = this.options.sites.get(input.siteId);
+    const record = this.options.changeSets.get(input.changeSetId);
+    if (
+      !record ||
+      record.siteId !== site.id ||
+      record.status !== 'committed' ||
+      !record.commitId
+    )
+      throw new Error('Remote release requires a committed ChangeSet');
+    const workspaceId = this.options.sites.workspaceId(input.siteId);
+    const workspace = this.options.workspaces.get(workspaceId);
+    const repositoryStatus = await workspace.repository.status(
+      createWorkspaceId(workspaceId),
+      workspace.config.workspace.root,
+    );
+    const expectedHead = createHash('sha256')
+      .update(record.commitId)
+      .digest('hex');
+    if (repositoryStatus.head !== `sha256:${expectedHead}`)
+      throw new Error('Committed ChangeSet is not the current Site revision');
+    return await this.start(workspaceId, input.targetId, undefined, {
+      changeSetId: record.id,
+      commitId: record.commitId,
+    });
   }
 
   public adoptBaseline(
@@ -384,9 +468,14 @@ export class ReleaseService {
       release.targetId,
     );
     const cache = this.#cache(workspace);
-    const sandbox = draft
-      ? await createWorkspaceSandbox(workspace, 'release')
-      : undefined;
+    const sandbox =
+      draft || release.sourceCommitId
+        ? await createWorkspaceSandbox(
+            workspace,
+            'release',
+            release.sourceCommitId,
+          )
+        : undefined;
     try {
       const prepareDraft = async (workspaceRoot: string) => {
         if (!draft) return;

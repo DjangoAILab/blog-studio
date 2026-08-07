@@ -8,6 +8,20 @@ All notable changes to Blog Studio are documented here. The format follows
 
 ### Added
 
+- Site-first owner-password onboarding with trusted CLI initialization/reset,
+  in-product password change, revocable opaque sessions, and global session
+  invalidation.
+- Trusted Site discovery/registration, capability diagnostics, optimistic
+  settings updates, and a unified library for published articles, native drafts,
+  and working copies.
+- Guaranteed sanitized Markdown preview plus marker-verified generator preview
+  readiness and typed fallback diagnostics.
+- Policy-controlled generic attachments, contextual retry/rejection/orphan
+  recovery, and portable Markdown insertion alongside optimized images.
+- Immutable ChangeSet preparation with progressively confirmed apply,
+  selected-path local Git commit, and committed-revision remote release.
+- The responsive Focused Workbench design kernel with Site/content/system top
+  navigation and explicit accessibility/media fallbacks.
 - Generic, versioned generator, repository, asset, publisher, and cache adapter
   contracts.
 - Browser Markdown writing with durable drafts, source fallback, article-scoped

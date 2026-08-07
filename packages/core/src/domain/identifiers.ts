@@ -8,6 +8,7 @@ type Identifier<TName extends string> = string & {
 };
 
 export type WorkspaceId = Identifier<'WorkspaceId'>;
+export type SiteId = Identifier<'SiteId'>;
 export type DocumentId = Identifier<'DocumentId'>;
 export type AssetId = Identifier<'AssetId'>;
 export type ReleaseId = Identifier<'ReleaseId'>;
@@ -40,6 +41,9 @@ function createIdentifier<TName extends string>(
 
 export const createWorkspaceId = (value: string): WorkspaceId =>
   createIdentifier('WorkspaceId', value);
+
+export const createSiteId = (value: string): SiteId =>
+  createIdentifier('SiteId', value);
 
 export const createDocumentId = (value: string): DocumentId =>
   createIdentifier('DocumentId', value);

@@ -72,6 +72,21 @@ function parseMarkdown(raw: string): MarkdownParts {
   };
 }
 
+function contentTimestamp(
+  value: FrontMatterValue | undefined,
+): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  const text =
+    typeof value === 'string' || typeof value === 'number'
+      ? String(value)
+      : undefined;
+  if (!text) return undefined;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
+    : undefined;
+}
+
 function serializeMarkdown(parts: MarkdownParts): string {
   return `---\n${stringify(parts.frontMatter, { lineWidth: 0 }).trimEnd()}\n---\n${parts.body}`;
 }
@@ -80,6 +95,12 @@ function hash(content: string | Buffer): ContentHash {
   return createContentHash(
     `sha256:${createHash('sha256').update(content).digest('hex')}`,
   );
+}
+
+function stringList(value: FrontMatterValue | undefined): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function documentId(path: string) {
@@ -230,6 +251,9 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
           const { frontMatter } = parseMarkdown(raw);
           const documentPath = portable(relative(root, path));
           const details = await stat(path);
+          const publishedAt = contentTimestamp(frontMatter.date);
+          const contentUpdatedAt =
+            contentTimestamp(frontMatter.updated) ?? publishedAt;
           return {
             ref: {
               workspaceId: this.#workspaceId,
@@ -237,11 +261,17 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
               documentId: documentId(documentPath),
               path: documentPath,
             },
+            revision: hash(raw),
             title:
               typeof frontMatter.title === 'string'
                 ? frontMatter.title
                 : basename(path, extname(path)),
-            updatedAt: details.mtime.toISOString(),
+            tags: stringList(frontMatter.tags),
+            categories: stringList(frontMatter.categories),
+            ...(publishedAt ? { publishedAt } : {}),
+            ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
+            filesystemModifiedAt: details.mtime.toISOString(),
+            ...(contentUpdatedAt ? { updatedAt: contentUpdatedAt } : {}),
             state: collection.state ?? 'published',
           };
         }),
@@ -325,6 +355,7 @@ export class CommandGeneratorAdapter implements GeneratorAdapter {
       ...(this.#options.command.environment === undefined
         ? {}
         : { environment: this.#options.command.environment }),
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     if (result.exitCode !== 0)
       throw new Error(`Build failed (${result.exitCode}): ${result.stderr}`);

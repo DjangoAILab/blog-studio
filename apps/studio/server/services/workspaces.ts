@@ -7,12 +7,14 @@ import {
   type CommandCollectionOptions,
 } from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
-import { AssetPipeline } from '@blog-studio/assets';
+import { LocalGitRepositoryAdapter } from '@blog-studio/adapter-local-git';
+import { AssetPipeline, ResourcePipeline } from '@blog-studio/assets';
 import {
   assertKnownAdapters,
   parseBlogStudioConfigYaml,
   type AdapterRegistry,
   type BlogStudioConfig,
+  type OwnerSiteConfiguration,
 } from '@blog-studio/config';
 import type {
   AssetProvider,
@@ -21,15 +23,19 @@ import type {
   DocumentRef,
   DocumentSummary,
   GeneratorAdapter,
+  RepositoryAdapter,
 } from '@blog-studio/core';
 import { FilesystemAssetProvider } from '@blog-studio/storage-filesystem';
 
 export interface WorkspaceHandle {
+  readonly configurationPath: string;
   readonly config: BlogStudioConfig;
   readonly generator: GeneratorAdapter;
+  readonly repository: RepositoryAdapter;
   readonly assetProvider: AssetProvider;
   readonly assetRootPrefix: string;
   readonly assets: AssetPipeline;
+  readonly resources: ResourcePipeline;
 }
 
 export type AssetProviderFactory = (config: BlogStudioConfig) =>
@@ -300,6 +306,8 @@ async function createAssets(
 
 export class WorkspaceService {
   readonly #workspaces = new Map<string, WorkspaceHandle>();
+  readonly #hostConfigurations = new Map<string, BlogStudioConfig>();
+  readonly #hostConfigurationPaths = new Map<string, string>();
 
   private constructor() {}
 
@@ -333,12 +341,33 @@ export class WorkspaceService {
       const generator = createGenerator(config);
       const assets = await createAssets(config, options.assetFactories ?? {});
       service.#workspaces.set(config.workspace.id, {
+        configurationPath,
         config,
         generator,
+        repository: new LocalGitRepositoryAdapter(),
         assetProvider: assets.provider,
         assetRootPrefix: assets.rootPrefix,
         assets: assets.pipeline,
+        resources: new ResourcePipeline(assets.provider, {
+          ...(config.resources?.maxInputBytes
+            ? { maxInputBytes: config.resources.maxInputBytes }
+            : {}),
+          ...(config.resources?.allowedMediaTypes
+            ? { allowedMediaTypes: config.resources.allowedMediaTypes }
+            : {}),
+          ...(config.resources?.inlinePreviewMediaTypes
+            ? {
+                inlinePreviewMediaTypes:
+                  config.resources.inlinePreviewMediaTypes,
+              }
+            : {}),
+        }),
       });
+      service.#hostConfigurations.set(config.workspace.id, config);
+      service.#hostConfigurationPaths.set(
+        config.workspace.id,
+        configurationPath,
+      );
     }
     return service;
   }
@@ -351,6 +380,54 @@ export class WorkspaceService {
     const workspace = this.#workspaces.get(workspaceId);
     if (!workspace) throw new Error(`Unknown workspace: ${workspaceId}`);
     return workspace;
+  }
+
+  public ownerConfiguration(workspaceId: string): OwnerSiteConfiguration {
+    const host = this.#hostConfigurations.get(workspaceId);
+    if (!host) throw new Error(`Unknown workspace: ${workspaceId}`);
+    return {
+      version: 1,
+      content: { fields: host.content?.fields ?? {} },
+      ...(host.development ? { development: host.development } : {}),
+    };
+  }
+
+  public applyOwnerConfiguration(input: {
+    readonly workspaceId: string;
+    readonly configurationPath: string;
+    readonly ownerConfiguration: OwnerSiteConfiguration;
+  }): void {
+    const current = this.get(input.workspaceId);
+    const host = this.#hostConfigurations.get(input.workspaceId);
+    if (!host) throw new Error(`Unknown workspace: ${input.workspaceId}`);
+    const config: BlogStudioConfig = {
+      ...host,
+      content: {
+        ...(host.content ?? { collections: {} }),
+        fields: input.ownerConfiguration.content.fields,
+      },
+      ...(input.ownerConfiguration.development
+        ? { development: input.ownerConfiguration.development }
+        : {}),
+    };
+    this.#workspaces.set(input.workspaceId, {
+      ...current,
+      configurationPath: input.configurationPath,
+      config,
+    });
+  }
+
+  public restoreHostConfiguration(workspaceId: string): void {
+    const current = this.get(workspaceId);
+    const host = this.#hostConfigurations.get(workspaceId);
+    const hostConfigurationPath = this.#hostConfigurationPaths.get(workspaceId);
+    if (!host || !hostConfigurationPath)
+      throw new Error(`Unknown workspace: ${workspaceId}`);
+    this.#workspaces.set(workspaceId, {
+      ...current,
+      configurationPath: hostConfigurationPath,
+      config: host,
+    });
   }
 
   public async createDocument(

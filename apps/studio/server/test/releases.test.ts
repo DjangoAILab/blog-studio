@@ -7,6 +7,7 @@ import {
 } from '@blog-studio/core';
 import {
   openStudioDatabase,
+  SqliteChangeSetRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
 } from '@blog-studio/persistence';
@@ -78,17 +79,20 @@ function serviceWith(recoveryOutcome: 'not-started' | 'rolled-back') {
       workspace: { id: 'test-blog', root: '/unused' },
       publish: {
         adapter: 'filesystem',
-        options: { targetId: 'staging', directory: '/unused' },
+        options: { targetId: 'staging', directory: '/target' },
       },
     },
   } as unknown as WorkspaceHandle;
   const workspaces = {
     get: () => handle,
+    list: () => [handle],
   } as unknown as WorkspaceService;
   const releases = new ReleaseService({
     workspaces,
     repository,
     drafts: new SqliteDraftRepository(database),
+    sites: {} as never,
+    changeSets: new SqliteChangeSetRepository(database),
     stateDirectory: '/unused',
     publisherFactories: {
       filesystem: () => publisher(recoveryOutcome),

@@ -12,6 +12,13 @@ public site, and always pin an immutable image digest for production.
 4. Record the current `BLOG_STUDIO_IMAGE` digest and the exact Compose file set.
 5. Verify the current health endpoint and one authenticated edit/preview journey.
 
+For a v0.1 upgrade, initialize owner credentials before exposing the v0.2
+login, retain the existing configuration and SQLite database, and let migration
+run only after the checksum-validated backup exists. The existing workspace is
+not silently registered: after login, inspect it as a Site candidate and confirm
+its public identity. The temporary legacy auth-token fallback is rejected once
+owner credentials exist and should then be removed from the deployment.
+
 ## Upgrade
 
 Set `BLOG_STUDIO_IMAGE` to the immutable reference from
@@ -34,7 +41,9 @@ docker compose \
 ```
 
 Confirm container health, HTTPS access, authentication, autosave after browser
-reload, and real preview. The public generated site must remain reachable while
+reload, Site registration/settings, Markdown fallback and real preview. Prepare
+a no-op or disposable ChangeSet to confirm review boundaries without contacting
+a production Provider. The public generated site must remain reachable while
 Studio is stopped or restarting.
 
 ## Application rollback

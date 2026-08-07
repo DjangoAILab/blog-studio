@@ -290,10 +290,13 @@ verification:
     const assets = await factories.assetFactories['tencent-cos']!(config);
     const workspace = {
       config,
+      configurationPath: '/config/blog-studio.yml',
       generator: {} as never,
+      repository: {} as never,
       assetProvider: assets.provider,
       assetRootPrefix: assets.rootPrefix,
       assets: {} as never,
+      resources: {} as never,
     } satisfies WorkspaceHandle;
 
     expect(assets.provider.id).toBe('tencent-cos');
@@ -342,10 +345,13 @@ verification:
     );
     const provider = factories.cacheFactories['tencent-cdn']!({
       config: cdnConfig,
+      configurationPath: '/config/blog-studio.yml',
       generator: {} as never,
+      repository: {} as never,
       assetProvider: {} as never,
       assetRootPrefix: 'assets',
       assets: {} as never,
+      resources: {} as never,
     });
     await provider?.invalidate({
       urls: ['https://staging.example.com/releases/v0.1/index.html'],

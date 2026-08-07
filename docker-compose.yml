@@ -15,12 +15,10 @@ services:
       BLOG_STUDIO_CONFIG_PATHS: /config/blog-studio.yml
       BLOG_STUDIO_WORKSPACE_ROOT: /workspaces
       BLOG_STUDIO_DATABASE_PATH: /data/blog-studio.sqlite
-      BLOG_STUDIO_AUTH_TOKEN_FILE: /run/secrets/auth_token
       BLOG_STUDIO_COOKIE_SECRET_FILE: /run/secrets/cookie_secret
       BLOG_STUDIO_ALLOWED_ORIGINS: ${BLOG_STUDIO_ALLOWED_ORIGINS:-https://blog-editor.internal.example.com}
       BLOG_STUDIO_SECURE_COOKIES: ${BLOG_STUDIO_SECURE_COOKIES:-true}
     secrets:
-      - auth_token
       - cookie_secret
     volumes:
       - ${BLOG_STUDIO_DATA_PATH:-./data}:/data
@@ -55,7 +53,5 @@ services:
       - ALL
 
 secrets:
-  auth_token:
-    file: ${BLOG_STUDIO_AUTH_TOKEN_PATH:-./secrets/auth_token}
   cookie_secret:
     file: ${BLOG_STUDIO_COOKIE_SECRET_PATH:-./secrets/cookie_secret}

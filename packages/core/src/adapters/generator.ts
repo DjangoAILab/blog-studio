@@ -35,6 +35,8 @@ export interface SiteModel {
 export interface BuildInput {
   readonly workspaceRoot: string;
   readonly mode: 'preview' | 'production';
+  /** Optional cooperative cancellation for bounded, disposable builds. */
+  readonly signal?: AbortSignal;
 }
 
 export interface BuildResult {

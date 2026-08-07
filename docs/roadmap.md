@@ -59,9 +59,80 @@ only after its acceptance checklist and real-environment verification pass.
 - [x] Deploy to the home server and pass cold-restart verification.
 - [x] Publish v0.1.0 release with checksums and release notes.
 
-## Phase 4 — Ecosystem hardening
+## Phase 4 — Site-first hard capabilities
 
-**Outcome:** external users can adopt the generic architecture.
+**Outcome:** the reliable v0.1 engine becomes a complete daily product before
+statistics, AI analysis, or growth work competes for attention.
+
+Implementation and disposable production-like acceptance are complete. Phase
+acceptance remains open until the owner initializes the real home-server
+credential and the final authenticated reference-Site journey passes.
+
+- [x] Select the first-run, library, editor/preview, and ChangeSet interaction
+      models plus a minimal responsive design and motion-token kernel before
+      implementing their new production surfaces.
+- [x] Trusted first-run owner-password setup, in-product change, CLI reset, and
+      session revocation.
+- [x] Site discovery, registration, display identity, settings, and capability
+      diagnostics.
+- [x] Unified searchable library for published documents, native drafts, and
+      modified working copies.
+- [x] Published-document editing without mutating canonical files until an
+      approved change set is applied.
+- [x] Immediate Markdown preview plus verified generator-preview enhancement
+      and actionable fallback states.
+- [x] Policy-controlled generic resources in addition to image processing.
+- [x] Durable ChangeSet preparation across managed drafts, resources,
+      configuration, and repository changes.
+- [x] Separate confirmations for preparing, creating a local Git commit, and
+      releasing to a remote target.
+- [x] Browser journeys and failure evidence for first run, daily editing,
+      preview, ChangeSet review, commit, and publish.
+
+## Phase 5 — Interaction system and public distribution
+
+**Outcome:** real product journeys reach a distinctive, responsive, accessible
+quality bar and can be presented honestly to external users.
+
+- [x] Complete and apply high-fidelity desktop and mobile targets for
+      onboarding, library, editor/preview, ChangeSet review, settings, and
+      security.
+- [x] Establish semantic content/material/elevation/type/spacing/motion/focus
+      tokens and non-glass fallbacks.
+- [x] Apply the iOS 26-inspired “living editorial room” interaction model
+      without putting glass or perpetual motion in the content layer.
+- [x] Verify reduced motion, reduced transparency, increased contrast, keyboard
+      access, responsive reflow, and performance budgets.
+- [ ] Rebuild `apps/website` from verified Studio journeys and current release
+      evidence.
+- [ ] Deploy landing, documentation, and release links through GitHub Pages.
+- [ ] Add durable routes from the landing and build stories to
+      `https://blog.wj2015.com`.
+
+## Phase 6 — Permissioned Agent platform
+
+**Outcome:** one Site Agent can reason and act through auditable Blog Studio
+capabilities without bypassing product safety boundaries.
+
+- [ ] Define an `AgentRuntime` contract and implement Pi as the first runtime.
+- [ ] Disable unrestricted Pi filesystem, edit, write, and shell tools; expose
+      only scoped Blog Studio capabilities.
+- [ ] Persist Agent sessions, messages, context attachments, tool calls, and
+      approval evidence in SQLite.
+- [ ] Add the global Site Agent and article-scoped context experience.
+- [ ] Add explicit current-selection, working-copy diff, preview-error, and
+      ChangeSet context attachments.
+- [ ] Require review and confirmation for configuration changes, deletion,
+      commit application, and remote release.
+- [ ] Expose the same capability service through a scoped, read-only-by-default
+      MCP server adapter.
+- [ ] Add cancellation, redaction, recovery, audit, and adversarial tool-policy
+      tests before enabling mutating tools by default.
+
+## Phase 7 — Ecosystem and derived intelligence
+
+**Outcome:** portability and rebuildable intelligence expand after the core and
+Agent boundaries are proven.
 
 - [ ] S3-compatible asset provider.
 - [ ] GitHub Actions publisher and status integration.
@@ -69,15 +140,16 @@ only after its acceptance checklist and real-environment verification pass.
 - [ ] Adapter authoring template and conformance suite.
 - [ ] Import diagnostics and anonymized support bundle.
 - [ ] Upgrade compatibility policy and configuration migrations.
+- [ ] Rebuildable content index, statistics, word-frequency analysis, and
+      optional AI-derived insights.
 
-## Deferred product capabilities
+See [Product Evolution](product/product-evolution.md) for the durable design,
+sequencing rationale, Pi approaches, MCP boundary, and explicit deferrals.
 
-These are deliberately outside v0.1 implementation but must not be blocked by
-the domain model:
+## Still deferred
 
 - user/team membership, roles, review, and comments;
 - scheduled releases and editorial calendar;
-- AI writing, transformation, and agent protocol;
 - collaborative cursors and simultaneous editing;
 - hosted control plane and multi-tenant isolation;
-- content analytics, experiments, and distribution channels.
+- autonomous publication and destructive Agent actions.

@@ -5,16 +5,19 @@ It keeps Markdown, Git, the existing static-site generator, and the existing
 hosting stack while making the complete writing-to-production journey usable
 from one browser tab.
 
-> Status: v0.1.0 released. Local/Filesystem, reference Hexo, and the
-> controlled Tencent COS/classic CDN publish-and-rollback journey are verified.
-> Existing public URLs and protected legacy resources remain unchanged.
+> Status: v0.1.0 is released; v0.2 Site-first hard capabilities are under
+> verified development. The current v0.2 branch adds owner-password login,
+> Site discovery, unified content APIs, Markdown fallback preview, generic
+> resources, reviewed ChangeSets, and immutable-revision release without
+> changing existing public URLs or protected legacy resources.
 
 ## Product promise
 
 - Write without waiting for Git or deployments.
-- Paste media into an article-scoped asset library.
-- Preview with the real site generator and theme.
-- Publish through a visible, verifiable release pipeline.
+- Attach policy-approved resources to an article-scoped library.
+- Preview immediately as sanitized Markdown, then optionally with the real site
+  generator and theme.
+- Prepare and review a durable ChangeSet before local commit or remote release.
 - Preserve existing files, URLs, and infrastructure.
 
 The first production integration targets Hexo, Tencent COS, Tencent CDN, and
@@ -35,7 +38,6 @@ cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
 cp -R examples/workspace/. workspace/
 umask 077
-openssl rand -base64 32 > secrets/auth_token
 openssl rand -base64 48 > secrets/cookie_secret
 git -C workspace init
 git -C workspace config user.name "Blog Studio Quick Start"
@@ -52,14 +54,20 @@ configured.
 ```sh
 docker compose config --quiet
 docker compose build
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
 docker compose up -d
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-Open the configured HTTPS route, enter `secrets/auth_token`, edit “Welcome to
-Blog Studio,” and choose preview. To connect your own site, replace the example
-workspace with a clean trusted checkout, install its locked dependencies on the
-host, and select its generator/publisher adapters in the configuration.
+The initialization command reads and confirms the new owner password without
+echoing it. Open the configured HTTPS route, log in with that password, edit
+the discovered `Example Blog` Site, and choose preview. Registration creates
+only the Site identity and audit record in SQLite. To connect your own site,
+replace the example workspace with a clean trusted checkout, install its locked
+dependencies on the host, configure its generator/publisher adapters, and
+review the discovered candidate before registering it.
 
 Port 4310 binds only to localhost. Use the supplied Traefik override, another
 TLS reverse proxy, or a private tunnel for browser access; do not expose the
@@ -95,11 +103,19 @@ final container image for unaccepted critical findings.
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
 - [v0.1 release checklist](docs/checklists/v0.1.md)
+- [v0.2 release checklist](docs/checklists/v0.2.md)
+- [v0.2 implementation plan](docs/plans/2026-08-04-blog-studio-v0.2.md)
 - [v0.1 implementation plan](docs/plans/2026-08-02-blog-studio-v0.1.md)
 - [Self-hosting](docs/guides/self-hosting.md)
+- [Sites and first run](docs/guides/sites-and-first-run.md)
+- [Prepare, commit and release](docs/guides/prepare-commit-release.md)
 - [Backup and restore](docs/guides/backup-restore.md)
 - [Upgrade and rollback](docs/guides/upgrading.md)
 - [v0.1.0 release notes](docs/releases/v0.1.0.md)
+- [v0.2.0 release-candidate notes](docs/releases/v0.2.0.md)
+- [v0.2 release-candidate evidence index](docs/verification/v0.2-release-candidate.md)
+- [v0.2 operations evidence](docs/verification/v0.2-operations.md)
+- [v0.2 real reference Site evidence](docs/verification/v0.2-reference-site.md)
 - [Verification evidence](artifacts/verification/release-readiness.md)
 
 ## License

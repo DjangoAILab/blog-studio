@@ -27,7 +27,12 @@ import {
 import { parse } from 'yaml';
 
 import { createManifest, hashContent, walkFiles } from './files.js';
-import { parseMarkdown, serializeMarkdown } from './front-matter.js';
+import {
+  parseMarkdown,
+  patchMarkdown,
+  replaceFrontMatterSource,
+  serializeMarkdown,
+} from './front-matter.js';
 
 interface HexoConfiguration {
   readonly url?: string;
@@ -59,6 +64,24 @@ function safeId(path: string) {
 function stringValue(value: FrontMatterValue | undefined): string | undefined {
   return typeof value === 'string' || typeof value === 'number'
     ? String(value)
+    : undefined;
+}
+
+function stringList(value: FrontMatterValue | undefined): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function contentTimestamp(
+  value: FrontMatterValue | undefined,
+): string | undefined {
+  if (value instanceof Date) return value.toISOString();
+  const text = stringValue(value);
+  if (!text) return undefined;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toISOString()
     : undefined;
 }
 
@@ -252,6 +275,9 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
         const { frontMatter } = parseMarkdown(raw);
         const relativePath = portablePath(relative(resolvedRoot, path));
         const details = await stat(path);
+        const publishedAt = contentTimestamp(frontMatter.date);
+        const contentUpdatedAt =
+          contentTimestamp(frontMatter.updated) ?? publishedAt;
         return {
           ref: {
             workspaceId: this.#workspaceId,
@@ -259,10 +285,15 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
             documentId: safeId(relativePath),
             path: relativePath,
           },
+          revision: hashContent(raw),
           title:
             stringValue(frontMatter.title) ?? basename(path, extname(path)),
-          updatedAt:
-            stringValue(frontMatter.updated) ?? details.mtime.toISOString(),
+          tags: stringList(frontMatter.tags),
+          categories: stringList(frontMatter.categories),
+          ...(publishedAt ? { publishedAt } : {}),
+          ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
+          filesystemModifiedAt: details.mtime.toISOString(),
+          ...(contentUpdatedAt ? { updatedAt: contentUpdatedAt } : {}),
           state: collectionId === 'drafts' ? 'draft' : 'published',
         };
       }),
@@ -280,6 +311,12 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
       ref,
       revision: hashContent(raw),
       frontMatter: parsed.frontMatter,
+      ...(parsed.frontMatterSource
+        ? { frontMatterSource: parsed.frontMatterSource }
+        : {}),
+      ...(parsed.frontMatterParseError
+        ? { frontMatterParseError: parsed.frontMatterParseError }
+        : {}),
       body: parsed.body,
       raw,
       format: 'markdown',
@@ -298,13 +335,15 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
     if (hashContent(current) !== input.expectedRevision) {
       throw new Error('Document revision conflict');
     }
-    const next = serializeMarkdown(input.frontMatter, input.body);
-    const parsedCurrent = parseMarkdown(current);
-    if (
-      parsedCurrent.body === input.body &&
-      JSON.stringify(parsedCurrent.frontMatter) ===
-        JSON.stringify(input.frontMatter)
-    )
+    const next =
+      input.frontMatterSource === undefined
+        ? patchMarkdown(current, input.frontMatter, input.body)
+        : replaceFrontMatterSource(
+            input.frontMatterSource,
+            input.frontMatter,
+            input.body,
+          );
+    if (current === next)
       return { revision: input.expectedRevision, changed: false };
 
     await writeFile(path, next, 'utf8');
@@ -477,6 +516,7 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
         NODE_ENV: input.mode === 'production' ? 'production' : 'development',
         ...(config.timezone ? { TZ: config.timezone } : {}),
       },
+      ...(input.signal ? { signal: input.signal } : {}),
     });
     if (result.exitCode !== 0) {
       throw new Error(
