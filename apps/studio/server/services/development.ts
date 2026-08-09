@@ -19,6 +19,7 @@ export interface DevelopmentSnapshot {
   readonly workspaceId: string;
   readonly status: DevelopmentStatus;
   readonly baseUrl?: string;
+  readonly previewUrl?: string;
   readonly startedAt?: string;
   readonly message?: string;
   readonly logs: readonly string[];
@@ -29,6 +30,7 @@ interface ActiveDevelopment {
   readonly process: ChildProcess;
   readonly sandbox: WorkspaceSandbox;
   readonly baseUrl: string;
+  readonly previewUrl?: string;
   readonly startedAt: string;
   readonly logLimit: number;
   logs: string[];
@@ -72,23 +74,11 @@ export class DevelopmentService {
       workspaceId,
       status: active.status,
       baseUrl: active.baseUrl,
+      ...(active.previewUrl ? { previewUrl: active.previewUrl } : {}),
       startedAt: active.startedAt,
       ...(active.message ? { message: active.message } : {}),
       logs: active.logs,
     };
-  }
-
-  public proxyTarget(workspaceId: string, path: string): string {
-    const active = this.#active.get(workspaceId);
-    if (!active || active.status !== 'ready')
-      throw new Error('Local development is not ready');
-    const base = new URL(active.baseUrl);
-    const target = new URL(path, base);
-    if (target.origin !== base.origin)
-      throw new Error(
-        'Local development proxy path must stay on the configured origin',
-      );
-    return target.toString();
   }
 
   public async start(workspaceId: string): Promise<DevelopmentSnapshot> {
@@ -125,6 +115,7 @@ export class DevelopmentService {
       process: child,
       sandbox,
       baseUrl: config.baseUrl,
+      ...(config.previewUrl ? { previewUrl: config.previewUrl } : {}),
       startedAt,
       logLimit: config.logLimit,
       logs: [],

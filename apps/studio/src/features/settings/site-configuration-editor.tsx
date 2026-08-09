@@ -216,7 +216,10 @@ export function SiteConfigurationEditor({
               <option value="">不启用本地调试</option>
               {developmentProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>
-                  {profile.label} · {profile.baseUrl}
+                  {profile.label}
+                  {profile.previewUrl
+                    ? ` · ${profile.previewUrl}`
+                    : ' · 未配置浏览器预览地址'}
                 </option>
               ))}
             </select>

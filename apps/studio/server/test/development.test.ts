@@ -71,6 +71,7 @@ development:
   command: ${process.execPath}
   args: [development-server.mjs]
   baseUrl: http://127.0.0.1:${port}
+  previewUrl: https://preview.example.test/
   startupTimeoutMs: 5000
 `,
     );
@@ -81,15 +82,10 @@ development:
     const service = new DevelopmentService(workspaces, stateDirectory);
 
     const started = await service.start('development-test');
-    expect(started.status).toBe('ready');
-    await expect(
-      fetch(service.proxyTarget('development-test', '/')).then((response) =>
-        response.text(),
-      ),
-    ).resolves.toBe('ready');
-    expect(() =>
-      service.proxyTarget('development-test', 'https://example.com/'),
-    ).toThrow('must stay on the configured origin');
+    expect(started).toMatchObject({
+      status: 'ready',
+      previewUrl: 'https://preview.example.test/',
+    });
     await expect(
       access(join(workspace, 'executed-in-sandbox')),
     ).rejects.toThrow();

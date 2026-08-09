@@ -396,6 +396,10 @@
             "type": "string",
             "format": "uri"
           },
+          "previewUrl": {
+            "type": "string",
+            "format": "uri"
+          },
           "readinessPath": {
             "type": "string",
             "maxLength": 512,
@@ -460,6 +464,10 @@
           }
         },
         "baseUrl": {
+          "type": "string",
+          "format": "uri"
+        },
+        "previewUrl": {
           "type": "string",
           "format": "uri"
         },

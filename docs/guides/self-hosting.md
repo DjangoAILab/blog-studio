@@ -148,12 +148,47 @@ deployment as well. Running `docker compose up` with only the base file replaces
 the container without its Traefik network and labels; the application may stay
 healthy locally while the public editor route returns `404`.
 
+### Direct development preview
+
+Studio controls a generator process but does not proxy its generated pages. To
+give a Hexo process on container port 4000 its own HTTPS origin, add the preview
+override as well:
+
+```sh
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/traefik/docker-compose.override.yml \
+  -f deploy/traefik/docker-compose.preview-4000.override.yml \
+  config --quiet
+docker compose \
+  -f docker-compose.yml \
+  -f deploy/traefik/docker-compose.override.yml \
+  -f deploy/traefik/docker-compose.preview-4000.override.yml \
+  up -d
+```
+
+Set `BLOG_STUDIO_PREVIEW_HOSTNAME` to that origin and set the selected
+development profile's `previewUrl` to the same HTTPS URL. The preview router
+targets container port 4000 directly, so root-relative generator resources
+continue to work normally. The profile's `baseUrl` remains the Studio-internal
+readiness URL.
+
+The base Compose file declares container-only ports 4000--4100 for development
+servers. `expose` is not a host-port mapping. Traefik can reach those ports over
+the shared Docker network; host-installed Nginx needs an explicit local mapping
+in a deployment override, for example `127.0.0.1:4000:4000`, then an Nginx
+`proxy_pass http://127.0.0.1:4000`. Do not publish preview ports to a LAN or the
+internet unless that exposure is intentional and protected by the host ingress.
+
 For the reference installation the defaults are:
 
 - hostname: `blog-editor.internal.wj2015.com`;
 - external network: `home-server_default`;
 - entrypoint: `websecure`; and
 - upstream container port: `4310`.
+
+With the optional direct-preview override, the preview hostname is a separate
+router whose upstream container port is `4000`.
 
 Change these values in `.env`, not in the Compose files. Traefik must already
 own the certificate and `websecure` entrypoint. Do not publish port 4310 on a

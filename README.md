@@ -74,6 +74,11 @@ TLS reverse proxy, or a private tunnel for browser access; do not expose the
 plain HTTP port to a LAN or the internet. See the [complete self-hosting
 guide](docs/guides/self-hosting.md) before configuring a remote publisher.
 
+Local generator previews are separate from the Studio UI: Studio starts the
+configured development command, while the host can route a preview hostname
+directly to its container port (4000--4100 by convention). See the direct
+preview section of the self-hosting guide before enabling that optional ingress.
+
 ## Architecture in one paragraph
 
 Studio owns browser sessions, durable draft snapshots, jobs, and release

@@ -172,6 +172,7 @@ developmentProfiles:
     command: ${process.execPath}
     args: []
     baseUrl: http://127.0.0.1:4000
+    previewUrl: https://preview.example.test/
 ${contentModel}
 `;
   await writeFile(configPath, configuration);
@@ -1271,6 +1272,7 @@ development:
               id: 'local-preview',
               label: '本地预览',
               baseUrl: 'http://127.0.0.1:4000',
+              previewUrl: 'https://preview.example.test/',
             },
           ],
         },

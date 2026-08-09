@@ -1,0 +1,17 @@
+services:
+  studio:
+    networks:
+      - traefik
+    labels:
+      traefik.enable: 'true'
+      traefik.docker.network: ${BLOG_STUDIO_TRAEFIK_NETWORK:-home-server_default}
+      traefik.http.routers.blog-studio-preview.entrypoints: websecure
+      traefik.http.routers.blog-studio-preview.rule: Host(`${BLOG_STUDIO_PREVIEW_HOSTNAME:-blog-editor-preview.internal.wj2015.com}`)
+      traefik.http.routers.blog-studio-preview.tls: 'true'
+      traefik.http.routers.blog-studio-preview.service: blog-studio-preview
+      traefik.http.services.blog-studio-preview.loadbalancer.server.port: '4000'
+
+networks:
+  traefik:
+    external: true
+    name: ${BLOG_STUDIO_TRAEFIK_NETWORK:-home-server_default}
