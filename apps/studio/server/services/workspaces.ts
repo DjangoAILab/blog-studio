@@ -420,6 +420,7 @@ export class WorkspaceService {
           command: profile.command,
           args: profile.args,
           baseUrl: profile.baseUrl,
+          ...(profile.previewUrl ? { previewUrl: profile.previewUrl } : {}),
           ...(profile.readinessPath
             ? { readinessPath: profile.readinessPath }
             : {}),

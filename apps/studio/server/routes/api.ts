@@ -858,28 +858,6 @@ export function registerApiRoutes(
     }),
   );
 
-  app.get<{ Params: { siteId: string; '*': string } }>(
-    '/api/sites/:siteId/development/proxy/*',
-    async (request, reply) => {
-      const query = request.url.indexOf('?');
-      const suffix = query === -1 ? '' : request.url.slice(query);
-      const target = dependencies.development.proxyTarget(
-        dependencies.sites.workspaceId(request.params.siteId),
-        `/${request.params['*']}${suffix}`,
-      );
-      const response = await fetch(target, { redirect: 'manual' });
-      const contentType = response.headers.get('content-type');
-      if (contentType) reply.type(contentType);
-      const location = response.headers.get('location');
-      if (location) reply.header('location', location);
-      return reply
-        .code(response.status)
-        .header('cache-control', 'private, no-store')
-        .header('x-content-type-options', 'nosniff')
-        .send(Buffer.from(await response.arrayBuffer()));
-    },
-  );
-
   app.get<{
     Params: { siteId: string; documentId: string };
     Querystring: { collection: string };

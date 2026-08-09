@@ -86,13 +86,16 @@ export function LocalDevelopment({
       <div>
         {details.status === 'ready' ? (
           <>
-            <a
-              href={`/api/sites/${encodeURIComponent(siteId)}/development/proxy/`}
-              rel="noreferrer"
-              target="_blank"
-            >
-              打开本地站点
-            </a>
+            {details.previewUrl ? (
+              <a href={details.previewUrl} rel="noreferrer" target="_blank">
+                打开本地站点
+              </a>
+            ) : (
+              <p role="alert">
+                浏览器预览地址尚未配置。请由部署主机管理员在调试档中设置
+                previewUrl 和对应入口。
+              </p>
+            )}
             <button
               type="button"
               disabled={busy}

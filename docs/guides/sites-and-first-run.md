@@ -85,8 +85,9 @@ developmentProfiles:
   hexo-preview:
     label: Hexo 本地预览
     command: /workspaces/blog/node_modules/.bin/hexo
-    args: [server]
+    args: [server, --ip, 0.0.0.0, --port, '4000']
     baseUrl: http://127.0.0.1:4000/
+    previewUrl: https://blog-editor-preview.internal.example.com/
     readinessPath: /
     startupTimeoutMs: 30000
     environmentAllowlist: []
@@ -102,8 +103,16 @@ development:
 
 The overview’s **配置本地调试** button opens this exact control when profiles
 are available but none is active. Start, restart, and open the isolated preview
-from the overview after activation. The public URL remains the Site’s canonical
-URL; the local preview is proxied through Studio and is never published.
+from the overview after activation. `baseUrl` is an internal readiness target;
+`previewUrl` is the browser-facing origin selected by the deployment operator.
+Studio opens that origin directly and does not proxy generated site responses.
+The public URL remains the Site’s canonical URL.
+
+The host must route `previewUrl` to the configured container port. For example,
+the supplied optional Traefik preview override routes
+`blog-editor-preview.internal.example.com` directly to port 4000. Preview
+access is controlled by that host ingress: anyone allowed to reach the preview
+origin can read its content, independently of a Studio browser session.
 
 Use the lifecycle controls when taking a Site out of service. **暂停站点** stops
 its local development process and blocks content, ChangeSet, build, and release

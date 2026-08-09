@@ -140,6 +140,11 @@ const httpUrlSchema = z.url().refine((value) => {
   return protocol === 'http:' || protocol === 'https:';
 }, 'URL must use HTTP or HTTPS');
 
+const previewUrlSchema = httpUrlSchema.refine((value) => {
+  const url = new URL(value);
+  return url.pathname === '/' && !url.search && !url.hash;
+}, 'Preview URL must be an origin root without query or fragment');
+
 const developmentProfileIdSchema = z
   .string()
   .min(1)
@@ -161,6 +166,7 @@ const localDevelopmentSchema = z
       ),
     args: z.array(z.string().min(1).max(500)).max(40).default([]),
     baseUrl: httpUrlSchema,
+    previewUrl: previewUrlSchema.optional(),
     readinessPath: z
       .string()
       .max(512)

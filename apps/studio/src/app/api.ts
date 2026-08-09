@@ -83,6 +83,7 @@ export interface DevelopmentDetails {
   readonly workspaceId: string;
   readonly status: 'stopped' | 'starting' | 'ready' | 'failed';
   readonly baseUrl?: string;
+  readonly previewUrl?: string;
   readonly startedAt?: string;
   readonly message?: string;
   readonly logs: readonly string[];

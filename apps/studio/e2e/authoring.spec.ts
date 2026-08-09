@@ -66,6 +66,9 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   ).toBeVisible();
   await page.getByRole('button', { name: '配置本地调试' }).click();
   await expect(page.getByRole('heading', { name: '站点资料' })).toBeVisible();
+  await expect(
+    page.getByLabel('本地调试档').locator('option[value="hexo-preview"]'),
+  ).toHaveText('Hexo 本地预览 · http://127.0.0.1:4000/');
   await page.getByLabel('本地调试档').selectOption('hexo-preview');
   await page.getByRole('button', { name: '验证配置' }).click();
   await expect(page.getByText('配置有效，尚未激活。')).toBeVisible();

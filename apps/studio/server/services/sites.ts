@@ -98,6 +98,7 @@ function capabilities(workspace: WorkspaceHandle): SiteCapabilities {
       id,
       label: profile.label,
       baseUrl: profile.baseUrl,
+      ...(profile.previewUrl ? { previewUrl: profile.previewUrl } : {}),
     })),
     ...(workspace.config.development
       ? { developmentBaseUrl: workspace.config.development.baseUrl }
@@ -147,7 +148,9 @@ function storedCapabilities(
         typeof profile !== 'object' ||
         typeof (profile as { id?: unknown }).id !== 'string' ||
         typeof (profile as { label?: unknown }).label !== 'string' ||
-        typeof (profile as { baseUrl?: unknown }).baseUrl !== 'string',
+        typeof (profile as { baseUrl?: unknown }).baseUrl !== 'string' ||
+        ((profile as { previewUrl?: unknown }).previewUrl !== undefined &&
+          typeof (profile as { previewUrl?: unknown }).previewUrl !== 'string'),
     )
   ) {
     throw new Error('Stored Site capabilities are invalid');

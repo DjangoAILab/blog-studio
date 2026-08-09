@@ -205,12 +205,30 @@ describe('blog-studio configuration schema', () => {
             command: 'pnpm',
             args: ['exec', 'hexo', 'server'],
             baseUrl: 'http://127.0.0.1:4000',
+            previewUrl: 'https://preview.example.test/',
             readinessPath: '/',
             environmentAllowlist: ['NODE_ENV'],
           },
         },
       }).developmentProfiles?.['hexo-preview'],
-    ).toMatchObject({ command: 'pnpm', startupTimeoutMs: 30_000 });
+    ).toMatchObject({
+      command: 'pnpm',
+      previewUrl: 'https://preview.example.test/',
+      startupTimeoutMs: 30_000,
+    });
+    expect(() =>
+      parseBlogStudioConfig({
+        ...validConfig,
+        developmentProfiles: {
+          preview: {
+            label: 'Preview',
+            command: 'pnpm',
+            baseUrl: 'http://127.0.0.1:4000',
+            previewUrl: 'https://preview.example.test/subpath/',
+          },
+        },
+      }),
+    ).toThrow('Preview URL must be an origin root');
     expect(() =>
       parseBlogStudioConfig({
         ...validConfig,

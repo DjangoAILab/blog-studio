@@ -21,6 +21,7 @@ export interface DevelopmentProfileOption {
   readonly id: string;
   readonly label: string;
   readonly baseUrl: string;
+  readonly previewUrl?: string;
 }
 
 export interface SiteCapabilities {
