@@ -3,6 +3,20 @@ title: Security model
 description: Trust boundaries and hardening expectations for a single-user self-hosted publishing workbench.
 ---
 
+## Site Agent boundary
+
+Every Agent endpoint uses the same owner session, allowed-origin, CSRF,
+request-size, rate, and Site-ownership controls as the rest of Studio. SSE is
+authenticated before the connection is opened. Public payloads omit attachment
+storage keys, authorization values, configured secrets, and sensitive tool
+material.
+
+The Agent runtime has no general shell. Filesystem operations are canonicalized
+below the selected Site and protect `.git`; Git is a fixed local-only command
+surface. Approval and YOLO differ only in whether the owner prompt is required.
+Neither mode permits path escape, free-form Git arguments, hooks, aliases,
+remote mutation, `git clean`, or whole-repository reset.
+
 Blog Studio v0.1 is designed for one trusted author and administrator. It should
 run on a private network or behind a TLS reverse proxy. It is not a multi-tenant
 isolation boundary.

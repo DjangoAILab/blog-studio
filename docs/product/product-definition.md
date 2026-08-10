@@ -26,7 +26,8 @@ Each component works, yet the complete journey is slow and opaque.
 Blog Studio addresses six recurring pains:
 
 1. Saving a draft is incorrectly coupled to deploying a website.
-2. Media accumulates in large unstructured folders or bloats Git history.
+2. Media accumulates in large unstructured folders, is transformed without a
+   clear policy, or bloats Git history.
 3. editor preview differs from the real generator and theme.
 4. deployment status does not prove that the public URL is current.
 5. failures require terminal and cloud-console investigation.
@@ -59,7 +60,8 @@ Blog Studio is not:
 
 1. Open a recent draft or create an article.
 2. Write in a Markdown-native visual editor; switch to source mode when needed.
-3. Paste or drag media and receive an article-scoped stable URL.
+3. Paste or drag media, preserve the original by default, and receive an
+   article-scoped stable URL; optional processing follows the Site policy.
 4. Autosave without committing or deploying.
 5. preview through the real generator and theme.
 6. run preflight checks for metadata, links, assets, and output paths.

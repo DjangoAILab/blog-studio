@@ -177,12 +177,26 @@ describe('blog-studio configuration schema', () => {
         maxInputBytes: 8 * 1024 * 1024,
         allowedMediaTypes: ['image/png', 'application/pdf', 'text/plain'],
         inlinePreviewMediaTypes: ['image/png'],
+        imageProcessing: {
+          enabled: true,
+          format: 'webp',
+          quality: 78,
+          maximumWidth: 1800,
+          stripMetadata: true,
+        },
       },
     });
     expect(result.resources).toEqual({
       maxInputBytes: 8 * 1024 * 1024,
       allowedMediaTypes: ['image/png', 'application/pdf', 'text/plain'],
       inlinePreviewMediaTypes: ['image/png'],
+      imageProcessing: {
+        enabled: true,
+        format: 'webp',
+        quality: 78,
+        maximumWidth: 1800,
+        stripMetadata: true,
+      },
     });
     expect(() =>
       parseBlogStudioConfig({

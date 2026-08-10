@@ -118,7 +118,12 @@ describe('asset policy', () => {
 
   it('strips metadata and creates deterministic content-addressed WebP names', async () => {
     const provider = new RecordingProvider();
-    const pipeline = new AssetPipeline(provider, { maxWidth: 1200 });
+    const pipeline = new AssetPipeline(provider, {
+      enabled: true,
+      format: 'webp',
+      maxWidth: 1200,
+      stripMetadata: true,
+    });
     const scope = createArticleAssetScope(
       createWorkspaceId('personal-blog'),
       createDocumentId('post-one'),
@@ -152,6 +157,7 @@ describe('asset policy', () => {
       'media/posts',
     );
     const pipeline = new AssetPipeline(new RecordingProvider(), {
+      enabled: true,
       maxInputPixels: 0,
     });
     await expect(
@@ -172,6 +178,7 @@ describe('asset policy', () => {
       'media/posts',
     );
     const pipeline = new AssetPipeline(provider, {
+      enabled: true,
       maxProcessingMilliseconds: 1,
       maxWorkerHeapMegabytes: 64,
       maxVipsCacheMegabytes: 8,

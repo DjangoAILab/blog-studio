@@ -58,6 +58,39 @@
               "text/plain"
             ]
           }
+        },
+        "imageProcessing": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string",
+              "enum": ["original", "webp"]
+            },
+            "quality": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "maximumWidth": {
+              "type": "integer",
+              "minimum": 64,
+              "maximum": 16384
+            },
+            "stripMetadata": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "enabled",
+            "format",
+            "quality",
+            "maximumWidth",
+            "stripMetadata"
+          ],
+          "additionalProperties": false
         }
       },
       "required": ["maxInputBytes", "allowedMediaTypes"],

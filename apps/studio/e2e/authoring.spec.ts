@@ -1,7 +1,8 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-test.setTimeout(60_000);
+test.setTimeout(90_000);
+const origin = 'http://127.0.0.1:14311';
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
   const result = await new AxeBuilder({ page })
@@ -20,23 +21,105 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
 }) => {
   await page.goto('/');
   await page.getByLabel('Owner 密码').fill('browser-test-owner-password');
+  const loginResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/session') &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: '进入 Studio' }).click();
+  const csrfToken = (await (await loginResponse).json()) as {
+    csrfToken: string;
+  };
   await expect(
     page.getByRole('heading', { name: '先把你的站点带进来。' }),
   ).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'test-browser-blog', level: 2 }),
+    page.getByRole('heading', {
+      name: 'test-browser-blog',
+      level: 2,
+      exact: true,
+    }),
   ).toBeVisible();
   await page.getByRole('button', { name: '添加这个站点' }).click();
   await expect(
     page.getByRole('heading', { name: 'test-browser-blog' }),
   ).toBeVisible();
   await expect(page.getByLabel('当前站点')).toContainText('test-browser-blog');
+  await expect(page).toHaveURL(/siteId=site-/);
+  const firstSiteId = new URL(page.url()).searchParams.get('siteId');
+  if (!firstSiteId) throw new Error('first browser Site ID missing');
+  const secondRegistration = await page.context().request.post('/api/sites', {
+    headers: { origin, 'x-csrf-token': csrfToken.csrfToken },
+    data: {
+      candidateId: 'test-browser-blog-two',
+      displayName: 'Second Browser Site',
+    },
+  });
+  expect(secondRegistration.status()).toBe(201);
+  const secondSiteId = (
+    (await secondRegistration.json()) as { site: { id: string } }
+  ).site.id;
+
+  const secondSitePage = await page.context().newPage();
+  await secondSitePage.goto(`/?siteId=${secondSiteId}`);
+  await expect(secondSitePage.getByLabel('当前站点')).toContainText(
+    'Second Browser Site',
+  );
+  await expect(secondSitePage).toHaveURL(new RegExp(`siteId=${secondSiteId}`));
+  await secondSitePage.getByRole('button', { name: 'Agent' }).click();
+  const secondAgent = secondSitePage.getByRole('complementary', {
+    name: /Second Browser Site Agent/,
+  });
+  await expect(
+    secondAgent.getByLabel('Agent Session').locator('option'),
+  ).toHaveCount(1);
+  await secondAgent.getByRole('button', { name: '新建' }).click();
+  await expect(
+    secondAgent.getByLabel('Agent Session').locator('option'),
+  ).toHaveCount(2);
+  await secondAgent.getByRole('button', { name: '关闭 Agent' }).click();
+  await secondSitePage.getByRole('button', { name: '配置本地调试' }).click();
+  await expect(
+    secondSitePage
+      .getByLabel('本地调试档')
+      .locator('option[value="hexo-preview"]'),
+  ).toHaveText('Hexo 第二站点预览 · http://127.0.0.1:4100/');
+  await secondSitePage
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
+  await secondSitePage.close();
+  await expect(page).toHaveURL(new RegExp(`siteId=${firstSiteId}`));
+
+  await page.getByRole('button', { name: 'Agent' }).click();
+  const agentPanel = page.getByRole('complementary', {
+    name: /test-browser-blog Agent/,
+  });
+  await expect(agentPanel).toBeVisible();
+  await agentPanel.getByRole('button', { name: '新建' }).click();
+  await expect(
+    agentPanel.getByLabel('Agent Session').locator('option'),
+  ).toHaveCount(2);
+  await agentPanel.getByRole('button', { name: '新建' }).click();
+  await expect(
+    agentPanel.getByLabel('Agent Session').locator('option'),
+  ).toHaveCount(3);
+  const firstSiteSessionId = await agentPanel
+    .getByLabel('Agent Session')
+    .inputValue();
+  await expect(agentPanel.getByText('全站工作区')).toBeVisible();
+  await agentPanel.getByLabel('执行模式').selectOption('yolo');
+  await expect(agentPanel.getByText(/删除未跟踪文件可能无法/)).toBeVisible();
+  await agentPanel.getByRole('button', { name: '归档' }).click();
+  await expect(
+    agentPanel.getByRole('button', { name: '恢复 Session' }),
+  ).toBeVisible();
+  await agentPanel.getByRole('button', { name: '恢复 Session' }).click();
+  await agentPanel.getByRole('button', { name: '关闭 Agent' }).click();
 
   await page.getByRole('button', { name: '站点资料' }).click();
   await expect(page.getByRole('heading', { name: '站点资料' })).toBeVisible();
   const concurrentPage = await page.context().newPage();
-  await concurrentPage.goto('/');
+  await concurrentPage.goto(`/?siteId=${firstSiteId}`);
   await concurrentPage.getByRole('button', { name: '站点资料' }).click();
   await concurrentPage.getByLabel('站点名称').fill('Background Update');
   await concurrentPage.getByRole('button', { name: '保存站点资料' }).click();
@@ -59,7 +142,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '以我的输入重试' }).click();
   await expect(page.getByText(/站点资料已保存；Markdown/)).toBeVisible();
   await expect(page.getByText('更新站点资料')).toHaveCount(2);
-  await page.getByLabel('关闭').click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await concurrentPage.close();
   await expect(
     page.getByRole('heading', { name: 'Browser Test Blog' }),
@@ -74,7 +157,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(page.getByText('配置有效，尚未激活。')).toBeVisible();
   await page.getByRole('button', { name: '激活配置' }).click();
   await expect(page.getByText(/已激活配置版本/)).toBeVisible();
-  await page.getByLabel('关闭').click();
+  await page.getByRole('button', { name: '关闭', exact: true }).click();
   await expectNoSeriousAccessibilityViolations(page);
 
   await page.getByRole('button', { name: '内容', exact: true }).click();
@@ -174,6 +257,39 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(
     /<!-- 隐藏的图片提示词[\s\S]*!\[Hidden fixture\][\s\S]*-->/,
   );
+  const markdownSource = page.getByLabel('Markdown 源码');
+  await markdownSource.evaluate((element) => {
+    const textarea = element as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
+  });
+  await page.keyboard.down('Shift');
+  for (let offset = 0; offset < 10; offset += 1) {
+    await page.keyboard.press('ArrowRight');
+  }
+  await page.keyboard.up('Shift');
+  await page.getByRole('button', { name: '附加选区到 Agent' }).click();
+  await expect(
+    page.getByRole('complementary', { name: /Agent/ }).getByText(/选区 · L/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('complementary', { name: /Agent/ }).getByText(/文章 ·/),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole('complementary', { name: /Agent/ })
+      .getByLabel('Agent Session'),
+  ).toHaveValue(firstSiteSessionId);
+  await page
+    .getByRole('complementary', { name: /Agent/ })
+    .getByRole('button', { name: /查看 选区/ })
+    .click();
+  await expect(
+    page
+      .getByRole('complementary', { name: /Agent/ })
+      .getByText('# 浏览器可靠草稿', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '关闭 Agent' }).click();
 
   await page.route(
     '**/api/sites/*/content/*/resources?*',
@@ -252,6 +368,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
       ),
     )
     .toBe(true);
+  await page.getByRole('button', { name: 'Agent' }).click();
+  await expect(
+    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '关闭 Agent' }).click();
   await page.getByRole('button', { name: '站点主题' }).click();
   await expect(page.getByRole('status')).toContainText('Markdown 预览');
   await expect
@@ -277,7 +398,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .click();
   await expect(page.getByRole('heading', { name: '更改审阅' })).toBeVisible();
   await expect(page.getByText('冻结记录未写入文件')).toBeVisible();
-  await page.getByRole('button', { name: '完成' }).click();
+  await page.getByRole('button', { name: 'Agent' }).click();
+  await expect(
+    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '关闭 Agent' }).click();
 
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '放弃修改' }).click();
@@ -387,6 +512,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '完成' }).click();
 
   await page.getByRole('button', { name: '系统', exact: true }).click();
+  await page.getByRole('button', { name: 'Agent' }).click();
+  await expect(
+    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '关闭 Agent' }).click();
   await page.getByLabel('当前密码').fill('browser-test-owner-password');
   await page
     .getByLabel('新密码', { exact: true })
@@ -411,6 +541,22 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   ).toBeVisible();
   await page.getByRole('button', { name: '写作', exact: true }).click();
   await expect(page.getByLabel('文章标题')).toBeVisible();
+  await page.getByRole('button', { name: 'Agent' }).click();
+  const mobileAgent = page.getByRole('complementary', {
+    name: /Browser Test Blog Agent/,
+  });
+  await expect(mobileAgent).toBeVisible();
+  await expect
+    .poll(async () => (await mobileAgent.boundingBox())?.width ?? 0)
+    .toBeLessThanOrEqual(390);
+  await expect
+    .poll(() =>
+      mobileAgent.evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe('1');
+  await expectNoSeriousAccessibilityViolations(page);
+  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await expect(mobileAgent).toBeHidden();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

@@ -1,5 +1,42 @@
 export { openStudioDatabase, type StudioDatabase } from './database.js';
 export {
+  AgentToolAuditNotFoundError,
+  SqliteAgentToolAuditRepository,
+  type AgentToolApprovalDecision,
+  type AgentToolAuditRecord,
+  type AgentToolAuditStatus,
+  type CreateAgentToolAuditInput,
+} from './agent-audit.js';
+export {
+  AgentAttachmentNotFoundError,
+  SqliteAgentAttachmentRepository,
+  type AgentAttachmentRecord,
+  type AgentAttachmentStatus,
+  type CreateAgentAttachmentInput,
+} from './agent-attachments.js';
+export {
+  AgentSessionSiteMismatchError,
+  SqliteAgentPreferenceRepository,
+  type AgentApprovalPreferenceSource,
+  type ResolvedAgentApprovalPreference,
+} from './agent-preferences.js';
+export {
+  AgentSessionNotFoundError,
+  SqliteAgentSessionRepository,
+  type AgentApprovalMode,
+  type AgentSessionRecord,
+  type AgentSessionState,
+  type CreateAgentSessionInput,
+} from './agent-sessions.js';
+export {
+  AgentTurnNotFoundError,
+  AgentTurnStateConflictError,
+  SqliteAgentTurnRepository,
+  type AgentEventRecord,
+  type AgentTurnRecord,
+  type AgentTurnStatus,
+} from './agent-turns.js';
+export {
   ChangeSetStateConflictError,
   SqliteChangeSetRepository,
   type ChangeSetRecord,

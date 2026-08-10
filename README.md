@@ -5,11 +5,11 @@ It keeps Markdown, Git, the existing static-site generator, and the existing
 hosting stack while making the complete writing-to-production journey usable
 from one browser tab.
 
-> Status: v0.1.0 is released; v0.2 Site-first hard capabilities are under
-> verified development. The current v0.2 branch adds owner-password login,
-> Site discovery, unified content APIs, Markdown fallback preview, generic
-> resources, reviewed ChangeSets, and immutable-revision release without
-> changing existing public URLs or protected legacy resources.
+![Blog Studio Site Agent — durable Sessions, approval modes, and explicit Markdown context](docs/media/site-agent-demo.gif)
+
+> Status: v0.1.0 is released. The current branch completes the evidence-backed
+> Site-first and Site Agent capability gates; it is not presented as a new
+> public release until the normal review and release workflow finishes.
 
 ## Product promise
 
@@ -18,6 +18,8 @@ from one browser tab.
 - Preview immediately as sanitized Markdown, then optionally with the real site
   generator and theme.
 - Prepare and review a durable ChangeSet before local commit or remote release.
+- Open a Site-scoped Agent from anywhere, keep multiple durable Sessions, and
+  choose per-change approval or YOLO within bounded file and local-Git tools.
 - Preserve existing files, URLs, and infrastructure.
 
 The first production integration targets Hexo, Tencent COS, Tencent CDN, and
@@ -107,6 +109,9 @@ final container image for unaccepted critical findings.
 - [Product definition](docs/product/product-definition.md)
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
+- [Site Agent guide](apps/website/src/content/docs/docs/use/agent.md)
+- [AI-assisted production checklist](docs/checklists/site-agent-ai-assisted-production.md)
+- [Site Agent verification evidence](docs/verification/site-agent-runtime-api.md)
 - [v0.1 release checklist](docs/checklists/v0.1.md)
 - [v0.2 release checklist](docs/checklists/v0.2.md)
 - [v0.2 implementation plan](docs/plans/2026-08-04-blog-studio-v0.2.md)

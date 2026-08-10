@@ -8,7 +8,11 @@ import {
 } from '@blog-studio/adapter-command';
 import { HexoGeneratorAdapter } from '@blog-studio/adapter-hexo';
 import { LocalGitRepositoryAdapter } from '@blog-studio/adapter-local-git';
-import { AssetPipeline, ResourcePipeline } from '@blog-studio/assets';
+import {
+  AssetPipeline,
+  ResourcePipeline,
+  type ResourcePipelinePolicy,
+} from '@blog-studio/assets';
 import {
   assertKnownAdapters,
   parseBlogStudioConfigYaml,
@@ -57,6 +61,58 @@ const builtInRegistry: AdapterRegistry = {
   publish: new Set(['none', 'filesystem', 'tencent-cos']),
   cache: new Set(['none', 'tencent-cdn', 'tencent-edgeone']),
 };
+
+const originalImageProcessing = {
+  enabled: false,
+  format: 'original' as const,
+  quality: 82,
+  maximumWidth: 2400,
+  stripMetadata: false,
+};
+
+const defaultResourceConfiguration: NonNullable<BlogStudioConfig['resources']> =
+  {
+    maxInputBytes: 12 * 1024 * 1024,
+    allowedMediaTypes: [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'application/pdf',
+      'application/zip',
+      'text/plain',
+    ],
+    inlinePreviewMediaTypes: [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'application/pdf',
+    ],
+  };
+
+function resourcePolicy(config: BlogStudioConfig): ResourcePipelinePolicy {
+  return {
+    ...(config.resources?.maxInputBytes
+      ? { maxInputBytes: config.resources.maxInputBytes }
+      : {}),
+    ...(config.resources?.allowedMediaTypes
+      ? { allowedMediaTypes: config.resources.allowedMediaTypes }
+      : {}),
+    ...(config.resources?.inlinePreviewMediaTypes
+      ? { inlinePreviewMediaTypes: config.resources.inlinePreviewMediaTypes }
+      : {}),
+    ...(config.resources?.imageProcessing
+      ? {
+          image: {
+            enabled: config.resources.imageProcessing.enabled,
+            format: config.resources.imageProcessing.format,
+            quality: config.resources.imageProcessing.quality,
+            maxWidth: config.resources.imageProcessing.maximumWidth,
+            stripMetadata: config.resources.imageProcessing.stripMetadata,
+          },
+        }
+      : {}),
+  };
+}
 
 function optionRecord(
   value: unknown,
@@ -350,20 +406,10 @@ export class WorkspaceService {
         assetProvider: assets.provider,
         assetRootPrefix: assets.rootPrefix,
         assets: assets.pipeline,
-        resources: new ResourcePipeline(assets.provider, {
-          ...(config.resources?.maxInputBytes
-            ? { maxInputBytes: config.resources.maxInputBytes }
-            : {}),
-          ...(config.resources?.allowedMediaTypes
-            ? { allowedMediaTypes: config.resources.allowedMediaTypes }
-            : {}),
-          ...(config.resources?.inlinePreviewMediaTypes
-            ? {
-                inlinePreviewMediaTypes:
-                  config.resources.inlinePreviewMediaTypes,
-              }
-            : {}),
-        }),
+        resources: new ResourcePipeline(
+          assets.provider,
+          resourcePolicy(config),
+        ),
       });
       service.#hostConfigurations.set(config.workspace.id, config);
       service.#hostConfigurationPaths.set(
@@ -398,6 +444,10 @@ export class WorkspaceService {
             },
           }
         : {}),
+      resources: {
+        imageProcessing:
+          host.resources?.imageProcessing ?? originalImageProcessing,
+      },
     };
   }
 
@@ -436,6 +486,14 @@ export class WorkspaceService {
         fields: input.ownerConfiguration.content.fields,
       },
       ...(development ? { development } : {}),
+      resources: {
+        ...defaultResourceConfiguration,
+        ...host.resources,
+        imageProcessing:
+          input.ownerConfiguration.resources?.imageProcessing ??
+          host.resources?.imageProcessing ??
+          originalImageProcessing,
+      },
     };
     const {
       developmentProfileId: _ignoredProfileId,
@@ -446,6 +504,10 @@ export class WorkspaceService {
       ...workspaceWithoutProfile,
       configurationPath: input.configurationPath,
       config,
+      resources: new ResourcePipeline(
+        current.assetProvider,
+        resourcePolicy(config),
+      ),
       ...(profileId ? { developmentProfileId: profileId } : {}),
     });
   }

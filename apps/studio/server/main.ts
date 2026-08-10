@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { createStudioServer } from './app.js';
 import { createTencentProviderFactories } from './providers/tencent.js';
+import { OpenAiCompatibleVisionAdapter } from './services/site-agent-vision.js';
 
 function requiredEnvironment(name: string): string {
   const value = process.env[name]?.trim();
@@ -49,6 +50,10 @@ function portEnvironment(): number {
 
 const providerFactories = createTencentProviderFactories();
 const legacyAuthToken = optionalSecret('BLOG_STUDIO_AUTH_TOKEN');
+const agentRuntimeDirectory =
+  process.env.BLOG_STUDIO_AGENT_RUNTIME_DIRECTORY?.trim();
+const visionEndpoint = process.env.BLOG_STUDIO_VISION_ENDPOINT?.trim();
+const visionApiKey = optionalSecret('BLOG_STUDIO_VISION_API_KEY');
 const app = await createStudioServer({
   configurationPaths: listEnvironment('BLOG_STUDIO_CONFIG_PATHS'),
   allowedWorkspaceRoot: requiredEnvironment('BLOG_STUDIO_WORKSPACE_ROOT'),
@@ -63,7 +68,19 @@ const app = await createStudioServer({
     process.env.BLOG_STUDIO_CLIENT_DIRECTORY ??
       fileURLToPath(new URL('../client', import.meta.url)),
   ),
+  ...(agentRuntimeDirectory
+    ? { agentRuntimeDirectory: resolve(agentRuntimeDirectory) }
+    : {}),
   logger: true,
+  ...(visionEndpoint
+    ? {
+        agentVisionAdapter: new OpenAiCompatibleVisionAdapter({
+          endpoint: visionEndpoint,
+          model: requiredEnvironment('BLOG_STUDIO_VISION_MODEL'),
+          ...(visionApiKey ? { apiKey: visionApiKey } : {}),
+        }),
+      }
+    : {}),
   ...providerFactories,
 });
 

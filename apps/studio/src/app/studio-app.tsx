@@ -8,6 +8,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
+import { AgentPanel } from '../features/agent/agent-panel.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
 import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
 import {
@@ -38,6 +39,7 @@ import {
   type ContentState,
   type ContentSummary,
   type DocumentPayload,
+  type AgentMessageContext,
   type OrphanAssetPlan,
   type PreviewFallbackReason,
   type ReleaseDetails,
@@ -81,6 +83,11 @@ function initialContentDirection(): ContentSortDirection {
     'asc'
     ? 'asc'
     : 'desc';
+}
+
+function siteIdFromUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('siteId') ?? '';
 }
 
 function Login({
@@ -236,6 +243,13 @@ export function StudioApp() {
   const [orphanBusy, setOrphanBusy] = useState(false);
   const [orphanError, setOrphanError] = useState('');
   const [createRequest, setCreateRequest] = useState(0);
+  const [markdownSelection, setMarkdownSelection] = useState<
+    Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
+  >();
+  const [agentSelection, setAgentSelection] = useState<
+    Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
+  >();
+  const [agentOpenRequest, setAgentOpenRequest] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
 
   function uploadResource(file: File): void {
@@ -331,6 +345,7 @@ export function StudioApp() {
       setSite(
         (current) =>
           siteResult.sites.find((item) => item.id === current?.id) ??
+          siteResult.sites.find((item) => item.id === siteIdFromUrl()) ??
           siteResult.sites[0],
       );
       if (siteResult.sites.length === 0) void discoverSites();
@@ -376,6 +391,22 @@ export function StudioApp() {
     else url.searchParams.set('contentDirection', contentDirection);
     window.history.replaceState(null, '', url);
   }, [contentDirection, contentSearch, contentSort]);
+  useEffect(() => {
+    if (!site) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('siteId') === site.id) return;
+    url.searchParams.set('siteId', site.id);
+    window.history.replaceState(null, '', url);
+  }, [site]);
+  useEffect(() => {
+    const onPopState = () => {
+      const siteId = siteIdFromUrl();
+      const restored = sites.find((item) => item.id === siteId);
+      if (restored) setSite(restored);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [sites]);
   const contentQuery = useMemo(
     () => ({
       ...(contentSearch ? { search: contentSearch } : {}),
@@ -492,6 +523,8 @@ export function StudioApp() {
     setPreviewState('idle');
     setPreviewError('');
     setPreviewFallback(undefined);
+    setMarkdownSelection(undefined);
+    setAgentSelection(undefined);
     setUploads((items) => {
       for (const item of items)
         if (item.previewUrl?.startsWith('blob:'))
@@ -690,6 +723,9 @@ export function StudioApp() {
             setGlobalSearchOpen(true);
           }}
           onSiteChange={(nextSite) => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('siteId', nextSite.id);
+            window.history.pushState(null, '', url);
             setSite(nextSite);
             setDestination('site');
           }}
@@ -747,6 +783,10 @@ export function StudioApp() {
             );
           }}
           onClose={() => setChangeSetOpen(false)}
+          onOpenAgent={() => {
+            setChangeSetOpen(false);
+            setAgentOpenRequest((value) => value + 1);
+          }}
           onCommit={async (review, input) => {
             if (!site) return;
             const result = await api.commitChangeSet({
@@ -1303,15 +1343,51 @@ export function StudioApp() {
                     />
                   </Suspense>
                 ) : document && loadedDocumentId === selected?.documentId ? (
-                  <textarea
-                    className="source-editor"
-                    aria-label="Markdown 源码"
-                    value={body}
-                    onChange={(event) => {
-                      setBody(event.target.value);
-                      setSaveState('changed');
-                    }}
-                  />
+                  <div className="source-editor-wrap">
+                    <textarea
+                      className="source-editor"
+                      aria-label="Markdown 源码"
+                      value={body}
+                      onChange={(event) => {
+                        setBody(event.target.value);
+                        setSaveState('changed');
+                      }}
+                      onSelect={(event) => {
+                        const start = event.currentTarget.selectionStart;
+                        const end = event.currentTarget.selectionEnd;
+                        if (start === end || !selected) {
+                          setMarkdownSelection(undefined);
+                          return;
+                        }
+                        const selectedText = body.slice(start, end);
+                        const startLine = body
+                          .slice(0, start)
+                          .split('\n').length;
+                        const endLine =
+                          startLine + selectedText.split('\n').length - 1;
+                        setMarkdownSelection({
+                          type: 'markdown-selection',
+                          documentId: selected.documentId,
+                          startLine,
+                          endLine,
+                          text: selectedText,
+                        });
+                      }}
+                    />
+                    {markdownSelection ? (
+                      <button
+                        className="agent-selection-button"
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setAgentSelection(markdownSelection);
+                          setAgentOpenRequest((value) => value + 1);
+                        }}
+                      >
+                        ✦ 附加选区到 Agent
+                      </button>
+                    ) : null}
+                  </div>
                 ) : null}
               </section>
             )}
@@ -1330,6 +1406,35 @@ export function StudioApp() {
             />
           </div>
         </div>
+        <AgentPanel
+          api={api}
+          openRequest={agentOpenRequest}
+          {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
+          {...(destination === 'content' && selected
+            ? {
+                articleContext: {
+                  type: 'article' as const,
+                  documentId: selected.documentId,
+                  collectionId: selected.collectionId,
+                  title: selected.title,
+                  path: selected.path,
+                },
+              }
+            : {})}
+          {...(destination === 'content' && selected && document
+            ? {
+                editorBufferContext: {
+                  type: 'editor-buffer' as const,
+                  documentId: selected.documentId,
+                  collectionId: selected.collectionId,
+                  sourceRevision: document.source.revision,
+                  body,
+                },
+              }
+            : {})}
+          {...(agentSelection ? { selectionContext: agentSelection } : {})}
+          onSelectionConsumed={() => setAgentSelection(undefined)}
+        />
       </div>
     </MotionConfig>
   );

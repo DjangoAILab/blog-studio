@@ -28,6 +28,9 @@ test('documentation navigation, deep links, and search load', async ({
   await expect(
     page.getByRole('link', { name: 'Self-host with Docker', exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Work with the Site Agent', exact: true }),
+  ).toBeVisible();
   if ((page.viewportSize()?.width ?? 1024) < 800)
     await page.getByRole('button', { name: 'Menu' }).click();
   await expect(page.locator('.pagefind-ui__search-input')).toBeAttached({
@@ -40,7 +43,12 @@ test('documentation navigation, deep links, and search load', async ({
 });
 
 test('pages do not overflow a narrow viewport', async ({ page }) => {
-  for (const path of ['/', '/docs/', '/docs/operations/backup-restore/']) {
+  for (const path of [
+    '/',
+    '/docs/',
+    '/docs/use/agent/',
+    '/docs/operations/backup-restore/',
+  ]) {
     await page.goto(path);
     const dimensions = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
@@ -54,7 +62,12 @@ test('pages do not overflow a narrow viewport', async ({ page }) => {
 
 test('key pages have no serious accessibility violations', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  for (const path of ['/', '/docs/', '/docs/use/publishing/']) {
+  for (const path of [
+    '/',
+    '/docs/',
+    '/docs/use/agent/',
+    '/docs/use/publishing/',
+  ]) {
     await page.goto(path);
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])

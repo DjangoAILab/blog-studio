@@ -3,10 +3,18 @@ import { dirname, join } from 'node:path';
 
 import cookie from '@fastify/cookie';
 import staticFiles from '@fastify/static';
+import {
+  PiSiteAgentRuntimeFactory,
+  type SiteAgentRuntimeFactory,
+} from '@blog-studio/agent-runtime-pi';
 import { AssetPolicyError } from '@blog-studio/assets';
 import { BlogStudioError, type StudioSetupStatus } from '@blog-studio/core';
 import {
   ActiveReleaseConflictError,
+  AgentSessionNotFoundError,
+  AgentToolAuditNotFoundError,
+  AgentTurnNotFoundError,
+  AgentTurnStateConflictError,
   OwnerNotInitializedError,
   RevisionConflictError,
   SqliteOwnerCredentialRepository,
@@ -19,6 +27,11 @@ import {
   SqliteSiteConfigurationRepository,
   SqliteDraftRepository,
   SqliteReleaseRepository,
+  SqliteAgentPreferenceRepository,
+  SqliteAgentAttachmentRepository,
+  SqliteAgentSessionRepository,
+  SqliteAgentToolAuditRepository,
+  SqliteAgentTurnRepository,
   openStudioDatabase,
 } from '@blog-studio/persistence';
 import Fastify, {
@@ -58,6 +71,12 @@ import {
 } from './services/sites.js';
 import { DevelopmentService } from './services/development.js';
 import { SiteConfigurationService } from './services/site-configurations.js';
+import { SiteAgentMutationCoordinator } from './services/site-agent-locks.js';
+import {
+  SiteAgentServiceError,
+  SiteAgentSessionService,
+} from './services/site-agent-sessions.js';
+import type { SiteAgentVisionAdapter } from './services/site-agent-vision.js';
 
 const SESSION_COOKIE = 'blog_studio_session';
 const CSRF_COOKIE = 'blog_studio_csrf';
@@ -71,6 +90,11 @@ export interface StudioServerOptions {
   readonly previewStateDirectory?: string;
   readonly developmentStateDirectory?: string;
   readonly siteConfigurationDirectory?: string;
+  readonly agentSessionDirectory?: string;
+  readonly agentRuntimeDirectory?: string;
+  readonly agentRuntimeFactory?: SiteAgentRuntimeFactory;
+  readonly agentAttachmentDirectory?: string;
+  readonly agentVisionAdapter?: SiteAgentVisionAdapter;
   readonly authToken?: string;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
@@ -173,6 +197,7 @@ export async function createStudioServer(
   let apiDependencies: ApiDependencies | undefined;
   let disposeOperationalServices = async (): Promise<void> => {};
   if (workspaces) {
+    const agentMutations = new SiteAgentMutationCoordinator();
     const sites = new SiteService(workspaces, siteRepository);
     const siteConfigurations = new SiteConfigurationService(
       sites,
@@ -205,6 +230,39 @@ export async function createStudioServer(
       options.developmentStateDirectory ??
         join(dirname(options.databasePath), 'development-sandboxes'),
     );
+    const agentSessions = new SiteAgentSessionService({
+      sites,
+      workspaces,
+      sessions: new SqliteAgentSessionRepository(database),
+      preferences: new SqliteAgentPreferenceRepository(database),
+      turns: new SqliteAgentTurnRepository(database),
+      audit: new SqliteAgentToolAuditRepository(database),
+      attachments: new SqliteAgentAttachmentRepository(database),
+      runtimeFactory:
+        options.agentRuntimeFactory ??
+        new PiSiteAgentRuntimeFactory({
+          agentDir:
+            options.agentRuntimeDirectory ??
+            join(dirname(options.databasePath), 'agent-runtime'),
+        }),
+      mutations: agentMutations,
+      sessionDirectory:
+        options.agentSessionDirectory ??
+        join(dirname(options.databasePath), 'agent-sessions'),
+      attachmentDirectory:
+        options.agentAttachmentDirectory ??
+        join(dirname(options.databasePath), 'agent-attachments'),
+      ...(options.agentVisionAdapter
+        ? { visionAdapter: options.agentVisionAdapter }
+        : {}),
+    });
+    const interruptedAgentTurns = agentSessions.recoverInterrupted();
+    if (interruptedAgentTurns.length > 0) {
+      app.log.warn(
+        { interruptedAgentTurns: interruptedAgentTurns.length },
+        'Marked interrupted Agent turns without replaying tools',
+      );
+    }
     const recoveredPreviewSandboxes = await previews.recover();
     if (recoveredPreviewSandboxes > 0)
       app.log.warn(
@@ -229,6 +287,12 @@ export async function createStudioServer(
           join(dirname(options.databasePath), 'preview-state'),
         options.developmentStateDirectory ??
           join(dirname(options.databasePath), 'development-state'),
+        options.agentSessionDirectory ??
+          join(dirname(options.databasePath), 'agent-sessions'),
+        options.agentAttachmentDirectory ??
+          join(dirname(options.databasePath), 'agent-attachments'),
+        options.agentRuntimeDirectory ??
+          join(dirname(options.databasePath), 'agent-runtime'),
       ],
       ...(options.releaseVerifierFactory
         ? { verifierFactory: options.releaseVerifierFactory }
@@ -259,6 +323,8 @@ export async function createStudioServer(
       releases,
       development,
       siteConfigurations,
+      agentMutations,
+      agentSessions,
       allowLegacyReleaseApi: options.allowLegacyReleaseApi ?? false,
     };
     disposeOperationalServices = async () => {
@@ -267,6 +333,7 @@ export async function createStudioServer(
       await development.dispose();
       await previews.dispose();
       await releases.dispose();
+      await agentSessions.dispose();
     };
   }
 
@@ -578,56 +645,64 @@ export async function createStudioServer(
         ? 401
         : error instanceof PasswordPolicyError
           ? 422
-          : error instanceof ChangeSetConflictError
-            ? 409
-            : error instanceof OwnerNotInitializedError
+          : error instanceof AgentSessionNotFoundError ||
+              error instanceof AgentTurnNotFoundError ||
+              error instanceof AgentToolAuditNotFoundError
+            ? 404
+            : error instanceof AgentTurnStateConflictError
               ? 409
-              : error instanceof SiteAlreadyExistsError ||
-                  error instanceof SiteRevisionConflictError
+              : error instanceof ChangeSetConflictError
                 ? 409
-                : error instanceof SiteValidationError
-                  ? 422
-                  : error instanceof Error && error.name === 'ZodError'
-                    ? 422
-                    : error instanceof SiteConfigurationRevisionConflictError
-                      ? 409
-                      : error instanceof SiteInactiveError
-                        ? 409
-                        : error instanceof RevisionConflictError
+                : error instanceof OwnerNotInitializedError
+                  ? 409
+                  : error instanceof SiteAlreadyExistsError ||
+                      error instanceof SiteRevisionConflictError
+                    ? 409
+                    : error instanceof SiteValidationError
+                      ? 422
+                      : error instanceof Error && error.name === 'ZodError'
+                        ? 422
+                        : error instanceof
+                            SiteConfigurationRevisionConflictError
                           ? 409
-                          : error instanceof BlogStudioError &&
-                              error.code === 'DOCUMENT_CONFLICT'
+                          : error instanceof SiteInactiveError
                             ? 409
-                            : error instanceof ActiveReleaseConflictError
+                            : error instanceof RevisionConflictError
                               ? 409
-                              : error instanceof
-                                    BaselineAdoptionRequiredError ||
-                                  error instanceof
-                                    BaselineAlreadyAdoptedError ||
-                                  message ===
-                                    'Existing deployment baseline must be adopted before publishing' ||
-                                  message ===
-                                    'A verified baseline already exists'
+                              : error instanceof BlogStudioError &&
+                                  error.code === 'DOCUMENT_CONFLICT'
                                 ? 409
-                                : error instanceof AssetPolicyError
-                                  ? error.code === 'ASSET_TOO_LARGE'
-                                    ? 413
-                                    : 422
-                                  : message === 'Draft source revision conflict'
+                                : error instanceof ActiveReleaseConflictError
+                                  ? 409
+                                  : error instanceof
+                                        BaselineAdoptionRequiredError ||
+                                      error instanceof
+                                        BaselineAlreadyAdoptedError ||
+                                      message ===
+                                        'Existing deployment baseline must be adopted before publishing' ||
+                                      message ===
+                                        'A verified baseline already exists'
                                     ? 409
-                                    : message.startsWith(
-                                          'Invalid Hexo document date:',
-                                        )
-                                      ? 422
-                                      : validationError
-                                        ? 400
-                                        : declaredStatus !== undefined
-                                          ? declaredStatus
-                                          : /^(Unknown|Unsupported)/.test(
-                                                message,
-                                              )
-                                            ? 404
-                                            : 500;
+                                    : error instanceof AssetPolicyError
+                                      ? error.code === 'ASSET_TOO_LARGE'
+                                        ? 413
+                                        : 422
+                                      : message ===
+                                          'Draft source revision conflict'
+                                        ? 409
+                                        : message.startsWith(
+                                              'Invalid Hexo document date:',
+                                            )
+                                          ? 422
+                                          : validationError
+                                            ? 400
+                                            : declaredStatus !== undefined
+                                              ? declaredStatus
+                                              : /^(Unknown|Unsupported)/.test(
+                                                    message,
+                                                  )
+                                                ? 404
+                                                : 500;
     if (status === 500)
       request.log.error({ err: error }, 'Unhandled Studio request error');
     void reply.code(status).send({
@@ -654,6 +729,7 @@ export async function createStudioServer(
         ? { code: error.code, details: error.details }
         : {}),
       ...(error instanceof AssetPolicyError ? { code: error.code } : {}),
+      ...(error instanceof SiteAgentServiceError ? { code: error.code } : {}),
     });
   });
 

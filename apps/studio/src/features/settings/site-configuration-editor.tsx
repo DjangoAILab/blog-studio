@@ -53,6 +53,38 @@ function selectedDevelopmentProfile(yaml: string): string | undefined {
   }
 }
 
+interface ImageProcessingSettings {
+  readonly enabled: boolean;
+  readonly format: 'original' | 'webp';
+  readonly quality: number;
+  readonly maximumWidth: number;
+  readonly stripMetadata: boolean;
+}
+
+const originalImageSettings: ImageProcessingSettings = {
+  enabled: false,
+  format: 'original',
+  quality: 82,
+  maximumWidth: 2400,
+  stripMetadata: false,
+};
+
+function selectedImageProcessing(yaml: string): ImageProcessingSettings {
+  try {
+    const parsed = parse(yaml) as {
+      readonly resources?: {
+        readonly imageProcessing?: Partial<ImageProcessingSettings>;
+      };
+    };
+    return {
+      ...originalImageSettings,
+      ...parsed.resources?.imageProcessing,
+    };
+  } catch {
+    return originalImageSettings;
+  }
+}
+
 export function SiteConfigurationEditor({
   siteId,
   developmentProfileId,
@@ -75,6 +107,7 @@ export function SiteConfigurationEditor({
   );
   const [message, setMessage] = useState('');
   const selectedProfile = selectedDevelopmentProfile(yaml);
+  const imageProcessing = selectedImageProcessing(yaml);
 
   function changeDevelopmentProfile(profile: string): void {
     try {
@@ -100,6 +133,35 @@ export function SiteConfigurationEditor({
       setMessage(
         reason instanceof Error ? reason.message : '无法更新本地调试配置',
       );
+    }
+  }
+
+  function changeImageProcessing(
+    patch: Partial<ImageProcessingSettings>,
+  ): void {
+    try {
+      const parsed = parse(yaml) as unknown;
+      if (
+        parsed === null ||
+        typeof parsed !== 'object' ||
+        Array.isArray(parsed)
+      )
+        throw new Error('站点配置必须是 YAML 对象');
+      const next = { ...(parsed as Record<string, unknown>) };
+      const resources =
+        next.resources !== null &&
+        typeof next.resources === 'object' &&
+        !Array.isArray(next.resources)
+          ? { ...(next.resources as Record<string, unknown>) }
+          : {};
+      resources.imageProcessing = { ...imageProcessing, ...patch };
+      next.resources = resources;
+      setYaml(stringify(next, { lineWidth: 0 }));
+      setState('idle');
+      setMessage('图片处理设置已修改；验证并激活后只影响新上传。');
+    } catch (reason: unknown) {
+      setState('error');
+      setMessage(reason instanceof Error ? reason.message : '无法更新图片设置');
     }
   }
 
@@ -230,6 +292,82 @@ export function SiteConfigurationEditor({
         {developmentProfileId && selectedProfile === developmentProfileId ? (
           <small>当前已启用：{developmentProfileId}</small>
         ) : null}
+      </section>
+      <section
+        className="studio2-development-profile"
+        aria-label="图片上传处理"
+      >
+        <div>
+          <h4>图片上传</h4>
+          <p>
+            默认原样保存字节、格式、扩展名与元数据。处理策略仅应用于激活后新上传的图片，不改写已有资源。
+          </p>
+        </div>
+        <label>
+          <span>启用处理</span>
+          <input
+            type="checkbox"
+            checked={imageProcessing.enabled}
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(event) =>
+              changeImageProcessing({ enabled: event.target.checked })
+            }
+          />
+        </label>
+        <label>
+          <span>输出格式</span>
+          <select
+            value={imageProcessing.format}
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(event) =>
+              changeImageProcessing({
+                format: event.target.value as 'original' | 'webp',
+              })
+            }
+          >
+            <option value="original">保留原格式</option>
+            <option value="webp">转换为 WebP</option>
+          </select>
+        </label>
+        <label>
+          <span>质量（1–100）</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={imageProcessing.quality}
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(event) =>
+              changeImageProcessing({ quality: event.target.valueAsNumber })
+            }
+          />
+        </label>
+        <label>
+          <span>最大宽度</span>
+          <input
+            type="number"
+            min={64}
+            max={16_384}
+            value={imageProcessing.maximumWidth}
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(event) =>
+              changeImageProcessing({
+                maximumWidth: event.target.valueAsNumber,
+              })
+            }
+          />
+        </label>
+        <label>
+          <span>移除元数据</span>
+          <input
+            type="checkbox"
+            checked={imageProcessing.stripMetadata}
+            disabled={state === 'loading' || state === 'saving'}
+            onChange={(event) =>
+              changeImageProcessing({ stripMetadata: event.target.checked })
+            }
+          />
+        </label>
       </section>
       <textarea
         aria-label="站点配置 YAML"

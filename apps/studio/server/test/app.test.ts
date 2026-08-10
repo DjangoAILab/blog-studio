@@ -1205,7 +1205,7 @@ describe('Studio workspace API', () => {
   });
 
   it('activates owner Site configuration atomically without exposing host policy', async () => {
-    const { app } = await fixture();
+    const { app, workspace } = await fixture();
     const session = await login(app);
     const headers = {
       cookie: session.cookie,
@@ -1219,6 +1219,38 @@ describe('Studio workspace API', () => {
       payload: { candidateId: 'test-blog', displayName: 'Dynamic Config Site' },
     });
     const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const listed = await app.inject({
+      url: `/api/sites/${siteId}/content`,
+      headers,
+    });
+    const documentId = listed.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items[0]?.documentId;
+    if (!documentId) throw new Error('fixture post missing');
+    const imageBytes = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVQImWP4FWX+H4QZYAwAW6IKKTdeP7oAAAAASUVORK5CYII=',
+      'base64',
+    );
+    const resourceUrl = `/api/sites/${siteId}/content/${documentId}/resources?collection=posts`;
+    const originalUpload = await app.inject({
+      method: 'POST',
+      url: resourceUrl,
+      headers: {
+        ...headers,
+        'content-type': 'image/png',
+        'x-blog-studio-filename': encodeURIComponent('original.png'),
+      },
+      payload: imageBytes,
+    });
+    expect(originalUpload.statusCode, originalUpload.body).toBe(201);
+    const original = originalUpload.json<{
+      resource: { key: string; mediaType: string };
+    }>().resource;
+    expect(original.mediaType).toBe('image/png');
+    expect(original.key).toMatch(/\.png$/);
+    await expect(
+      readFile(join(workspace, 'source', original.key)),
+    ).resolves.toEqual(imageBytes);
     const initial = await app.inject({
       url: `/api/sites/${siteId}/configuration`,
       headers,
@@ -1251,6 +1283,13 @@ content:
       default: false
 development:
   profile: local-preview
+resources:
+  imageProcessing:
+    enabled: true
+    format: webp
+    quality: 80
+    maximumWidth: 640
+    stripMetadata: true
 `,
       },
     });
@@ -1258,6 +1297,26 @@ development:
     expect(activated.json()).toMatchObject({
       configuration: { revision: 2, source: 'owner' },
     });
+    const processedUpload = await app.inject({
+      method: 'POST',
+      url: resourceUrl,
+      headers: {
+        ...headers,
+        'content-type': 'image/png',
+        'x-blog-studio-filename': encodeURIComponent('processed.png'),
+      },
+      payload: imageBytes,
+    });
+    expect(processedUpload.statusCode, processedUpload.body).toBe(201);
+    expect(processedUpload.json()).toMatchObject({
+      resource: { mediaType: 'image/webp' },
+    });
+    expect(
+      processedUpload.json<{ resource: { key: string } }>().resource.key,
+    ).toMatch(/\.webp$/);
+    await expect(
+      readFile(join(workspace, 'source', original.key)),
+    ).resolves.toEqual(imageBytes);
     const site = await app.inject({ url: `/api/sites/${siteId}`, headers });
     expect(site.json()).toMatchObject({
       site: {
@@ -2331,7 +2390,7 @@ content:
     );
   });
 
-  it('processes an uploaded image into an article-scoped immutable asset', async () => {
+  it('preserves an uploaded image in an article-scoped immutable asset by default', async () => {
     const { app, workspace } = await fixture();
     const session = await login(app);
     const documents = await app.inject({
@@ -2369,15 +2428,13 @@ content:
       asset: { key: string; publicUrl: string; mediaType: string };
     }>().asset;
     expect(asset).toMatchObject({
-      mediaType: 'image/webp',
+      mediaType: 'image/png',
       publicUrl: `https://blog.example.test/media/posts/${documentId}/${asset.key.split('/').at(-1)}`,
     });
     expect(asset.key).toMatch(
-      new RegExp(`^media/posts/${documentId}/[a-f0-9]{64}-final\\.webp$`),
+      new RegExp(`^media/posts/${documentId}/[a-f0-9]{64}-final\\.png$`),
     );
-    expect(await readFile(join(workspace, 'source', asset.key))).not.toEqual(
-      image,
-    );
+    expect(await readFile(join(workspace, 'source', asset.key))).toEqual(image);
   });
 
   it('previews orphan assets and rejects a stale deletion confirmation', async () => {

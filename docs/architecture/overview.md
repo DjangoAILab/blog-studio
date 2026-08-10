@@ -233,7 +233,7 @@ Secrets are referenced by environment-variable name rather than stored here.
 
 ### ADR-001: Modular monolith
 
-**Status:** Accepted.
+**Status:** Accepted target; original-preserving upload implementation is pending.
 
 One deployable keeps self-hosting simple. Package boundaries preserve future
 extraction. Microservices would increase operational cost without improving the
@@ -275,12 +275,14 @@ v0.1 requirement.
 
 **Status:** Accepted.
 
-New uploads use `<managed-prefix>/<document-id>/<sha256>-<name>.webp`. The
-document ID gives authors a stable natural grouping while the full content hash
-makes retries idempotent and cache-safe. Existing resource paths are resolved
-for editing and preview but live under separately configured protected prefixes;
-Blog Studio cannot overwrite or delete them. Migration is additive instead of a
-flag-day URL rewrite.
+New uploads use `<managed-prefix>/<document-id>/<sha256>-<name>.<extension>`.
+The document ID gives authors a stable natural grouping while the full content
+hash makes retries idempotent and cache-safe. Images preserve their original
+bytes, format, extension, and metadata unless the Site explicitly enables image
+processing. Optional processing may choose original-format or WebP output,
+quality, maximum width, and metadata stripping. Existing resource paths are
+never recompressed automatically and remain protected from overwrite or delete.
+Migration is additive instead of a flag-day URL rewrite.
 
 ### ADR-007: Manifest-driven, verified releases
 

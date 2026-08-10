@@ -45,6 +45,13 @@ describe('Studio database migrations', () => {
     expect(tableNames(first)).toEqual(
       expect.arrayContaining([
         'change_sets',
+        'agent_attachments',
+        'agent_events',
+        'agent_global_preferences',
+        'agent_sessions',
+        'agent_site_preferences',
+        'agent_tool_audit',
+        'agent_turns',
         'drafts',
         'owner_credentials',
         'owner_sessions',

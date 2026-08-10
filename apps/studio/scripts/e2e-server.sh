@@ -20,6 +20,7 @@ trap cleanup EXIT INT TERM
 mkdir -p \
   "$fixture/data" \
   "$fixture/published" \
+  "$fixture/published-two" \
   "$fixture/site/node_modules/.bin" \
   "$fixture/site/source/_drafts" \
   "$fixture/site/source/_posts" \
@@ -116,6 +117,46 @@ git -C "$fixture/site" config user.email 'browser-test@blog-studio.invalid'
 git -C "$fixture/site" add .
 git -C "$fixture/site" commit -m 'Create browser test Site' >/dev/null
 
+cp -R "$fixture/site" "$fixture/site-two"
+cat >"$fixture/site-two/_config.yml" <<'YAML'
+url: http://second.example.invalid
+permalink: :year/:month/:day/:title/
+YAML
+cat >"$fixture/blog-studio-two.yml" <<YAML
+version: 1
+workspace:
+  id: test-browser-blog-two
+  root: $fixture/site-two
+generator:
+  adapter: hexo
+repository:
+  adapter: local-git
+assets:
+  adapter: filesystem
+  options:
+    rootDirectory: source
+    managedPrefix: media/posts
+    publicBaseUrl: http://second.example.invalid/
+publish:
+  adapter: filesystem
+  options:
+    directory: $fixture/published-two
+content:
+  collections:
+    posts:
+      path: source/_posts
+      draftPath: source/_drafts
+verification:
+  baseUrl: http://second.example.invalid/
+developmentProfiles:
+  hexo-preview:
+    label: Hexo 第二站点预览
+    command: $fixture/site-two/node_modules/.bin/hexo
+    args: []
+    baseUrl: http://127.0.0.1:4100/
+    previewUrl: http://127.0.0.1:4100/
+YAML
+
 studio_database="$fixture/data/studio.sqlite"
 printf '%s' 'browser-test-owner-password' | \
   node "$studio_directory/dist/server/cli.js" auth init \
@@ -138,7 +179,7 @@ BLOG_STUDIO_CLIENT_DIRECTORY="$studio_directory/dist/client" \
 node "$studio_directory/dist/server/main.js" &
 invalid_server_pid=$!
 
-BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml" \
+BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml,$fixture/blog-studio-two.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
 BLOG_STUDIO_DATABASE_PATH="$fixture/data/uninitialized-studio.sqlite" \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-uninitialized-cookie-secret-thirty-two-characters' \
@@ -181,7 +222,7 @@ node --input-type=module -e '
 ' &
 mutator_pid=$!
 
-BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml" \
+BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml,$fixture/blog-studio-two.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
 BLOG_STUDIO_DATABASE_PATH="$studio_database" \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-cookie-secret-with-at-least-thirty-two-characters' \

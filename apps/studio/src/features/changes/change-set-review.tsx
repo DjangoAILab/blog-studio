@@ -40,6 +40,7 @@ interface ChangeSetReviewSheetProps {
   readonly release?: ReleaseDetails | undefined;
   readonly error?: string | undefined;
   readonly onClose: () => void;
+  readonly onOpenAgent: () => void;
   readonly onReprepare: () => Promise<void>;
   readonly onApply: (review: ChangeSetReview) => Promise<void>;
   readonly onCommit: (
@@ -271,6 +272,7 @@ export function ChangeSetReviewSheet({
   release,
   error,
   onClose,
+  onOpenAgent,
   onReprepare,
   onApply,
   onCommit,
@@ -353,9 +355,18 @@ export function ChangeSetReviewSheet({
                   先看清冻结内容，再逐级应用、提交；远端发布始终单独确认。
                 </Dialog.Description>
               </div>
-              <Dialog.Close className="studio2-sheet-close" aria-label="关闭">
-                ×
-              </Dialog.Close>
+              <div className="studio2-change-header-actions">
+                <button
+                  className="studio2-secondary-button"
+                  type="button"
+                  onClick={onOpenAgent}
+                >
+                  Agent
+                </button>
+                <Dialog.Close className="studio2-sheet-close" aria-label="关闭">
+                  ×
+                </Dialog.Close>
+              </div>
             </header>
 
             {loading ? (

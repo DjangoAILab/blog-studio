@@ -37,11 +37,14 @@ import {
 import type { SiteService } from '../services/sites.js';
 import type { DevelopmentService } from '../services/development.js';
 import type { SiteConfigurationService } from '../services/site-configurations.js';
+import type { SiteAgentMutationCoordinator } from '../services/site-agent-locks.js';
 import {
   BASELINE_ADOPTION_CONFIRMATION,
   type ReleaseService,
 } from '../services/releases.js';
 import type { WorkspaceService } from '../services/workspaces.js';
+import type { SiteAgentSessionService } from '../services/site-agent-sessions.js';
+import { registerAgentApiRoutes } from './agent-api.js';
 
 export interface ApiDependencies {
   readonly workspaces: WorkspaceService;
@@ -54,6 +57,8 @@ export interface ApiDependencies {
   readonly releases: ReleaseService;
   readonly development: DevelopmentService;
   readonly siteConfigurations: SiteConfigurationService;
+  readonly agentMutations: SiteAgentMutationCoordinator;
+  readonly agentSessions: SiteAgentSessionService;
   readonly allowLegacyReleaseApi: boolean;
 }
 
@@ -313,6 +318,7 @@ export function registerApiRoutes(
   app: FastifyInstance,
   dependencies: ApiDependencies,
 ): void {
+  registerAgentApiRoutes(app, dependencies.agentSessions);
   app.get('/api/sites', () => ({ sites: dependencies.sites.list() }));
 
   app.get('/api/sites/discover', async () => ({
