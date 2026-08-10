@@ -24,12 +24,19 @@ an existing cache URL.
 
 ## Image policy
 
-The server independently checks declared MIME type and decoded content, removes
-metadata, bounds dimensions, and produces deterministic formats according to
-the configured policy. Encoding runs in a memory-bounded Worker with a hard
-deadline; a timed-out Worker is terminated before the provider can be called.
+Original-first is the default. With image processing disabled, the server checks
+the declared MIME type and decoded content, then stores the original bytes,
+format, semantic extension, and metadata unchanged. It does not silently turn
+an upload into WebP.
+
+A Site owner may explicitly enable processing and choose original or WebP
+output, quality, maximum width, and whether metadata is stripped. Encoding runs
+in a memory-bounded Worker with a hard deadline; a timed-out Worker is
+terminated before the provider can be called. A policy change applies only to
+new uploads—it never recompresses or renames existing local or remote resources.
 The editor inserts Markdown only after the provider returns the durable public
-URL.
+URL. `ResourceRecord` remains that upload result, not a separate persistent
+resource entity.
 
 ## Legacy resources
 

@@ -206,6 +206,112 @@ export interface OrphanAssetPlan {
   readonly storage?: 'local' | 'remote';
 }
 
+export type AgentApprovalMode = 'approval' | 'yolo';
+
+export interface AgentPreferenceDefaults {
+  readonly global: AgentApprovalMode | null;
+  readonly site: AgentApprovalMode | null;
+}
+
+export interface AgentSessionSummary {
+  readonly id: string;
+  readonly siteId: string;
+  readonly displayName: string;
+  readonly state: 'active' | 'archived';
+  readonly approvalMode?: AgentApprovalMode;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface AgentHistoryEntry {
+  readonly id: string;
+  readonly kind: 'message' | 'context';
+  readonly role: string;
+  readonly text?: string;
+  readonly imageCount?: number;
+  readonly timestamp?: number;
+}
+
+export interface AgentTurnSummary {
+  readonly id: string;
+  readonly status:
+    | 'queued'
+    | 'running'
+    | 'waiting-approval'
+    | 'completed'
+    | 'failed'
+    | 'canceled'
+    | 'interrupted';
+  readonly cancelRequestedAt?: string;
+  readonly errorCode?: string;
+}
+
+export interface AgentApprovalSummary {
+  readonly turnId: string;
+  readonly toolCallId: string;
+  readonly toolName: string;
+  readonly approvalDecision:
+    'not-required' | 'pending' | 'approved' | 'rejected' | 'auto-approved';
+  readonly status:
+    'requested' | 'running' | 'succeeded' | 'failed' | 'canceled';
+  readonly paths: readonly string[];
+}
+
+export interface AgentAttachmentSummary {
+  readonly id: string;
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly byteSize: number;
+  readonly status: 'uploaded' | 'processing' | 'ready' | 'failed';
+  readonly visionModel?: string;
+  readonly messageEntryId?: string;
+}
+
+export interface AgentSessionDetails {
+  readonly session: AgentSessionSummary;
+  readonly effectiveApproval: {
+    readonly mode: AgentApprovalMode;
+    readonly source: 'session' | 'site' | 'global' | 'default';
+  };
+  readonly history: readonly AgentHistoryEntry[];
+  readonly turns: readonly AgentTurnSummary[];
+  readonly approvals: readonly AgentApprovalSummary[];
+  readonly attachments: readonly AgentAttachmentSummary[];
+}
+
+export type AgentMessageContext =
+  | {
+      readonly type: 'article';
+      readonly documentId: string;
+      readonly collectionId: string;
+      readonly title?: string;
+      readonly path?: string;
+    }
+  | {
+      readonly type: 'editor-buffer';
+      readonly documentId: string;
+      readonly collectionId: string;
+      readonly sourceRevision: string;
+      readonly body: string;
+    }
+  | {
+      readonly type: 'markdown-selection';
+      readonly documentId: string;
+      readonly startLine: number;
+      readonly endLine: number;
+      readonly text: string;
+    }
+  | { readonly type: 'preview-error'; readonly message: string }
+  | { readonly type: 'diff'; readonly content: string }
+  | {
+      readonly type: 'change-set';
+      readonly changeSetId: string;
+      readonly summary?: string;
+    }
+  | { readonly type: 'file'; readonly path: string }
+  | { readonly type: 'attachment'; readonly attachmentId: string }
+  | { readonly type: 'image'; readonly attachmentId: string };
+
 export class StudioApiError extends Error {
   public constructor(
     message: string,
@@ -833,6 +939,171 @@ export class StudioApi {
         },
       },
     );
+  }
+
+  public agentSessions(siteId: string, includeArchived = false) {
+    return this.#request<{ sessions: readonly AgentSessionSummary[] }>(
+      `/api/sites/${siteId}/agent/sessions?includeArchived=${includeArchived}`,
+    );
+  }
+
+  public agentPreferenceDefaults(siteId: string) {
+    return this.#request<AgentPreferenceDefaults>(
+      `/api/sites/${siteId}/agent/preferences`,
+    );
+  }
+
+  public updateAgentPreferenceDefaults(input: {
+    readonly siteId: string;
+    readonly scope: 'global' | 'site';
+    readonly mode: AgentApprovalMode | null;
+  }) {
+    return this.#request<AgentPreferenceDefaults>(
+      `/api/sites/${input.siteId}/agent/preferences`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ scope: input.scope, mode: input.mode }),
+      },
+    );
+  }
+
+  public createAgentSession(input: {
+    readonly siteId: string;
+    readonly displayName: string;
+    readonly approvalMode?: AgentApprovalMode;
+  }) {
+    return this.#request<AgentSessionSummary>(
+      `/api/sites/${input.siteId}/agent/sessions`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          displayName: input.displayName,
+          ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+        }),
+      },
+    );
+  }
+
+  public agentSession(siteId: string, sessionId: string) {
+    return this.#request<AgentSessionDetails>(
+      `/api/sites/${siteId}/agent/sessions/${sessionId}`,
+    );
+  }
+
+  public updateAgentSession(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly displayName?: string;
+    readonly approvalMode?: AgentApprovalMode | null;
+  }) {
+    return this.#request<AgentSessionSummary>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...(input.displayName ? { displayName: input.displayName } : {}),
+          ...(input.approvalMode !== undefined
+            ? { approvalMode: input.approvalMode }
+            : {}),
+        }),
+      },
+    );
+  }
+
+  public archiveAgentSession(siteId: string, sessionId: string) {
+    return this.#request<AgentSessionSummary>(
+      `/api/sites/${siteId}/agent/sessions/${sessionId}/archive`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public restoreAgentSession(siteId: string, sessionId: string) {
+    return this.#request<AgentSessionSummary>(
+      `/api/sites/${siteId}/agent/sessions/${sessionId}/restore`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public submitAgentMessage(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly text: string;
+    readonly contexts?: readonly AgentMessageContext[];
+    readonly attachmentIds?: readonly string[];
+  }) {
+    return this.#request<AgentTurnSummary>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}/messages`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          text: input.text,
+          ...(input.contexts ? { contexts: input.contexts } : {}),
+          ...(input.attachmentIds
+            ? { attachmentIds: input.attachmentIds }
+            : {}),
+        }),
+      },
+    );
+  }
+
+  public cancelAgentTurn(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly turnId: string;
+  }) {
+    return this.#request<AgentTurnSummary>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}/turns/${input.turnId}/cancel`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public decideAgentApproval(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly toolCallId: string;
+    readonly decision: 'approved' | 'rejected';
+  }) {
+    return this.#request<AgentApprovalSummary>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}/turns/${input.turnId}/approvals/${input.toolCallId}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ decision: input.decision }),
+      },
+    );
+  }
+
+  public uploadAgentAttachment(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly file: File;
+  }) {
+    return this.#request<{ attachment: AgentAttachmentSummary }>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}/attachments`,
+      {
+        method: 'POST',
+        body: input.file,
+        headers: {
+          'content-type': input.file.type || 'application/octet-stream',
+          'x-blog-studio-filename': encodeURIComponent(input.file.name),
+        },
+      },
+    );
+  }
+
+  public retryAgentVision(input: {
+    readonly siteId: string;
+    readonly sessionId: string;
+    readonly attachmentId: string;
+  }) {
+    return this.#request<{ attachment: AgentAttachmentSummary }>(
+      `/api/sites/${input.siteId}/agent/sessions/${input.sessionId}/attachments/${input.attachmentId}/vision/retry`,
+      { method: 'POST', body: '{}' },
+    );
+  }
+
+  public agentEventsUrl(siteId: string, sessionId: string, after = 0): string {
+    return `/api/sites/${siteId}/agent/sessions/${sessionId}/events?after=${after}`;
   }
 
   public orphanResources(input: {

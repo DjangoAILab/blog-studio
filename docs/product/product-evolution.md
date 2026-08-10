@@ -119,55 +119,47 @@ execution, while model providers remain configurable beneath it. Blog Studio
 should define an `AgentRuntime` boundary so Pi can be upgraded or replaced
 without changing product tools or stored content.
 
-The recommended first integration embeds the Pi SDK behind that boundary and
-disables unrestricted built-in filesystem, write, edit, and shell tools. Pi
-receives only Blog Studio capabilities such as:
+The first integration embeds the Pi SDK behind that boundary in the existing
+Studio server. Pi receives the current Site workspace as its `cwd` and retains
+its filesystem inspection and mutation tools below that root. The general
+`bash` tool is absent. Fixed-shape Git tools provide status, diff, log, show,
+path-scoped restore, and bounded reversal without exposing arbitrary arguments,
+remote mutation, clean, hooks, or whole-repository hard reset.
 
-- inspect and search a Site;
-- read documents, front matter, resources, and diagnostics;
-- create or patch a working-copy draft;
-- request previews and interpret failures;
-- add policy-compliant resources;
-- prepare and explain a ChangeSet.
+Approval mode prompts for every mutating tool call. YOLO mode executes permitted
+mutations immediately. Both retain Site-root checks, one writer lock per Site,
+typed tools, and audit records. There is no trash or special backup promise for
+deleted untracked files.
 
-High-impact operations must not be silently available. Site configuration
-changes, resource deletion, applying a commit, and remote publication require a
-reviewable proposal plus an explicit human confirmation. Tool calls, outcomes,
-context attachments, and approval decisions are auditable.
+There is one global Site Agent surface with several independent, archivable
+Sessions. An article page is the same Site Agent with `documentId` attached
+automatically. The message composer can attach the current selection, editor
+buffer, diff, preview error, ChangeSet, file, or image as explicit one-turn
+context. Selected text is never silently reattached to later messages.
 
-There is one global Site Agent experience. An article conversation is the same
-Agent runtime with `siteId` and `documentId` attached automatically. The message
-composer can attach the current selection, working-copy diff, preview error, or
-change set as explicit one-turn context chips. Selected text is never silently
-retained after the user removes it.
+Agent Sessions and approval preferences belong to a Site, not to a page. Global
+defaults, Site overrides, and Session overrides are durable. Each browser tab
+keeps an explicit `siteId` so its preview URL and Agent state cannot drift to a
+different Site.
 
-## Capability layer and MCP
+Pi JSONL and Studio SQLite must not become two independently writable transcript
+stores. The POC selected Pi JSONL as the sole transcript because the public SDK
+exposes a concrete session tree rather than a generic storage adapter. SQLite
+continues to own Site association, archive state, preferences, attachments,
+approvals, and audit indexes. Canonical content continues to live in files and
+Git.
 
-Agent integration and MCP exposure must share one implementation:
-
-```text
-Blog Studio Capability Service
-  -> Studio UI and HTTP API
-  -> Pi tool adapter
-  -> MCP server adapter
-```
-
-This avoids separate, drifting implementations of Site operations. External
-MCP clients receive scoped tokens, read-only capabilities by default, bounded
-Site access, and the same audit trail. Direct raw workspace access and direct
-publication are not part of the first MCP release.
-
-Suggested SQLite records are `agent_sessions`, `agent_messages`,
-`agent_context_attachments`, `agent_tool_calls`, and scoped access grants.
-Agent transcripts and derived analysis are operational data; canonical content
-continues to live in files and Git.
+External MCP exposure is not part of the first Agent release. SiYuan and
+Obsidian MCP implementations remain useful references for typed errors,
+fine-grained editing, audit, and destructive-operation design, but Blog Studio
+does not add another tool transport until its in-product Site Agent is proven.
 
 ## Approaches considered for Pi
 
 1. **Embedded SDK behind `AgentRuntime` — recommended.** It supports the custom
-   web UI, streaming events, custom tools, and Studio-owned session storage with
-   the least operational overhead. The adapter boundary preserves an escape
-   hatch if resource isolation later becomes necessary.
+   web UI, streaming events, direct filesystem tools, and custom tool policy
+   with the least operational overhead. The POC selected native Pi JSONL for
+   transcripts and SQLite for product metadata.
 2. **Pi RPC subprocess.** It improves process isolation and independent upgrade
    control, but adds lifecycle, framing, credential, cancellation, and session
    synchronization complexity. Keep it as a measured fallback.
@@ -178,8 +170,10 @@ continues to live in files and Git.
 ## Explicit deferrals
 
 - word-frequency dashboards, content analytics, and AI-generated insights;
-- autonomous publishing or destructive Agent actions;
+- autonomous publishing;
 - multi-user Agent sharing, comments, and approval chains;
+- general shell access and remote Git mutation;
+- public MCP exposure before the Site Agent is proven;
 - a public mutable demo;
 - a second Agent runtime before the Pi boundary is proven.
 

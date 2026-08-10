@@ -192,6 +192,16 @@ const ownerDevelopmentSchema = z
   .object({ profile: developmentProfileIdSchema })
   .strict();
 
+const imageProcessingSchema = z
+  .object({
+    enabled: z.boolean(),
+    format: z.enum(['original', 'webp']),
+    quality: z.number().int().min(1).max(100),
+    maximumWidth: z.number().int().min(64).max(16_384),
+    stripMetadata: z.boolean(),
+  })
+  .strict();
+
 /**
  * The owner-controlled portion of a Site configuration. Host configuration
  * retains workspace paths, adapter selection, credentials, publish targets,
@@ -210,6 +220,10 @@ export const ownerSiteConfigurationSchema = z
       .strict()
       .default({ fields: {} }),
     development: ownerDevelopmentSchema.optional(),
+    resources: z
+      .object({ imageProcessing: imageProcessingSchema })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -254,6 +268,7 @@ export const blogStudioConfigSchema = z
             ]),
           )
           .optional(),
+        imageProcessing: imageProcessingSchema.optional(),
       })
       .strict()
       .superRefine((policy, context) => {

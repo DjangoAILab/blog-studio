@@ -69,3 +69,15 @@
 code {
   border-radius: 0;
 }
+
+@media (max-width: 50rem) {
+  .sl-markdown-content pre {
+    overflow-x: visible;
+    white-space: pre-wrap;
+  }
+
+  .sl-markdown-content pre code {
+    overflow-wrap: anywhere;
+    white-space: inherit;
+  }
+}

@@ -7,19 +7,21 @@ description: Generated top-level reference for the strict Blog Studio workspace 
 
 ## Top-level fields
 
-| Field          | Required | Type         | Constraint             |
-| -------------- | -------- | ------------ | ---------------------- |
-| `version`      | yes      | constant `1` | Must equal `1`         |
-| `site`         | no       | object       | Unknown keys rejected. |
-| `resources`    | no       | object       | Unknown keys rejected. |
-| `workspace`    | yes      | object       | Unknown keys rejected. |
-| `generator`    | yes      | object       | Unknown keys rejected. |
-| `repository`   | yes      | object       | Unknown keys rejected. |
-| `assets`       | yes      | object       | Unknown keys rejected. |
-| `publish`      | yes      | object       | Unknown keys rejected. |
-| `cache`        | no       | object       | Unknown keys rejected. |
-| `content`      | no       | object       | Unknown keys rejected. |
-| `verification` | no       | object       | Unknown keys rejected. |
+| Field                 | Required | Type         | Constraint             |
+| --------------------- | -------- | ------------ | ---------------------- |
+| `version`             | yes      | constant `1` | Must equal `1`         |
+| `site`                | no       | object       | Unknown keys rejected. |
+| `resources`           | no       | object       | Unknown keys rejected. |
+| `workspace`           | yes      | object       | Unknown keys rejected. |
+| `generator`           | yes      | object       | Unknown keys rejected. |
+| `repository`          | yes      | object       | Unknown keys rejected. |
+| `assets`              | yes      | object       | Unknown keys rejected. |
+| `publish`             | yes      | object       | Unknown keys rejected. |
+| `cache`               | no       | object       | Unknown keys rejected. |
+| `content`             | no       | object       | Unknown keys rejected. |
+| `developmentProfiles` | no       | object       | See nested schema.     |
+| `development`         | no       | object       | Unknown keys rejected. |
+| `verification`        | no       | object       | Unknown keys rejected. |
 
 All object sections are strict: an unknown key fails configuration loading. An
 adapter ID uses lowercase kebab-case. Credential values are environment
@@ -74,6 +76,21 @@ content:
       path: content/posts
       draftPath: content/drafts
       assetScope: media/posts/{documentId}
+```
+
+## Optional image processing
+
+Article resources preserve original bytes, format, extension, and metadata when
+this section is absent or disabled. Enabling it affects only future uploads.
+
+```yaml
+resources:
+  imageProcessing:
+    enabled: true
+    format: webp # original | webp
+    quality: 82 # 1..100
+    maxWidth: 1920 # 64..16384
+    stripMetadata: true
 ```
 
 The machine-readable source is the repository's

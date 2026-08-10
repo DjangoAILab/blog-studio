@@ -4,7 +4,7 @@ description: Self-host a reliable browser writing and publishing journey without
 template: splash
 hero:
   title: Publish without leaving your site behind.
-  tagline: Blog Studio keeps files, Git, your generator, and hosting canonical—then makes writing, preview, release, and recovery one visible journey.
+  tagline: Blog Studio keeps files, Git, your generator, and hosting canonical—then connects AI-assisted writing, preview, review, release, and recovery.
   actions:
     - text: Self-host Blog Studio
       link: /docs/guides/self-hosting/
@@ -27,6 +27,10 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
     Run the real generator and theme. Preview correctness comes from your site,
     not from a second renderer that drifts over time.
   </Card>
+  <Card title="Ask the Site Agent" icon="seti:ai">
+    Keep multiple durable, Site-scoped Sessions. Attach an article or Markdown
+    range explicitly, then approve bounded workspace changes or opt into YOLO.
+  </Card>
   <Card title="Release" icon="rocket">
     Inspect the manifest diff, publish immutable assets before pages, refresh
     cache paths, and verify a public release marker.
@@ -43,16 +47,18 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   then [configure a workspace](/docs/configuration/workspaces/).
 - **I have a Hexo site:** read the [Hexo guide](/docs/guides/hexo/) before
   mounting the repository.
+- **I want AI assistance:** start with the [Site Agent guide](/docs/use/agent/)
+  and review its approval, file, Git, attachment, and recovery boundaries.
 - **I operate Tencent COS/CDN:** understand the current
   [Tencent provider status and safety gates](/docs/providers/tencent/).
 - **I want to build an adapter:** begin with the
   [adapter model](/docs/adapters/overview/) and generated
   [v1 API reference](/docs/reference/adapter-api/).
 
-:::caution[Current v0.1 status]
-The filesystem vertical, provider-independent release behavior, and home-server
-editor deployment are verified. Real Tencent staging and controlled production
-publishing, provider-backed timing, and the signed v0.1.0 release remain gated.
-The docs label planned or unverified behavior instead of presenting it as
+:::note[Project finish line]
+Blog Studio's product scope ends at AI-assisted production with human-reviewed
+publishing. Autonomous publishing, a hosted Agent service, multi-user
+collaboration, and deferred provider ecosystem work are outside this finish
+line. The docs label unverified provider behavior instead of presenting it as
 shipped.
 :::

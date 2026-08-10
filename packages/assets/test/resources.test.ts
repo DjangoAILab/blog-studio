@@ -64,21 +64,43 @@ const png = new Uint8Array(
 );
 
 describe('generic resource policy', () => {
-  it('preserves optimized image handling behind the generic contract', async () => {
-    const resource = await new ResourcePipeline(new RecordingProvider()).ingest(
-      {
-        scope,
-        filename: 'Cover.png',
-        claimedMediaType: 'image/png',
-        bytes: png,
-      },
-    );
+  it('preserves original image bytes, format, extension, and metadata by default', async () => {
+    const provider = new RecordingProvider();
+    const resource = await new ResourcePipeline(provider).ingest({
+      scope,
+      filename: 'Cover.PNG',
+      claimedMediaType: 'image/png',
+      bytes: png,
+    });
     expect(resource).toMatchObject({
       kind: 'image',
-      mediaType: 'image/webp',
+      mediaType: 'image/png',
       inlinePreview: true,
     });
-    expect(resource.insertion).toMatch(/^!\[Cover\.png\]\(https:\/\//);
+    expect(provider.input?.bytes).toEqual(Buffer.from(png));
+    expect(provider.input?.filename).toMatch(/-cover\.png$/);
+    expect(resource.insertion).toMatch(/^!\[Cover\.PNG\]\(https:\/\//);
+  });
+
+  it('converts only new images when an explicit processing policy is enabled', async () => {
+    const provider = new RecordingProvider();
+    const resource = await new ResourcePipeline(provider, {
+      image: {
+        enabled: true,
+        format: 'webp',
+        quality: 76,
+        maxWidth: 1200,
+        stripMetadata: true,
+      },
+    }).ingest({
+      scope,
+      filename: 'Cover.png',
+      claimedMediaType: 'image/png',
+      bytes: png,
+    });
+    expect(resource.mediaType).toBe('image/webp');
+    expect(provider.input?.filename).toMatch(/-cover\.webp$/);
+    expect(provider.input?.bytes).not.toEqual(png);
   });
 
   it.each([

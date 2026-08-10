@@ -3,6 +3,33 @@ title: Troubleshooting
 description: Diagnose health, authentication, workspace, preview, release, and recovery failures without risking production.
 ---
 
+## Agent Session cannot resume
+
+An `AGENT_TRANSCRIPT_UNAVAILABLE` response means the Pi JSONL is missing,
+corrupt, incompatible, or has a different Session identity. Stop Studio and
+restore SQLite, `agent-sessions`, `agent-runtime`, and `agent-attachments` from
+the same backup generation. Do not create a replacement JSONL under the old
+Session record.
+
+## A turn says interrupted after restart
+
+This is intentional. Studio terminalizes queued, running, and
+waiting-for-approval work without replaying tools. Inspect the durable tool
+audit and working-tree diff, then submit a new message if more work is needed.
+
+## Vision failed but upload succeeded
+
+The original image remains attached. Verify `BLOG_STUDIO_VISION_ENDPOINT`,
+`BLOG_STUDIO_VISION_MODEL`, and the optional API-key secret, then use retry on
+the attachment. A failed interpretation is never presented as model output.
+
+## Agent edit conflicts with the editor
+
+The editor protects its stored source revision. Reload and compare the direct
+workspace change before deciding whether to reapply the draft. Agent edits,
+drafts, ChangeSets, local commits, and releases are deliberately separate
+states.
+
 ## Container never becomes healthy
 
 ```sh

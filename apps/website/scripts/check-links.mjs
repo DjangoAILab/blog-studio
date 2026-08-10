@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url';
 
 const websiteRoot = fileURLToPath(new URL('..', import.meta.url));
 const outputRoot = join(websiteRoot, 'dist');
+const configuredBase = (process.env.BLOG_STUDIO_DOCS_BASE ?? '').replace(
+  /^\/+|\/+$/g,
+  '',
+);
 
 async function htmlFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -19,7 +23,12 @@ async function htmlFiles(directory) {
 }
 
 function outputPath(pathname) {
-  const clean = decodeURIComponent(pathname).replace(/^\/+/, '');
+  let clean = decodeURIComponent(pathname).replace(/^\/+/, '');
+  if (
+    configuredBase &&
+    (clean === configuredBase || clean.startsWith(`${configuredBase}/`))
+  )
+    clean = clean.slice(configuredBase.length).replace(/^\/+/, '');
   if (!clean) return join(outputRoot, 'index.html');
   return extname(clean)
     ? join(outputRoot, clean)

@@ -244,6 +244,144 @@ const migrations: readonly Migration[] = [
         CHECK (lifecycle_state IN ('active', 'paused', 'unregistered'));
     `,
   },
+  {
+    version: 9,
+    name: 'site-agent-metadata',
+    sql: `
+      CREATE TABLE agent_sessions (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        pi_session_id TEXT NOT NULL UNIQUE,
+        transcript_key TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL CHECK (length(trim(display_name)) > 0),
+        state TEXT NOT NULL DEFAULT 'active'
+          CHECK (state IN ('active', 'archived')),
+        approval_mode TEXT
+          CHECK (approval_mode IS NULL OR approval_mode IN ('approval', 'yolo')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        archived_at TEXT,
+        CHECK (
+          (state = 'active' AND archived_at IS NULL)
+          OR (state = 'archived' AND archived_at IS NOT NULL)
+        )
+      ) STRICT;
+
+      CREATE INDEX agent_sessions_site_state_updated
+        ON agent_sessions(site_id, state, updated_at DESC);
+
+      CREATE TABLE agent_global_preferences (
+        owner_id INTEGER PRIMARY KEY CHECK (owner_id = 1),
+        approval_mode TEXT NOT NULL CHECK (approval_mode IN ('approval', 'yolo')),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE agent_site_preferences (
+        site_id TEXT PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+        approval_mode TEXT NOT NULL CHECK (approval_mode IN ('approval', 'yolo')),
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE agent_attachments (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+        message_entry_id TEXT,
+        filename TEXT NOT NULL CHECK (length(filename) > 0),
+        mime_type TEXT NOT NULL CHECK (length(mime_type) > 0),
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+        sha256 TEXT NOT NULL CHECK (length(sha256) = 64),
+        storage_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL DEFAULT 'uploaded'
+          CHECK (status IN ('uploaded', 'processing', 'ready', 'failed')),
+        vision_model TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX agent_attachments_session_created
+        ON agent_attachments(session_id, created_at);
+
+      CREATE TABLE agent_tool_audit (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+        turn_id TEXT NOT NULL,
+        tool_call_id TEXT NOT NULL,
+        pi_entry_id TEXT,
+        tool_name TEXT NOT NULL CHECK (length(tool_name) > 0),
+        is_mutation INTEGER NOT NULL CHECK (is_mutation IN (0, 1)),
+        approval_decision TEXT NOT NULL CHECK (
+          approval_decision IN (
+            'not-required', 'pending', 'approved', 'rejected', 'auto-approved'
+          )
+        ),
+        status TEXT NOT NULL CHECK (
+          status IN ('requested', 'running', 'succeeded', 'failed', 'canceled')
+        ),
+        paths_json TEXT NOT NULL CHECK (json_valid(paths_json)),
+        requested_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (session_id, tool_call_id)
+      ) STRICT;
+
+      CREATE INDEX agent_tool_audit_session_sequence
+        ON agent_tool_audit(session_id, sequence);
+
+      CREATE INDEX agent_tool_audit_site_updated
+        ON agent_tool_audit(site_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 10,
+    name: 'site-agent-turn-events',
+    sql: `
+      CREATE TABLE agent_turns (
+        id TEXT PRIMARY KEY,
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+        approval_mode TEXT NOT NULL CHECK (approval_mode IN ('approval', 'yolo')),
+        status TEXT NOT NULL CHECK (
+          status IN (
+            'queued', 'running', 'waiting-approval', 'completed', 'failed',
+            'canceled', 'interrupted'
+          )
+        ),
+        cancel_requested_at TEXT,
+        error_code TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        CHECK (
+          (status IN ('queued', 'running', 'waiting-approval') AND finished_at IS NULL)
+          OR (status IN ('completed', 'failed', 'canceled', 'interrupted') AND finished_at IS NOT NULL)
+        )
+      ) STRICT;
+
+      CREATE UNIQUE INDEX agent_turns_one_active_session
+        ON agent_turns(session_id)
+        WHERE status IN ('queued', 'running', 'waiting-approval');
+
+      CREATE INDEX agent_turns_session_created
+        ON agent_turns(session_id, created_at DESC);
+
+      CREATE TABLE agent_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE RESTRICT,
+        session_id TEXT NOT NULL REFERENCES agent_sessions(id) ON DELETE CASCADE,
+        turn_id TEXT NOT NULL REFERENCES agent_turns(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL CHECK (length(event_type) > 0),
+        payload_json TEXT NOT NULL CHECK (json_valid(payload_json)),
+        at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX agent_events_session_sequence
+        ON agent_events(session_id, sequence);
+
+      ALTER TABLE agent_tool_audit ADD COLUMN decision_at TEXT;
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

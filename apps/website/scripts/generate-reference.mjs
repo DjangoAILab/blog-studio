@@ -139,6 +139,21 @@ references shaped as \`{ env: "VARIABLE_NAME" }\`, never literal secrets.
 ${example}
 \`\`\`
 
+## Optional image processing
+
+Article resources preserve original bytes, format, extension, and metadata when
+this section is absent or disabled. Enabling it affects only future uploads.
+
+\`\`\`yaml
+resources:
+  imageProcessing:
+    enabled: true
+    format: webp       # original | webp
+    quality: 82        # 1..100
+    maxWidth: 1920     # 64..16384
+    stripMetadata: true
+\`\`\`
+
 The machine-readable source is the repository's
 [JSON Schema](https://github.com/DjangoAILab/blog-studio/blob/main/schemas/blog-studio.v1.schema.json).
 `;

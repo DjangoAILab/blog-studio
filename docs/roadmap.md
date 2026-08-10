@@ -103,31 +103,40 @@ quality bar and can be presented honestly to external users.
       without putting glass or perpetual motion in the content layer.
 - [x] Verify reduced motion, reduced transparency, increased contrast, keyboard
       access, responsive reflow, and performance budgets.
-- [ ] Rebuild `apps/website` from verified Studio journeys and current release
+- [x] Rebuild `apps/website` from verified Studio journeys and current release
       evidence.
-- [ ] Deploy landing, documentation, and release links through GitHub Pages.
+- [x] Record and optimize a 20--30 second README GIF from the verified writing,
+      preview, ChangeSet, and later Agent journey.
+- [x] Add a verified GitHub Pages build/deploy workflow with project-base links;
+      public deployment follows merge to the configured Pages branch.
 - [ ] Add durable routes from the landing and build stories to
       `https://blog.wj2015.com`.
 
 ## Phase 6 — Permissioned Agent platform
 
-**Outcome:** one Site Agent can reason and act through auditable Blog Studio
-capabilities without bypassing product safety boundaries.
+**Outcome:** one Site-scoped Agent can assist production across the complete
+website workspace without receiving a general shell or autonomous publishing
+authority.
 
-- [ ] Define an `AgentRuntime` contract and implement Pi as the first runtime.
-- [ ] Disable unrestricted Pi filesystem, edit, write, and shell tools; expose
-      only scoped Blog Studio capabilities.
-- [ ] Persist Agent sessions, messages, context attachments, tool calls, and
-      approval evidence in SQLite.
-- [ ] Add the global Site Agent and article-scoped context experience.
-- [ ] Add explicit current-selection, working-copy diff, preview-error, and
-      ChangeSet context attachments.
-- [ ] Require review and confirmation for configuration changes, deletion,
-      commit application, and remote release.
-- [ ] Expose the same capability service through a scoped, read-only-by-default
-      MCP server adapter.
-- [ ] Add cancellation, redaction, recovery, audit, and adversarial tool-policy
-      tests before enabling mutating tools by default.
+- [x] Pass the embedded Pi SDK POC gate and select Pi JSONL as the transcript
+      source of truth before adding production migrations. See the
+      [verification record](verification/site-agent-pi-poc.md).
+- [x] Implement Pi behind a thin `AgentRuntime` boundary in the existing Studio
+      server, with direct Site-root filesystem tools and no general shell.
+- [x] Add structured Git inspection and bounded recovery tools without arbitrary
+      commands, remote mutation, clean, or whole-repository hard reset.
+- [x] Persist Site-scoped Agent sessions, archive state, context attachments,
+      tool calls, approval evidence, and global/Site/Session preferences.
+- [x] Add the global Agent panel, multi-Session management, and tab-safe Site
+      and preview selection.
+- [x] Add one-turn current-article, Markdown-selection, diff, preview-error,
+      ChangeSet, file, and image context attachments.
+- [x] Add a separately configured vision-model adapter for image understanding.
+- [x] Add approval and YOLO modes plus one writer lock per Site.
+- [x] Preserve original image uploads by default and add explicit per-Site
+      compression, format, resize, quality, and metadata settings.
+- [x] Add cancellation, redaction, restart recovery, audit, draft-conflict, and
+      adversarial tool-policy tests before enabling mutating tools by default.
 
 ## Phase 7 — Ecosystem and derived intelligence
 
@@ -143,8 +152,11 @@ Agent boundaries are proven.
 - [ ] Rebuildable content index, statistics, word-frequency analysis, and
       optional AI-derived insights.
 
-See [Product Evolution](product/product-evolution.md) for the durable design,
-sequencing rationale, Pi approaches, MCP boundary, and explicit deferrals.
+See [Product Evolution](product/product-evolution.md) and the
+[Site Agent design](plans/2026-08-10-site-agent-platform-design.md) for the
+durable design, and use the
+[AI-assisted production checklist](checklists/site-agent-ai-assisted-production.md)
+as the evidence-backed completion gate.
 
 ## Still deferred
 
@@ -152,4 +164,6 @@ sequencing rationale, Pi approaches, MCP boundary, and explicit deferrals.
 - scheduled releases and editorial calendar;
 - collaborative cursors and simultaneous editing;
 - hosted control plane and multi-tenant isolation;
-- autonomous publication and destructive Agent actions.
+- autonomous publication;
+- general Agent shell access and Agent-managed remote Git operations;
+- public MCP exposure before the Site Agent boundary is proven.

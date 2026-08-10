@@ -35,9 +35,14 @@ export class AssetPolicyError extends Error {
 }
 
 export interface AssetPipelinePolicy {
+  readonly enabled?: boolean;
+  readonly format?: 'original' | 'webp';
+  readonly quality?: number;
+  readonly stripMetadata?: boolean;
   readonly maxInputBytes?: number;
   readonly maxInputPixels?: number;
   readonly maxWidth?: number;
+  /** @deprecated Use quality. */
   readonly webpQuality?: number;
   readonly maxProcessingMilliseconds?: number;
   readonly maxWorkerHeapMegabytes?: number;
@@ -150,20 +155,29 @@ void (async () => {
       });
       return;
     }
-    const processed = await image
+    let processed = image
       .rotate()
       .resize({
         width: workerData.maxWidth,
         fit: 'inside',
         withoutEnlargement: true,
-      })
-      .webp({
-        quality: workerData.webpQuality,
+      });
+    if (!workerData.stripMetadata) processed = processed.keepMetadata();
+    if (workerData.outputFormat === 'webp') {
+      processed = processed.webp({
+        quality: workerData.quality,
         effort: 4,
         smartSubsample: true,
-      })
-      .toBuffer();
-    parentPort.postMessage({ type: 'success', bytes: processed });
+      });
+    } else if (workerData.inputMediaType === 'image/jpeg') {
+      processed = processed.jpeg({ quality: workerData.quality });
+    } else if (workerData.inputMediaType === 'image/png') {
+      processed = processed.png();
+    } else {
+      processed = processed.webp({ quality: workerData.quality });
+    }
+    const output = await processed.toBuffer();
+    parentPort.postMessage({ type: 'success', bytes: output });
   } catch (error) {
     parentPort.postMessage({
       type: 'processing-error',
@@ -175,9 +189,12 @@ void (async () => {
 
 export class AssetPipeline {
   readonly #maxInputBytes: number;
+  readonly #enabled: boolean;
+  readonly #format: 'original' | 'webp';
+  readonly #quality: number;
+  readonly #stripMetadata: boolean;
   readonly #maxInputPixels: number;
   readonly #maxWidth: number;
-  readonly #webpQuality: number;
   readonly #maxProcessingMilliseconds: number;
   readonly #maxWorkerHeapMegabytes: number;
   readonly #maxVipsCacheMegabytes: number;
@@ -187,16 +204,19 @@ export class AssetPipeline {
     policy: AssetPipelinePolicy = {},
   ) {
     this.#maxInputBytes = policy.maxInputBytes ?? 12 * 1024 * 1024;
+    this.#enabled = policy.enabled ?? false;
+    this.#format = policy.format ?? 'original';
+    this.#quality = policy.quality ?? policy.webpQuality ?? 82;
+    this.#stripMetadata = policy.stripMetadata ?? false;
     this.#maxInputPixels = policy.maxInputPixels ?? 40_000_000;
     this.#maxWidth = policy.maxWidth ?? 2400;
-    this.#webpQuality = policy.webpQuality ?? 82;
     this.#maxProcessingMilliseconds =
       policy.maxProcessingMilliseconds ?? 15_000;
     this.#maxWorkerHeapMegabytes = policy.maxWorkerHeapMegabytes ?? 256;
     this.#maxVipsCacheMegabytes = policy.maxVipsCacheMegabytes ?? 64;
   }
 
-  async #process(bytes: Uint8Array): Promise<Buffer> {
+  async #process(bytes: Uint8Array, inputMediaType: string): Promise<Buffer> {
     return await new Promise<Buffer>((resolve, reject) => {
       const worker = new Worker(imageWorkerSource, {
         eval: true,
@@ -210,7 +230,10 @@ export class AssetPipeline {
           sharpModuleUrl: import.meta.resolve('sharp'),
           maxInputPixels: this.#maxInputPixels,
           maxWidth: this.#maxWidth,
-          webpQuality: this.#webpQuality,
+          outputFormat: this.#format,
+          inputMediaType,
+          quality: this.#quality,
+          stripMetadata: this.#stripMetadata,
           maxVipsCacheMegabytes: this.#maxVipsCacheMegabytes,
         },
       });
@@ -293,17 +316,40 @@ export class AssetPipeline {
         `Claimed media type ${input.claimedMediaType} does not match ${detectedMediaType}`,
       );
 
-    const processed = await this.#process(input.bytes);
+    const extension = extname(input.filename);
+    const validExtensions: Readonly<Record<string, readonly string[]>> = {
+      'image/png': ['.png'],
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/webp': ['.webp'],
+    };
+    if (
+      !validExtensions[detectedMediaType]?.includes(extension.toLowerCase())
+    ) {
+      throw new AssetPolicyError(
+        'RESOURCE_EXTENSION_MISMATCH',
+        `Filename extension does not match ${detectedMediaType}`,
+      );
+    }
+    const processed = this.#enabled
+      ? await this.#process(input.bytes, detectedMediaType)
+      : Buffer.from(input.bytes);
 
     const digest = createHash('sha256').update(processed).digest('hex');
-    const extension = extname(input.filename);
     const basename = extension
       ? input.filename.slice(0, -extension.length)
       : input.filename;
+    const outputExtension =
+      this.#enabled && this.#format === 'webp'
+        ? '.webp'
+        : extension.toLowerCase();
+    const outputMediaType =
+      this.#enabled && this.#format === 'webp'
+        ? 'image/webp'
+        : detectedMediaType;
     return await this.provider.put({
       scope: input.scope,
-      filename: `${digest}-${sanitizeAssetFilename(basename)}.webp`,
-      mediaType: 'image/webp',
+      filename: `${digest}-${sanitizeAssetFilename(basename)}${outputExtension}`,
+      mediaType: outputMediaType,
       bytes: processed,
       contentHash: createContentHash(`sha256:${digest}`),
     });

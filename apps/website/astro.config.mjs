@@ -1,7 +1,12 @@
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
+const normalizedBase = `/${(process.env.BLOG_STUDIO_DOCS_BASE ?? '').replace(/^\/+|\/+$/g, '')}`;
+const base = normalizedBase === '/' ? '/' : `${normalizedBase}/`;
+
 export default defineConfig({
+  site: process.env.BLOG_STUDIO_DOCS_SITE ?? 'http://localhost:4321',
+  base,
   integrations: [
     starlight({
       title: 'Blog Studio',

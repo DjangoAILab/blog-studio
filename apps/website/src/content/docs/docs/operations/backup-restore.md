@@ -8,12 +8,21 @@ description: Back up acknowledged drafts online and prove recovery before relyin
 The backup archive contains:
 
 - an online SQLite snapshot of drafts, jobs, releases, and events;
+- Pi Session JSONL and original chat attachments as one
+  versioned operational data set;
 - the administrator workspace configuration; and
 - workspace files and Git metadata, excluding generated `node_modules`,
   `public`, and `.published` directories.
 
 Provider objects and runtime secret files are intentionally separate. Use remote
 Git, provider versioning, and a protected secret backup alongside this archive.
+Pi provider/model configuration and credentials in `agent-runtime` are
+operator configuration and secrets; back them up separately under the same
+access controls as other provider credentials.
+
+Do not restore only SQLite or only Pi JSONL: that can orphan Session metadata or
+make a transcript identity unavailable. Agent startup marks in-flight turns
+interrupted and never replays completed or previously approved mutations.
 
 ## Create a backup
 
@@ -49,6 +58,8 @@ Reinstall the site's locked dependencies, start Studio, then validate:
 3. workspace compatibility scan;
 4. real generator preview; and
 5. a no-op release plan with zero uploads.
+6. one active and one archived Agent Session, including history, attachment
+   download, terminal turn state, and no unexpected workspace change.
 
 Do not delete the retained pre-restore directory until validation passes.
 
