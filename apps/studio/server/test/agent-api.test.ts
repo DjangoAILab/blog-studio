@@ -536,6 +536,40 @@ describe('Site Agent HTTP and streaming API', () => {
     expect(reconnect.body).toContain('event: snapshot');
   });
 
+  it('keeps a live SSE response open until a delayed turn becomes terminal', async () => {
+    const { app, runtimeFactory } = await fixture();
+    const auth = await login(app);
+    const session = await createSession(app, auth);
+    const submitted = await app.inject({
+      method: 'POST',
+      url: `/api/sites/site-one/agent/sessions/${session.id}/messages`,
+      headers: mutationHeaders(auth),
+      payload: { text: 'hold until canceled' },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(202);
+    const turn = submitted.json<{ id: string }>();
+    await waitFor(
+      () => runtimeFactory.handles.get(session.piSessionId)?.running ?? false,
+    );
+
+    const streamPromise = app.inject({
+      method: 'GET',
+      url: `/api/sites/site-one/agent/sessions/${session.id}/events`,
+      headers: { cookie: auth.cookie },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const canceled = await app.inject({
+      method: 'POST',
+      url: `/api/sites/site-one/agent/sessions/${session.id}/turns/${turn.id}/cancel`,
+      headers: mutationHeaders(auth),
+    });
+    expect(canceled.statusCode, canceled.body).toBe(200);
+
+    const stream = await streamPromise;
+    expect(stream.statusCode, stream.body).toBe(200);
+    expect(stream.body).toContain('event: turn-canceled');
+  });
+
   it('preserves completed tools, stops remaining work, and releases the lock on cancel', async () => {
     const { app, runtimeFactory, workspaceOne } = await fixture();
     const auth = await login(app);

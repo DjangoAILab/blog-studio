@@ -573,21 +573,27 @@ export function registerAgentApiRoutes(
         'x-accel-buffering': 'no',
         'x-content-type-options': 'nosniff',
       });
-      const send = (event: AgentPublishedEvent) => {
-        if (event.sequence <= cursor) return;
-        cursor = event.sequence;
-        writeSse(reply.raw, event);
-        if (event.payload.terminal === true) close();
-      };
       let closed = false;
       let unsubscribe = () => {};
       const close = () => {
         if (closed) return;
         closed = true;
         unsubscribe();
-        reply.raw.end();
+        if (!reply.raw.writableEnded) reply.raw.end();
       };
-      request.raw.once('close', close);
+      const send = (event: AgentPublishedEvent) => {
+        if (
+          closed ||
+          reply.raw.destroyed ||
+          reply.raw.writableEnded ||
+          event.sequence <= cursor
+        )
+          return;
+        cursor = event.sequence;
+        writeSse(reply.raw, event);
+        if (event.payload.terminal === true) close();
+      };
+      reply.raw.once('close', close);
       unsubscribe = sessions.subscribe(sessionId, send);
       for (const event of initial) send(event);
       if (closed) return;
