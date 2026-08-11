@@ -15,7 +15,11 @@ services:
       BLOG_STUDIO_CONFIG_PATHS: /config/blog-studio.yml
       BLOG_STUDIO_WORKSPACE_ROOT: /workspaces
       BLOG_STUDIO_DATABASE_PATH: /data/blog-studio.sqlite
+      BLOG_STUDIO_AGENT_RUNTIME_DIRECTORY: ${BLOG_STUDIO_AGENT_RUNTIME_DIRECTORY:-/data/agent-runtime}
       BLOG_STUDIO_COOKIE_SECRET_FILE: /run/secrets/cookie_secret
+      BLOG_STUDIO_VISION_ENDPOINT: ${BLOG_STUDIO_VISION_ENDPOINT:-}
+      BLOG_STUDIO_VISION_MODEL: ${BLOG_STUDIO_VISION_MODEL:-}
+      BLOG_STUDIO_VISION_API_KEY_FILE: ${BLOG_STUDIO_VISION_API_KEY_FILE:-}
       BLOG_STUDIO_ALLOWED_ORIGINS: ${BLOG_STUDIO_ALLOWED_ORIGINS:-https://blog-editor.internal.example.com}
       BLOG_STUDIO_SECURE_COOKIES: ${BLOG_STUDIO_SECURE_COOKIES:-true}
     secrets:
@@ -24,12 +28,11 @@ services:
       - ${BLOG_STUDIO_DATA_PATH:-./data}:/data
       - ${BLOG_STUDIO_CONFIG_PATH:-./config/blog-studio.yml}:/config/blog-studio.yml:ro
       - ${BLOG_STUDIO_WORKSPACE_PATH:-./workspace}:/workspaces/blog:rw
+      - ${BLOG_STUDIO_VISION_API_KEY_PATH:-/dev/null}:/run/secrets/vision_api_key:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=${BLOG_STUDIO_TMPFS_SIZE:-1g},mode=1777
     ports:
       - 127.0.0.1:${BLOG_STUDIO_LOCAL_PORT:-4310}:4310
-    expose:
-      - '4000-4100'
     healthcheck:
       test:
         [
