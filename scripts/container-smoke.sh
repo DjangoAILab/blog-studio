@@ -21,6 +21,7 @@ trap cleanup EXIT INT TERM
 mkdir -p \
   "$fixture/config" \
   "$fixture/data" \
+  "$fixture/data/agent-runtime" \
   "$fixture/secrets" \
   "$fixture/workspace/node_modules/.bin" \
   "$fixture/workspace/source/_drafts" \
@@ -30,6 +31,20 @@ chmod 755 "$fixture" "$fixture/config" "$fixture/secrets"
 chmod 777 "$fixture/data" "$fixture/workspace"
 printf '%s\n' "$cookie_secret" >"$fixture/secrets/cookie_secret"
 chmod 644 "$fixture/secrets/cookie_secret"
+
+cat >"$fixture/data/agent-runtime/auth.json" <<'JSON'
+{"container-smoke":{"type":"api_key","key":"offline-smoke-placeholder"}}
+JSON
+cat >"$fixture/data/agent-runtime/models.json" <<'JSON'
+{"providers":{"container-smoke":{"baseUrl":"https://example.invalid","api":"anthropic-messages","models":[{"id":"glm-5.2","name":"GLM 5.2 smoke","reasoning":false,"input":["text"],"contextWindow":128000,"maxTokens":4096}]}}}
+JSON
+cat >"$fixture/data/agent-runtime/settings.json" <<'JSON'
+{"defaultProvider":"container-smoke","defaultModel":"glm-5.2","defaultThinkingLevel":"off","enableInstallTelemetry":false,"defaultProjectTrust":"never"}
+JSON
+chmod 700 "$fixture/data/agent-runtime"
+chmod 600 "$fixture/data/agent-runtime"/*.json
+printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' \
+  | openssl base64 -d -A >"$fixture/vision-smoke.png"
 
 cat >"$fixture/workspace/package.json" <<'JSON'
 {"private":true,"dependencies":{"hexo":"smoke-fixture"}}
@@ -185,6 +200,34 @@ registered="$(curl --fail --silent --show-error \
   --data '{"candidateId":"smoke-blog","displayName":"Container Smoke Site"}' \
   "$origin/api/sites")"
 site_id="$(container_node -e 'const input=JSON.parse(process.argv[1]);if(!input.site?.id)process.exit(1);process.stdout.write(input.site.id)' "$registered")"
+agent_session="$(curl --fail --silent --show-error \
+  --request POST \
+  --cookie "$fixture/cookies" \
+  --header "Origin: $origin" \
+  --header "x-csrf-token: $csrf" \
+  --header 'Content-Type: application/json' \
+  --data '{"displayName":"Container persistence Session","approvalMode":"approval"}' \
+  "$origin/api/sites/$site_id/agent/sessions")"
+agent_session_id="$(container_node -e 'const input=JSON.parse(process.argv[1]);if(!input.id||!input.piSessionId)process.exit(1);process.stdout.write(input.id)' "$agent_session")"
+agent_attachment="$(curl --fail --silent --show-error \
+  --request POST \
+  --cookie "$fixture/cookies" \
+  --header "Origin: $origin" \
+  --header "x-csrf-token: $csrf" \
+  --header 'Content-Type: image/png' \
+  --header 'x-blog-studio-filename: vision-smoke.png' \
+  --data-binary "@$fixture/vision-smoke.png" \
+  "$origin/api/sites/$site_id/agent/sessions/$agent_session_id/attachments")"
+agent_attachment_id="$(container_node -e 'const input=JSON.parse(process.argv[1]);if(input.attachment?.status!=="uploaded")process.exit(1);process.stdout.write(input.attachment.id)' "$agent_attachment")"
+vision_status="$(curl --silent --show-error \
+  --request POST \
+  --cookie "$fixture/cookies" \
+  --header "Origin: $origin" \
+  --header "x-csrf-token: $csrf" \
+  --header 'Content-Type: application/json' \
+  --data '{}' \
+  "$origin/api/sites/$site_id/agent/sessions/$agent_session_id/attachments/$agent_attachment_id/vision/retry")"
+container_node -e 'const input=JSON.parse(process.argv[1]);if(input.code!=="AGENT_VISION_NOT_CONFIGURED")process.exit(1)' "$vision_status"
 documents="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content?collection=posts")"
 document_id="$(container_node -e 'const input=JSON.parse(process.argv[1]);const item=input.content.items[0];if(item?.state!=="published")process.exit(1);process.stdout.write(item.documentId)' "$documents")"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
@@ -235,6 +278,11 @@ wait_for_health
 [[ -z "$(find "$fixture/data/preview-sandboxes" -mindepth 1 -maxdepth 1 -print -quit)" ]]
 
 session="$(login)"
+agent_details="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/agent/sessions/$agent_session_id")"
+container_node -e 'const input=JSON.parse(process.argv[1]);if(input.session?.displayName!=="Container persistence Session"||input.attachments?.[0]?.status!=="failed")process.exit(1)' "$agent_details"
+test -s "$fixture/data/agent-runtime/auth.json"
+test -s "$fixture/data/agent-sessions"/*
+test -s "$fixture/data/agent-attachments/$site_id/$agent_session_id/$agent_attachment_id"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
 container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
 
@@ -254,4 +302,4 @@ session="$(login)"
 docker stop --time 10 "$container" >/dev/null
 [[ "$(docker inspect --format '{{.State.ExitCode}}' "$container")" == '0' ]]
 
-echo 'container smoke passed: non-root, read-only root, health, auth, Git repository, Site registration, durable working copy, sandbox resource capability, SIGTERM, cold restart, interrupted preview recovery, fail-closed degraded setup'
+echo 'container smoke passed: non-root, read-only root, health, auth, Git repository, Site registration, durable working copy, durable Agent Session/attachment/runtime config, explicit unconfigured vision, sandbox resource capability, SIGTERM, cold restart, interrupted preview recovery, fail-closed degraded setup'
