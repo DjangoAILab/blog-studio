@@ -1,9 +1,15 @@
 # Blog Studio
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Blog Studio is a self-hosted publishing workbench for file-based websites.
 It keeps Markdown, Git, the existing static-site generator, and the existing
 hosting stack while making the complete writing-to-production journey usable
 from one browser tab.
+
+[Website](https://djangoailab.github.io/blog-studio/) ·
+[English documentation](https://djangoailab.github.io/blog-studio/en/docs/) ·
+[简体中文文档](https://djangoailab.github.io/blog-studio/zh-cn/docs/)
 
 ![Blog Studio Site Agent — durable Sessions, approval modes, and explicit Markdown context](docs/media/site-agent-demo.gif)
 
@@ -35,12 +41,14 @@ preview path before you connect a real site.
 ```sh
 git clone https://github.com/DjangoAILab/blog-studio.git
 cd blog-studio
-mkdir -p config data secrets workspace backups
+mkdir -p config data/agent-runtime secrets workspace backups
 cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
 cp -R examples/workspace/. workspace/
 umask 077
 openssl rand -base64 48 > secrets/cookie_secret
+chmod 700 data/agent-runtime secrets
+chmod 600 secrets/cookie_secret
 git -C workspace init
 git -C workspace config user.name "Blog Studio Quick Start"
 git -C workspace config user.email "quick-start@localhost"
@@ -109,7 +117,7 @@ final container image for unaccepted critical findings.
 - [Product definition](docs/product/product-definition.md)
 - [Architecture](docs/architecture/overview.md)
 - [Roadmap](docs/roadmap.md)
-- [Site Agent guide](apps/website/src/content/docs/docs/use/agent.md)
+- [Site Agent guide](apps/website/src/content/docs/en/docs/use/agent.md)
 - [AI-assisted production checklist](docs/checklists/site-agent-ai-assisted-production.md)
 - [Site Agent verification evidence](docs/verification/site-agent-runtime-api.md)
 - [v0.1 release checklist](docs/checklists/v0.1.md)

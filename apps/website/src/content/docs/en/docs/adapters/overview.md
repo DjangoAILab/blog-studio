@@ -52,5 +52,5 @@ state before their first target mutation. On restart, it may report
 otherwise it must perform and report an exact rollback. Manual `rollback`
 remains strict so missing or corrupt state cannot be mistaken for success.
 
-The generated [adapter API reference](/docs/reference/adapter-api/) is extracted
+The generated [adapter API reference](../../reference/adapter-api/) is extracted
 from the current TypeScript interfaces during every docs build.

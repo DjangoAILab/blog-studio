@@ -104,23 +104,26 @@ That keeps built-in providers, OpenAI-compatible proxies, model selection,
 compaction, and future Pi upgrades on one compatibility path. This directory is
 outside the Site and inaccessible to Agent file tools.
 
-The main language model must support tool calling. A CLIProxy or other
-OpenAI-compatible endpoint belongs in Pi's `models.json`; its provider/model is
-selected by Pi's `settings.json`. Credentials belong in a mode-0600
-`auth.json` or the provider's supported process environment, never in Site YAML
-or chat context.
+The main language model must support tool calling. The production CLIProxy is
+configured as an Anthropic Messages-compatible provider in Pi's `models.json`;
+Pi's `settings.json` selects `glm-5.2`. Credentials belong in a mode-0600
+`auth.json`, never in Site YAML, Compose environment values, or chat context.
+The runtime directory must be owned by the Studio UID/GID with mode `0700`, and
+all three JSON files must be owned by the same identity with mode `0600`.
 
 Configure an OpenAI-compatible vision endpoint, including a CLIProxy route to a
 MiniCPM-V model, with:
 
 ```sh
 BLOG_STUDIO_VISION_ENDPOINT=http://cliproxy.internal/v1/chat/completions
-BLOG_STUDIO_VISION_MODEL=minicpm-v
+BLOG_STUDIO_VISION_MODEL=minimax-m3
 BLOG_STUDIO_VISION_API_KEY_FILE=/run/secrets/vision_api_key
 ```
 
-`BLOG_STUDIO_VISION_API_KEY` is also accepted, but a mode-0600 secret file is
-preferred. Without an endpoint, image upload still works and vision reports an
+`BLOG_STUDIO_VISION_API_KEY` is also accepted, but the supplied Compose contract
+uses an owner-only mode-0600 host file mounted read-only at the path above. Set
+`BLOG_STUDIO_VISION_API_KEY_PATH` to that host file and never put its contents in
+`.env`. Without an endpoint, image upload still works and vision reports an
 explicit unconfigured state.
 
 ## Cancel, reconnect, and recover

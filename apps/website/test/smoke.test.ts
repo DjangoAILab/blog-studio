@@ -11,7 +11,10 @@ describe('website app', () => {
   });
 
   it('keeps landing claims within the verified product boundary', async () => {
-    const landing = await readFile(join('src', 'pages', 'index.astro'), 'utf8');
+    const landing = await readFile(
+      join('src', 'content', 'landing.ts'),
+      'utf8',
+    );
     expect(landing).toContain('Files remain canonical');
     expect(landing).toContain('Hexo is the first proof');
     expect(landing).not.toMatch(/multi-user|scheduled publishing|AI writing/i);
@@ -19,11 +22,27 @@ describe('website app', () => {
 
   it('generates reference pages from source contracts', async () => {
     const adapterReference = await readFile(
-      join('src', 'content', 'docs', 'docs', 'reference', 'adapter-api.md'),
+      join(
+        'src',
+        'content',
+        'docs',
+        'en',
+        'docs',
+        'reference',
+        'adapter-api.md',
+      ),
       'utf8',
     );
     const configurationReference = await readFile(
-      join('src', 'content', 'docs', 'docs', 'reference', 'configuration.md'),
+      join(
+        'src',
+        'content',
+        'docs',
+        'en',
+        'docs',
+        'reference',
+        'configuration.md',
+      ),
       'utf8',
     );
     expect(adapterReference).toContain('interface GeneratorAdapter');

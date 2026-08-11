@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const configuredBase = (process.env.BLOG_STUDIO_DOCS_BASE ?? '').replace(
+  /^\/+|\/+$/g,
+  '',
+);
+const previewUrl = `http://127.0.0.1:4322${configuredBase ? `/${configuredBase}/` : '/'}`;
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -11,7 +17,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'corepack pnpm preview --host 127.0.0.1 --port 4322',
-    url: 'http://127.0.0.1:4322',
+    url: previewUrl,
     reuseExistingServer: false,
     timeout: 30_000,
   },

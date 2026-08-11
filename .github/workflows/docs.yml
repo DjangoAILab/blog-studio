@@ -49,6 +49,12 @@ jobs:
           BLOG_STUDIO_DOCS_BASE: blog-studio
         run: pnpm --filter @blog-studio/website build
 
+      - name: Test locale and GitHub Pages base-path navigation
+        env:
+          BLOG_STUDIO_DOCS_SITE: https://djangoailab.github.io
+          BLOG_STUDIO_DOCS_BASE: blog-studio
+        run: pnpm --dir apps/website exec playwright test
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
