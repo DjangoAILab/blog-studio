@@ -215,6 +215,10 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     '4',
   );
   await library.getByRole('button', { name: '清除' }).click();
+  await expect(library.locator('.studio3-library-results')).toHaveAttribute(
+    'aria-busy',
+    'false',
+  );
   await expectNoSeriousAccessibilityViolations(page);
 
   await page.getByRole('button', { name: '新建文章' }).first().click();
