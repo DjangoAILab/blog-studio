@@ -49,6 +49,17 @@ for (const file of await htmlFiles(outputRoot)) {
       href.startsWith('data:')
     )
       continue;
+    if (
+      configuredBase &&
+      href.startsWith('/') &&
+      !href.startsWith(`/${configuredBase}/`) &&
+      href !== `/${configuredBase}`
+    ) {
+      failures.push(
+        `${file.slice(outputRoot.length + 1)} -> base-path-unsafe ${href}`,
+      );
+      continue;
+    }
     const url = new URL(
       href,
       `https://local.invalid/${file.slice(outputRoot.length + 1)}`,

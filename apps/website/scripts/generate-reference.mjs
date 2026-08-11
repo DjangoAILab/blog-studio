@@ -12,6 +12,7 @@ const outputRoot = join(
   'src',
   'content',
   'docs',
+  'en',
   'docs',
   'reference',
 );
@@ -188,7 +189,7 @@ types referenced by these contracts and should pass the reusable adapter testkit
 
 ${extracted.join('\n\n')}
 
-Read the [adapter architecture](/docs/adapters/overview/) before implementing a
+Read the [adapter architecture](../../adapters/overview/) before implementing a
 provider. Source is authoritative when a generated page and a package version
 differ.
 `;

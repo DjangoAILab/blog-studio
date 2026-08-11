@@ -112,6 +112,18 @@ a:focus-visible {
   position: relative;
 }
 
+.site-header nav .language-link {
+  color: var(--orange);
+}
+
+.locale-zh-cn h1,
+.locale-zh-cn .principle-band h2,
+.locale-zh-cn .section-heading h2,
+.locale-zh-cn .architecture h2,
+.locale-zh-cn .final-cta h2 {
+  letter-spacing: -0.025em;
+}
+
 .site-header nav a::after,
 .text-link::after {
   position: absolute;

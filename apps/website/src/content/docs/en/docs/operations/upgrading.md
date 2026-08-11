@@ -40,7 +40,7 @@ Studio is stopped or restarting.
 Restore the previous immutable image reference and recreate Studio with the
 same Compose files. Image rollback does not modify the public site or canonical
 workspace. If persistent data changed incompatibly, stop Studio and follow the
-checksum-validated [backup and restore](/docs/operations/backup-restore/)
+checksum-validated [backup and restore](../backup-restore/)
 procedure before starting the old image.
 
 Provider release rollback is a separate operation in the release timeline.

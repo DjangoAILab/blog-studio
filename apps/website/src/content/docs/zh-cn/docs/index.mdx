@@ -1,0 +1,51 @@
+---
+title: Blog Studio 文档
+description: 在不替换文件式网站的前提下，自托管可靠的浏览器写作与发布旅程。
+template: splash
+hero:
+  title: 发布，无需抛下原有网站。
+  tagline: Blog Studio 保持文件、Git、生成器和托管服务的权威性，并串联 AI 辅助写作、预览、审查、发布与恢复。
+  actions:
+    - text: 自托管 Blog Studio
+      link: ./guides/self-hosting/
+      icon: right-arrow
+    - text: 了解完整旅程
+      link: ./concepts/core-journey/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## 从要完成的工作开始，而不是从技术栈开始
+
+<CardGrid>
+  <Card title="写作" icon="pencil">
+    打开已有 Markdown 文档，在可视化或源码模式中工作，无需等待 Git
+    或部署即可获得已确认草稿。
+  </Card>
+  <Card title="预览" icon="open-book">
+    运行真实生成器和主题。预览准确性来自你的网站，而不是会随时间偏离的第二套渲染器。
+  </Card>
+  <Card title="请求 Site Agent 协助" icon="seti:ai">
+    保留多个持久、限定于 Site 的 Session。显式附加文章或 Markdown
+    选区，再审批有边界的工作区变更或选择 YOLO。
+  </Card>
+  <Card title="发布" icon="rocket">
+    检查清单差异，先发布不可变资源再发布页面，刷新缓存路径并验证公网发布标记。
+  </Card>
+  <Card title="恢复" icon="setting">
+    保留精确清单和结构化事件，让重试、取消、重启恢复和回滚都是明确操作。
+  </Card>
+</CardGrid>
+
+## 选择一条路径
+
+- **我想安装：** 按照[自行托管](./guides/self-hosting/)操作，再[配置工作区](./configuration/workspaces/)。
+- **我有 Hexo 网站：** 挂载仓库前阅读 [Hexo 指南](./guides/hexo/)。
+- **我想使用 AI 协助：** 从 [Site Agent 指南](./use/agent/)开始，并审查其审批、文件、Git、附件和恢复边界。
+- **我运维腾讯云 COS/CDN：** 了解当前[腾讯云服务商状态和安全关卡](./providers/tencent/)。
+- **我想开发适配器：** 从[适配器模型](./adapters/overview/)和生成的 [v1 API 参考](./reference/adapter-api/)开始。
+
+:::note[项目完成线]
+Blog Studio 的产品范围终止于由人审查发布的 AI 辅助生产。自主发布、托管 Agent 服务、多用户协作以及延期的服务商生态工作均不在完成线内。文档会明确标注未经验证的服务商行为，不会把它描述为已交付能力。
+:::

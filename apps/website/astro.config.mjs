@@ -9,9 +9,14 @@ export default defineConfig({
   base,
   integrations: [
     starlight({
-      title: 'Blog Studio',
+      title: { en: 'Blog Studio', 'zh-CN': 'Blog Studio' },
       description:
         'A self-hosted publishing workbench for file-based static sites.',
+      locales: {
+        en: { label: 'English', lang: 'en' },
+        'zh-cn': { label: '简体中文', lang: 'zh-CN' },
+      },
+      defaultLocale: 'en',
       disable404Route: true,
       favicon: '/favicon.png',
       customCss: ['./src/styles/docs.css'],
@@ -30,6 +35,7 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Start here',
+          translations: { 'zh-CN': '从这里开始' },
           items: [
             { slug: 'docs' },
             { slug: 'docs/concepts/core-journey' },
@@ -38,6 +44,7 @@ export default defineConfig({
         },
         {
           label: 'Use Blog Studio',
+          translations: { 'zh-CN': '使用 Blog Studio' },
           items: [
             { autogenerate: { directory: 'docs/use' } },
             { slug: 'docs/guides/hexo' },
@@ -45,6 +52,7 @@ export default defineConfig({
         },
         {
           label: 'Operate',
+          translations: { 'zh-CN': '运维' },
           items: [
             { slug: 'docs/configuration/workspaces' },
             { slug: 'docs/providers/tencent' },
@@ -56,6 +64,7 @@ export default defineConfig({
         },
         {
           label: 'Extend',
+          translations: { 'zh-CN': '扩展' },
           items: [
             { slug: 'docs/adapters/overview' },
             { slug: 'docs/reference/configuration' },

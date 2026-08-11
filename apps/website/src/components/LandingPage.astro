@@ -1,0 +1,237 @@
+---
+import '../styles/landing.css';
+import { landingCopy } from '../content/landing';
+import { localePath, locales, type Locale } from '../lib/locales';
+
+interface Props {
+  locale: Locale;
+}
+const { locale } = Astro.props;
+const copy = landingCopy[locale];
+const alternateLocale: Locale = locale === 'en' ? 'zh-cn' : 'en';
+const home = localePath(locale);
+const docs = localePath(locale, 'docs/');
+const canonical = new URL(home, Astro.site);
+const alternate = new URL(localePath(alternateLocale), Astro.site);
+const rootClass = locale === 'zh-cn' ? 'locale-zh-cn' : undefined;
+---
+
+<!doctype html>
+<html lang={locales[locale].lang} class={rootClass}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={copy.description} />
+    <meta name="theme-color" content="#1d2824" />
+    <link
+      rel="icon"
+      type="image/png"
+      href={`${import.meta.env.BASE_URL}favicon.png`}
+    />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang={locales[locale].lang} href={canonical} />
+    <link
+      rel="alternate"
+      hreflang={locales[alternateLocale].lang}
+      href={alternate}
+    />
+    <link
+      rel="alternate"
+      hreflang="x-default"
+      href={new URL(localePath('en'), Astro.site)}
+    />
+    <title>{copy.title}</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">{copy.skip}</a>
+    <header class="site-header">
+      <a class="brand" href={home} aria-label={copy.homeLabel}>
+        <span class="brand-mark" aria-hidden="true">文</span><span
+          >BLOG <i>/</i> STUDIO</span
+        >
+      </a>
+      <nav aria-label={copy.navLabel}>
+        <a href="#journey">{copy.nav[0]}</a><a href={docs}>{copy.nav[1]}</a>
+        <a href="https://github.com/DjangoAILab/blog-studio">{copy.nav[2]}</a>
+        <a
+          class="language-link"
+          href={localePath(alternateLocale)}
+          hreflang={locales[alternateLocale].lang}
+          >{locales[alternateLocale].label}</a
+        >
+      </nav>
+      <a
+        class="header-cta"
+        href={localePath(locale, 'docs/guides/self-hosting/')}
+        >{copy.selfHost} <span>↗</span></a
+      >
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="kicker"><span></span> {copy.heroKicker}</p>
+          <h1 id="hero-title">
+            {copy.heroTitle[0]}{locale === 'en' ? ' ' : ''}
+            <em>{copy.heroTitle[1]}</em>
+          </h1>
+          <p class="hero-lede">{copy.heroLede}</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href={docs}
+              >{copy.quickStart} <span>→</span></a
+            >
+            <a
+              class="text-link"
+              href="https://github.com/DjangoAILab/blog-studio"
+              >{copy.source} <span>↗</span></a
+            >
+          </div>
+          <dl class="proof-strip" aria-label={copy.proofLabel}>
+            <div><dt>0</dt><dd>{copy.proof[0]}</dd></div><div>
+              <dt>7</dt><dd>{copy.proof[1]}</dd>
+            </div><div><dt>5</dt><dd>{copy.proof[2]}</dd></div>
+          </dl>
+        </div>
+        <div class="studio-window" aria-label={copy.previewLabel}>
+          <div class="window-bar">
+            <span>BLOG <i>/</i> STUDIO</span><span class="window-status"
+              ><b></b> {copy.preview.saved}</span
+            ><span class="window-action">{copy.preview.publish}</span>
+          </div>
+          <div class="window-body">
+            <aside class="article-list">
+              <p>{copy.preview.articles} <span>24</span></p><div
+                class="search-line"
+              >
+                {copy.preview.search}
+              </div><ul>
+                {
+                  copy.preview.articleTitles.map((title, index) => (
+                    <li class={index === 0 ? 'active' : undefined}>
+                      <>
+                        <b>{title}</b>
+                        <small>{copy.preview.articleMeta[index]}</small>
+                      </>
+                    </li>
+                  ))
+                }
+              </ul>
+            </aside>
+            <article class="editor-sheet">
+              <p class="sheet-meta">{copy.preview.essayMeta}</p><h2>
+                {copy.preview.essayTitle[0]}<br />{copy.preview.essayTitle[1]}
+              </h2><p class="sheet-intro">{copy.preview.essayIntro}</p><div
+                class="sheet-rule"
+              >
+              </div><p>{copy.preview.essayBody}</p><blockquote>
+                {copy.preview.quote}
+              </blockquote>
+            </article>
+            <aside class="release-card">
+              <p class="release-label">{copy.preview.releaseLabel}</p><h3>
+                {copy.preview.releaseTitle}
+              </h3><ol>
+                {
+                  copy.preview.stages.map((stage, index) => (
+                    <li
+                      class={
+                        index < 2 ? 'done' : index === 2 ? 'current' : undefined
+                      }
+                    >
+                      <>
+                        <span>{index < 2 ? '✓' : index + 1}</span>
+                        <b>{stage}</b>
+                        <small>{copy.preview.stageMeta[index]}</small>
+                      </>
+                    </li>
+                  ))
+                }
+              </ol><div class="release-summary">
+                <span>{copy.preview.summary[0]}</span><span
+                  >{copy.preview.summary[1]}</span
+                >
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="principle-band" aria-label={copy.principleLabel}>
+        <p>{copy.principleLabel}</p><h2>
+          {copy.principleTitle[0]}<br /><em>{copy.principleTitle[1]}</em>
+        </h2><p class="principle-note">{copy.principleNote}</p>
+      </section>
+      <section class="journey" id="journey" aria-labelledby="journey-title">
+        <div class="section-heading">
+          <p class="kicker"><span></span> {copy.journeyKicker}</p><h2
+            id="journey-title"
+          >
+            {copy.journeyTitle[0]}<br />{copy.journeyTitle[1]}
+          </h2>
+        </div><ol class="journey-grid">
+          {
+            copy.journeyStages.map(([number, title, description]) => (
+              <li>
+                <>
+                  <span>{number}</span>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                </>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+      <section class="architecture" aria-labelledby="architecture-title">
+        <div>
+          <p class="kicker"><span></span> {copy.architectureKicker}</p><h2
+            id="architecture-title"
+          >
+            {copy.architectureTitle[0]}<br />{copy.architectureTitle[1]}
+          </h2><p>{copy.architectureBody}</p><a
+            class="text-link"
+            href={localePath(locale, 'docs/adapters/overview/')}
+            >{copy.architectureLink} <span>→</span></a
+          >
+        </div><div class="adapter-map" aria-label={copy.mapLabel}>
+          <div class="map-core">
+            <small>{copy.mapCore}</small><b>Blog Studio</b><span
+              >{copy.mapState}</span
+            >
+          </div><div class="map-line"></div><ul>
+            {
+              copy.adapters.map(([kind, value]) => (
+                <li>
+                  <>
+                    <small>{kind}</small>
+                    <b>{value}</b>
+                  </>
+                </li>
+              ))
+            }
+          </ul>
+        </div>
+      </section>
+      <section class="final-cta" aria-labelledby="cta-title">
+        <p>{copy.finalLabel}</p><h2 id="cta-title">
+          {copy.finalTitle[0]}<br />{copy.finalTitle[1]}
+        </h2><div>
+          <a
+            class="button button-paper"
+            href={localePath(locale, 'docs/guides/self-hosting/')}
+            >{copy.finalAction} <span>→</span></a
+          ><a href="https://github.com/DjangoAILab/blog-studio"
+            >DjangoAILab / blog-studio ↗</a
+          >
+        </div>
+      </section>
+    </main>
+    <footer>
+      <a class="brand" href={home}
+        ><span class="brand-mark" aria-hidden="true">文</span><span
+          >BLOG <i>/</i> STUDIO</span
+        ></a
+      ><p>{copy.footer}</p><p>{copy.builtOpen}</p>
+    </footer>
+  </body>
+</html>

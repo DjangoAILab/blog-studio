@@ -6,11 +6,21 @@ import lighthouse from 'lighthouse';
 const host = '127.0.0.1';
 const port = 4324;
 const origin = `http://${host}:${port}`;
+const configuredBase = (process.env.BLOG_STUDIO_DOCS_BASE ?? '').replace(
+  /^\/+|\/+$/g,
+  '',
+);
+const sitePath = (path) =>
+  `${configuredBase ? `/${configuredBase}` : ''}/${path.replace(/^\/+/, '')}`;
 const cases = [
-  { name: 'landing-mobile', path: '/', preset: undefined },
-  { name: 'landing-desktop', path: '/', preset: 'desktop' },
-  { name: 'docs-mobile', path: '/docs/', preset: undefined },
-  { name: 'docs-desktop', path: '/docs/', preset: 'desktop' },
+  { name: 'landing-en-mobile', path: sitePath('en/'), preset: undefined },
+  { name: 'landing-en-desktop', path: sitePath('en/'), preset: 'desktop' },
+  { name: 'landing-zh-mobile', path: sitePath('zh-cn/'), preset: undefined },
+  { name: 'landing-zh-desktop', path: sitePath('zh-cn/'), preset: 'desktop' },
+  { name: 'docs-en-mobile', path: sitePath('en/docs/'), preset: undefined },
+  { name: 'docs-en-desktop', path: sitePath('en/docs/'), preset: 'desktop' },
+  { name: 'docs-zh-mobile', path: sitePath('zh-cn/docs/'), preset: undefined },
+  { name: 'docs-zh-desktop', path: sitePath('zh-cn/docs/'), preset: 'desktop' },
 ];
 const thresholds = {
   accessibility: 0.95,
@@ -33,7 +43,7 @@ async function waitForPreview(child) {
     if (child.exitCode !== null)
       throw new Error(`preview exited with code ${child.exitCode}`);
     try {
-      const response = await fetch(origin);
+      const response = await fetch(`${origin}${sitePath('en/')}`);
       if (response.ok) return;
     } catch {
       // The preview process is still starting.

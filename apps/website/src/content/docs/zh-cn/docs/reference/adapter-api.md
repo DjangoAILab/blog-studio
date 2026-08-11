@@ -1,12 +1,11 @@
 ---
-title: Adapter API v1
-description: Generated TypeScript interfaces for Blog Studio generator and provider adapters.
+title: 适配器 API v1
+description: Blog Studio 生成器和服务商适配器的 TypeScript 接口。
 ---
 
-> Generated from `packages/core/src/adapters/*.ts`. Do not edit this page by hand.
+> 从 `packages/core/src/adapters/*.ts` 生成。不要手工修改对应英文生成页；此中文页需与接口同步。
 
-`ADAPTER_API_VERSION` is currently `1`. Implementations also need the domain
-types referenced by these contracts and should pass the reusable adapter testkit.
+`ADAPTER_API_VERSION` 当前为 `1`。实现还需要这些契约引用的领域类型，并应通过可复用的适配器 testkit。
 
 ## AdapterDescriptor
 
@@ -46,7 +45,7 @@ export interface GeneratorAdapter extends AdapterDescriptor {
     input: PromoteDocumentInput,
   ): Promise<PromoteDocumentResult>;
   resolvePublicUrl(workspaceRoot: string, ref: DocumentRef): Promise<string>;
-  /** Resolve a document-authored/root-relative asset to a workspace-relative source path. */
+  /** 将文档中的根相对资源解析为工作区相对源码路径。 */
   resolveAssetSourcePath?(
     workspaceRoot: string,
     ref: DocumentRef,
@@ -114,6 +113,4 @@ export interface CacheProvider extends AdapterDescriptor {
 }
 ```
 
-Read the [adapter architecture](/docs/adapters/overview/) before implementing a
-provider. Source is authoritative when a generated page and a package version
-differ.
+实现 Provider 前请阅读[适配器架构](../../adapters/overview/)。当生成页与包版本不同时，以源码为准。

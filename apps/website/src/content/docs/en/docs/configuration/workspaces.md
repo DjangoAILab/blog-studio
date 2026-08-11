@@ -74,5 +74,5 @@ Set `BLOG_STUDIO_CONFIG_PATHS` to a comma-separated list of configuration paths.
 Every workspace ID must be stable and every root must remain under the allowed
 root. v0.1 remains single-user even when several site workspaces are configured.
 
-See the generated [configuration reference](/docs/reference/configuration/) for
+See the generated [configuration reference](../../reference/configuration/) for
 the schema's top-level requirements.

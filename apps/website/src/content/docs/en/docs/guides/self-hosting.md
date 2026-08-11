@@ -25,18 +25,21 @@ memory limit.
 ## 1. Prepare directories and secrets
 
 ```sh
-mkdir -p config data secrets workspace backups
+mkdir -p config data/agent-runtime secrets workspace backups
 cp deploy/traefik/.env.example .env
 cp examples/config/blog-studio.yml config/blog-studio.yml
 cp -R examples/workspace/. workspace/
 umask 077
 openssl rand -base64 48 > secrets/cookie_secret
+chmod 700 data/agent-runtime secrets
+chmod 600 secrets/cookie_secret
 git -C workspace init
 git -C workspace config user.name "Blog Studio Quick Start"
 git -C workspace config user.email "quick-start@localhost"
 git -C workspace add .
 git -C workspace commit -m "Initialize example workspace"
 chown -R 1000:1000 data workspace
+chown -R 1000:1000 secrets
 ```
 
 The example is dependency-free, uses the built-in command generator, and keeps
@@ -44,6 +47,14 @@ publishing disabled while writing, autosave, and preview remain functional. To
 connect a real site, replace `workspace/` with a clean trusted checkout, install
 its locked dependencies on the host, and update the adapter configuration. The
 container path remains `/workspaces/blog`.
+
+For the Site Agent, provision Pi's `auth.json`, `models.json`, and
+`settings.json` under `data/agent-runtime`, owned by UID/GID 1000 and mode
+`0600`; keep the directory mode `0700`. Configure `glm-5.2` as the Pi default.
+For optional vision, create `secrets/vision_api_key` as the same owner and mode
+`0600`, set `BLOG_STUDIO_VISION_API_KEY_PATH` to its host path, and set the
+endpoint, `minimax-m3` model, and in-container key-file path in `.env`. Never
+place either credential value in `.env`, YAML, or an image layer.
 
 ## 2. Initialize the owner and start
 
@@ -109,6 +120,7 @@ internet.
 | Host                     | Container                 | Content                       |
 | ------------------------ | ------------------------- | ----------------------------- |
 | `data/`                  | `/data`                   | SQLite drafts, jobs, releases |
+| `data/agent-runtime/`    | `/data/agent-runtime`     | Pi config and credentials     |
 | `config/blog-studio.yml` | `/config/blog-studio.yml` | administrator policy          |
 | `workspace/`             | `/workspaces/blog`        | files, Git, generator         |
 | `secrets/*`              | `/run/secrets/*`          | cookie/provider secrets       |
@@ -126,5 +138,5 @@ The isolated smoke test checks non-root identity, a read-only root filesystem,
 health, authentication, acknowledged draft persistence, clean SIGTERM, and
 container recreation. It does not mount a real site or call a provider.
 
-Continue with [workspace configuration](/docs/configuration/workspaces/) and a
-[backup drill](/docs/operations/backup-restore/).
+Continue with [workspace configuration](../../configuration/workspaces/) and a
+[backup drill](../../operations/backup-restore/).
