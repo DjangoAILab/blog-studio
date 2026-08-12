@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://djangoailab.github.io/blog-studio/sitemap-index.xml

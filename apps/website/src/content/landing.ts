@@ -34,9 +34,6 @@ export interface LandingCopy {
     stageMeta: readonly [string, string, string, string];
     summary: readonly [string, string];
   };
-  principleLabel: string;
-  principleTitle: readonly [string, string];
-  principleNote: string;
   journeyKicker: string;
   journeyTitle: readonly [string, string];
   journeyStages: readonly (readonly [string, string, string])[];
@@ -73,9 +70,9 @@ export const landingCopy: Record<Locale, LandingCopy> = {
     source: 'Explore the source',
     proofLabel: 'Verified product properties',
     proof: [
-      'browser-side cloud credentials',
-      'visible release stages',
-      'replaceable adapter boundaries',
+      'Your content stays in Git',
+      'Preview with your real theme',
+      'Review every release',
     ],
     previewLabel: 'Blog Studio product preview',
     preview: {
@@ -105,10 +102,6 @@ export const landingCopy: Record<Locale, LandingCopy> = {
       stageMeta: ['0.2s', '3.8s', '4 files', 'waiting'],
       summary: ['+3 changed', '0 deleted'],
     },
-    principleLabel: 'YOUR SITE IS NOT A DATABASE ROW.',
-    principleTitle: ['Files remain canonical.', 'The workflow gets better.'],
-    principleNote:
-      'Blog Studio sits beside the stack you trust. If it stops, your public site keeps serving.',
     journeyKicker: 'ONE CONTINUOUS JOURNEY',
     journeyTitle: ['From first sentence', 'to verified release.'],
     journeyStages: [
@@ -146,21 +139,22 @@ export const landingCopy: Record<Locale, LandingCopy> = {
     builtOpen: 'Apache-2.0 · Built in the open',
   },
   'zh-cn': {
-    description: 'Blog Studio 是面向文件式静态网站的自托管发布工作台。',
-    title: 'Blog Studio — 在你的网站原本所在之处写作',
+    description:
+      'Blog Studio 是面向现有 Markdown 静态网站的自托管写作与发布工具，无需迁移内容。',
+    title: 'Blog Studio — 为现有 Markdown 网站而生的写作与发布工具',
     skip: '跳到正文',
     navLabel: '主导航',
     homeLabel: 'Blog Studio 首页',
     nav: ['工作方式', '文档', 'GitHub'],
-    selfHost: '自行托管',
-    heroKicker: '自托管发布工作台',
-    heroTitle: ['在你的网站原本所在之处', '写作。'],
+    selfHost: '安装指南',
+    heroKicker: '为现有 Markdown 网站而生',
+    heroTitle: ['保留现有网站，', '更顺手地写作。'],
     heroLede:
-      '继续使用 Markdown、Git、原有生成器和托管服务。以一段从容、可验证的浏览器流程，取代脆弱的同步脚本和不透明的部署链路。',
-    quickStart: '阅读快速开始',
+      '继续使用 Markdown、Git、现有生成器和托管服务。在浏览器中完成写作、AI 协助、真实预览和发布。',
+    quickStart: '查看安装指南',
     source: '浏览源代码',
-    proofLabel: '已验证的产品特性',
-    proof: ['浏览器端云凭据', '可见的发布阶段', '可替换的适配器边界'],
+    proofLabel: '核心特点',
+    proof: ['内容仍在仓库', '使用真实主题预览', '发布前可审查'],
     previewLabel: 'Blog Studio 产品预览',
     preview: {
       saved: '草稿已保存',
@@ -168,40 +162,36 @@ export const landingCopy: Record<Locale, LandingCopy> = {
       articles: '文章',
       search: '⌕ 搜索',
       articleTitles: [
-        '为持久的从容而设计',
-        '实用的发布清单',
-        '为什么文件始终是权威来源',
+        '用 Blog Studio 管理现有博客',
+        '发布前需要检查什么',
+        '为什么内容仍放在 Git 中',
       ],
       articleMeta: ['草稿 · 刚刚', '已发布 · 8 月 1 日', '已发布 · 7 月 28 日'],
       essayMeta: '随笔 · 阅读 7 分钟',
-      essayTitle: ['为持久的', '从容而设计'],
-      essayIntro: '发布应该延续创作势头，而不是打断它。',
+      essayTitle: ['让写作和发布', '回到同一个地方'],
+      essayIntro: '从草稿到上线，不必在多个工具之间来回切换。',
       essayBody:
-        '草稿可以即时保存，但生产发布不能草率。编辑器先保存，发布流水线再解释每一个步骤。',
-      quote: '文件保持可迁移，发布变得可观察。',
+        '编辑器随时保存草稿；准备上线时，再检查文件变化和每一步发布结果。',
+      quote: '内容留在仓库，发布过程清晰可查。',
       releaseLabel: '发布 / 0284',
       releaseTitle: '可以发布',
       stages: ['预检', '构建网站', '规划差异', '上传并验证'],
       stageMeta: ['0.2 秒', '3.8 秒', '4 个文件', '等待中'],
       summary: ['+3 项变更', '0 项删除'],
     },
-    principleLabel: '你的网站不是数据库中的一行。',
-    principleTitle: ['文件始终是权威来源。', '工作流可以更好。'],
-    principleNote:
-      'Blog Studio 与你信赖的技术栈并肩运行。即使它停止工作，公开网站仍会继续提供服务。',
-    journeyKicker: '一段连续的旅程',
-    journeyTitle: ['从第一句话', '到验证完成的发布。'],
+    journeyKicker: '从写作到上线',
+    journeyTitle: ['四步完成一次', '清晰的发布。'],
     journeyStages: [
-      ['01', '写作', 'Markdown 和未知的 front matter 都留在你的仓库中。'],
-      ['02', '预览', '使用真实的生成器和主题构建网站。'],
-      ['03', '发布', '看清上传、缓存和验证的每一个阶段。'],
-      ['04', '恢复', '安全重试，或恢复最后一份已验证清单。'],
+      ['01', '写作', '直接编辑现有 Markdown，原有 front matter 保持不变。'],
+      ['02', '预览', '用网站自己的生成器和主题查看真实效果。'],
+      ['03', '发布', '确认文件变化后，再执行构建、上传和线上检查。'],
+      ['04', '恢复', '发布失败时安全重试，必要时恢复上一个版本。'],
     ],
-    architectureKicker: '适配器，而非假设',
-    architectureTitle: ['Hexo 是第一个验证。', '但不是产品边界。'],
+    architectureKicker: '从 Hexo 开始，保持可扩展',
+    architectureTitle: ['先支持 Hexo，', '也能接入其他工具。'],
     architectureBody:
-      '生成器、仓库、资源、发布器和缓存都是有版本的契约。首条垂直链路面向 Hexo 和腾讯静态网站技术栈，核心始终与服务商无关。',
-    architectureLink: '了解整体架构',
+      'Blog Studio 把生成器、仓库、资源、发布和缓存拆成独立适配器。当前重点支持 Hexo 与腾讯云静态网站，也为其他文件式网站保留扩展方式。',
+    architectureLink: '查看适配器架构',
     mapLabel: '适配器架构图',
     mapCore: '模块化核心',
     mapState: '草稿 · 任务 · 发布状态',
@@ -213,9 +203,9 @@ export const landingCopy: Record<Locale, LandingCopy> = {
       ['缓存', '无 / 腾讯云'],
     ],
     finalLabel: 'APACHE-2.0 · 自托管 · V0.1 单用户版',
-    finalTitle: ['让发布重新', '像写作一样自然。'],
-    finalAction: '开始自行托管',
-    footer: '属于文件式网站的发布工作台。',
+    finalTitle: ['不迁移内容，', '直接开始写作。'],
+    finalAction: '查看安装指南',
+    footer: '为现有 Markdown 网站而生的写作与发布工具。',
     builtOpen: 'Apache-2.0 · 开放构建',
   },
 };

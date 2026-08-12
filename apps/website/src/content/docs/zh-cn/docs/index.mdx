@@ -1,51 +1,47 @@
 ---
 title: Blog Studio 文档
-description: 在不替换文件式网站的前提下，自托管可靠的浏览器写作与发布旅程。
+description: 为现有 Markdown 静态网站提供写作、AI 协助、真实预览和可审查发布。
 template: splash
 hero:
-  title: 发布，无需抛下原有网站。
-  tagline: Blog Studio 保持文件、Git、生成器和托管服务的权威性，并串联 AI 辅助写作、预览、审查、发布与恢复。
+  title: 不用迁移内容，直接开始写作。
+  tagline: Blog Studio 面向现有 Markdown 静态网站，在浏览器中整合写作、AI 协助、真实预览和可审查发布。
   actions:
-    - text: 自托管 Blog Studio
+    - text: 查看安装指南
       link: ./guides/self-hosting/
       icon: right-arrow
-    - text: 了解完整旅程
+    - text: 了解工作方式
       link: ./concepts/core-journey/
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## 从要完成的工作开始，而不是从技术栈开始
+## 你可以完成什么
 
 <CardGrid>
   <Card title="写作" icon="pencil">
-    打开已有 Markdown 文档，在可视化或源码模式中工作，无需等待 Git
-    或部署即可获得已确认草稿。
+    打开现有 Markdown，在可视化或源码模式中编辑；未知 front matter
+    和生成器语法不会被丢弃。
   </Card>
   <Card title="预览" icon="open-book">
-    运行真实生成器和主题。预览准确性来自你的网站，而不是会随时间偏离的第二套渲染器。
+    使用网站自己的生成器和主题构建，看到更接近最终上线的效果。
   </Card>
-  <Card title="请求 Site Agent 协助" icon="seti:ai">
-    保留多个持久、限定于 Site 的 Session。显式附加文章或 Markdown
-    选区，再审批有边界的工作区变更或选择 YOLO。
+  <Card title="AI 协助" icon="seti:ai">
+    把文章、Markdown 选区或预览错误交给 Site
+    Agent，并在应用修改前检查权限和内容。
   </Card>
   <Card title="发布" icon="rocket">
-    检查清单差异，先发布不可变资源再发布页面，刷新缓存路径并验证公网发布标记。
+    先检查文件变化，再构建、上传、刷新缓存并确认线上版本。
   </Card>
   <Card title="恢复" icon="setting">
-    保留精确清单和结构化事件，让重试、取消、重启恢复和回滚都是明确操作。
+    发布失败时安全重试或回滚；Studio 停止运行也不会影响已经上线的静态网站。
   </Card>
 </CardGrid>
 
-## 选择一条路径
+## 按你的目标开始
 
-- **我想安装：** 按照[自行托管](./guides/self-hosting/)操作，再[配置工作区](./configuration/workspaces/)。
-- **我有 Hexo 网站：** 挂载仓库前阅读 [Hexo 指南](./guides/hexo/)。
-- **我想使用 AI 协助：** 从 [Site Agent 指南](./use/agent/)开始，并审查其审批、文件、Git、附件和恢复边界。
-- **我运维腾讯云 COS/CDN：** 了解当前[腾讯云服务商状态和安全关卡](./providers/tencent/)。
-- **我想开发适配器：** 从[适配器模型](./adapters/overview/)和生成的 [v1 API 参考](./reference/adapter-api/)开始。
-
-:::note[项目完成线]
-Blog Studio 的产品范围终止于由人审查发布的 AI 辅助生产。自主发布、托管 Agent 服务、多用户协作以及延期的服务商生态工作均不在完成线内。文档会明确标注未经验证的服务商行为，不会把它描述为已交付能力。
-:::
+- **安装 Blog Studio：** 阅读[自行托管指南](./guides/self-hosting/)，然后[添加工作区](./configuration/workspaces/)。
+- **接入 Hexo 网站：** 挂载仓库前查看 [Hexo 指南](./guides/hexo/)。
+- **使用 AI 协助：** 从 [Site Agent 指南](./use/agent/)了解会话、审批和文件权限。
+- **发布到腾讯云：** 查看 [COS/CDN 配置与安全要求](./providers/tencent/)。
+- **扩展其他工具：** 阅读[适配器架构](./adapters/overview/)和 [v1 API 参考](./reference/adapter-api/)。
