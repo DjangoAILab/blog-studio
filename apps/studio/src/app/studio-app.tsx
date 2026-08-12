@@ -115,9 +115,11 @@ function Login({
           });
         }}
       >
-        <p className="eyebrow">SELF-HOSTED WRITING ROOM</p>
-        <h1>回到文章本身。</h1>
-        <p>一个安静、可靠的发布工作台。你的内容仍然属于文件与 Git。</p>
+        <p className="eyebrow">SELF-HOSTED AI CONTENT WORKSPACE</p>
+        <h1>让 AI 理解整个网站。</h1>
+        <p>
+          Site Agent 协助检查和修改；你的内容与发布决定仍属于文件、Git 和你。
+        </p>
         {initialized ? (
           <label>
             Owner 密码

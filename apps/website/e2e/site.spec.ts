@@ -16,16 +16,16 @@ test('root sends visitors to the explicit default locale', async ({ page }) => {
 test('landing pages expose the locale contract', async ({ page }) => {
   await page.goto(sitePath('en/'));
   await expect(
-    page.getByRole('heading', { name: /write where your site already lives/i }),
+    page.getByRole('heading', { name: /let ai understand your whole site/i }),
   ).toBeVisible();
   await expect(
     page.getByRole('navigation', { name: 'Primary navigation' }),
   ).toBeVisible();
-  await expect(page.getByText('Your content stays in Git')).toBeVisible();
-  await expect(page.getByText('Hexo is the first proof.')).toBeVisible();
+  await expect(page.getByText('Understand the whole Site')).toBeVisible();
+  await expect(page.getByText('Review every AI change')).toBeVisible();
   await expect(
-    page.getByRole('link', { name: /read the quick start/i }),
-  ).toHaveAttribute('href', sitePath('en/docs/'));
+    page.getByRole('link', { name: /explore the site agent/i }),
+  ).toHaveAttribute('href', sitePath('en/docs/use/agent/'));
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await expect(page.getByRole('link', { name: '简体中文' })).toHaveAttribute(
     'href',
@@ -34,9 +34,10 @@ test('landing pages expose the locale contract', async ({ page }) => {
 
   await page.goto(sitePath('zh-cn/'));
   await expect(
-    page.getByRole('heading', { name: /保留现有网站，更顺手地写作/ }),
+    page.getByRole('heading', { name: /让 AI 理解整个网站/ }),
   ).toBeVisible();
-  await expect(page.getByText('内容仍在仓库')).toBeVisible();
+  await expect(page.getByText('理解整个网站', { exact: true })).toBeVisible();
+  await expect(page.getByText('每项 AI 修改都可审查')).toBeVisible();
   await expect(page.getByText('你的网站不是数据库中的一行。')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
   await expect(page.getByRole('link', { name: 'English' })).toHaveAttribute(
@@ -104,9 +105,9 @@ test('project-base documentation actions and nested links resolve', async ({
   );
 
   await page.goto(sitePath('zh-cn/docs/'));
-  await page.getByRole('link', { name: '了解工作方式' }).click();
+  await page.getByRole('link', { name: '查看安装指南' }).click();
   await expect(page).toHaveURL(
-    new RegExp(`${sitePath('zh-cn/docs/concepts/core-journey/')}$`),
+    new RegExp(`${sitePath('zh-cn/docs/guides/self-hosting/')}$`),
   );
 });
 

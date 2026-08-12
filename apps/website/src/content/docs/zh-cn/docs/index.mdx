@@ -1,37 +1,37 @@
 ---
 title: Blog Studio 文档
-description: 为现有 Markdown 静态网站提供写作、AI 协助、真实预览和可审查发布。
+description: 为现有 Markdown 与 Git 网站自托管一个内置 Site Agent 的 AI 内容工作台。
 template: splash
 hero:
-  title: 不用迁移内容，直接开始写作。
-  tagline: Blog Studio 面向现有 Markdown 静态网站，在浏览器中整合写作、AI 协助、真实预览和可审查发布。
+  title: 让 AI 理解整个网站。
+  tagline: Blog Studio 让 Site Agent 使用真实 Markdown 工作区、本地 Git 与预览；每项修改由你批准，发布仍由你控制。
   actions:
+    - text: 了解 Site Agent
+      link: ./use/agent/
+      icon: right-arrow
     - text: 查看安装指南
       link: ./guides/self-hosting/
-      icon: right-arrow
-    - text: 了解工作方式
-      link: ./concepts/core-journey/
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## 你可以完成什么
+## 使用 AI，同时保留现有技术栈
 
 <CardGrid>
-  <Card title="写作" icon="pencil">
-    打开现有 Markdown，在可视化或源码模式中编辑；未知 front matter
-    和生成器语法不会被丢弃。
+  <Card title="理解整个 Site" icon="seti:ai">
+    保留多个跟随 Site 的持久 Agent Session；只在需要时显式附加文章、选区、
+    编辑缓冲、预览错误或文件上下文。
   </Card>
-  <Card title="预览" icon="open-book">
-    使用网站自己的生成器和主题构建，看到更接近最终上线的效果。
+  <Card title="执行受限修改" icon="pencil">
+    Agent 通过限定在当前 Site
+    的类型化工具读取、搜索、创建、编辑、移动或删除文件。
   </Card>
-  <Card title="AI 协助" icon="seti:ai">
-    把文章、Markdown 选区或预览错误交给 Site
-    Agent，并在应用修改前检查权限和内容。
+  <Card title="审查每项 AI 操作" icon="open-book">
+    修改前逐项审批，检查本地 Git 变化，再使用网站自己的生成器和主题预览。
   </Card>
-  <Card title="发布" icon="rocket">
-    先检查文件变化，再构建、上传、刷新缓存并确认线上版本。
+  <Card title="由人控制发布" icon="rocket">
+    通过独立流程提交并发布审查后的 ChangeSet；Site Agent 没有远程或发布工具。
   </Card>
   <Card title="恢复" icon="setting">
     发布失败时安全重试或回滚；Studio 停止运行也不会影响已经上线的静态网站。
@@ -42,6 +42,6 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
 
 - **安装 Blog Studio：** 阅读[自行托管指南](./guides/self-hosting/)，然后[添加工作区](./configuration/workspaces/)。
 - **接入 Hexo 网站：** 挂载仓库前查看 [Hexo 指南](./guides/hexo/)。
-- **使用 AI 协助：** 从 [Site Agent 指南](./use/agent/)了解会话、审批和文件权限。
+- **开始使用 AI 工作流：** 从 [Site Agent 指南](./use/agent/)了解会话、审批和文件权限。
 - **发布到腾讯云：** 查看 [COS/CDN 配置与安全要求](./providers/tencent/)。
 - **扩展其他工具：** 阅读[适配器架构](./adapters/overview/)和 [v1 API 参考](./reference/adapter-api/)。

@@ -11,7 +11,7 @@ export default defineConfig({
     starlight({
       title: { en: 'Blog Studio', 'zh-CN': 'Blog Studio' },
       description:
-        'A self-hosted publishing workbench for file-based static sites.',
+        'A self-hosted AI content workspace with a Site Agent for Markdown and Git-based websites.',
       locales: {
         en: { label: 'English', lang: 'en' },
         'zh-cn': { label: '简体中文', lang: 'zh-CN' },

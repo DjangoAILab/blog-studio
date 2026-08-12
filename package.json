@@ -2,7 +2,16 @@
   "name": "blog-studio",
   "version": "0.0.0",
   "private": true,
-  "description": "A self-hosted publishing workbench for file-based websites",
+  "description": "A self-hosted AI content workspace with a Site Agent for Markdown and Git-based websites",
+  "keywords": [
+    "ai-agent",
+    "ai-content-workspace",
+    "self-hosted-ai",
+    "markdown-cms",
+    "git-based-cms",
+    "static-site-generator",
+    "site-agent"
+  ],
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@11.18.0",

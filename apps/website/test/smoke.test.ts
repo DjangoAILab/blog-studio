@@ -15,12 +15,16 @@ describe('website app', () => {
       join('src', 'content', 'landing.ts'),
       'utf8',
     );
-    expect(landing).toContain('Your content stays in Git');
-    expect(landing).toContain('Hexo is the first proof');
-    expect(landing).toContain('保留现有网站');
-    expect(landing).toContain('内容仍在仓库');
+    expect(landing).toContain('Self-hosted AI content workspace');
+    expect(landing).toContain('Understand the whole Site');
+    expect(landing).toContain('AI changes. You review and publish.');
+    expect(landing).toContain('自托管 AI 内容工作台');
+    expect(landing).toContain('理解整个网站');
+    expect(landing).toContain('AI 修改，人来审查与发布');
     expect(landing).not.toContain('在你的网站原本所在之处');
-    expect(landing).not.toMatch(/multi-user|scheduled publishing|AI writing/i);
+    expect(landing).not.toMatch(
+      /multi-user|scheduled publishing|autonomous publishing|AI article generator/i,
+    );
   });
 
   it('publishes concise localized metadata and crawler guidance', async () => {
@@ -45,7 +49,7 @@ describe('website app', () => {
       'utf8',
     );
 
-    expect(home).toContain('不用迁移内容');
+    expect(home).toContain('让 AI 理解整个网站');
     expect(home).toContain('按你的目标开始');
     expect(home).not.toContain('项目完成线');
   });
