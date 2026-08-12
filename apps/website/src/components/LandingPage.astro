@@ -23,6 +23,14 @@ const rootClass = locale === 'zh-cn' ? 'locale-zh-cn' : undefined;
     <meta name="viewport" content="width=device-width" />
     <meta name="description" content={copy.description} />
     <meta name="theme-color" content="#1d2824" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Blog Studio" />
+    <meta property="og:title" content={copy.title} />
+    <meta property="og:description" content={copy.description} />
+    <meta property="og:url" content={canonical} />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={copy.title} />
+    <meta name="twitter:description" content={copy.description} />
     <link
       rel="icon"
       type="image/png"
@@ -86,11 +94,9 @@ const rootClass = locale === 'zh-cn' ? 'locale-zh-cn' : undefined;
               >{copy.source} <span>↗</span></a
             >
           </div>
-          <dl class="proof-strip" aria-label={copy.proofLabel}>
-            <div><dt>0</dt><dd>{copy.proof[0]}</dd></div><div>
-              <dt>7</dt><dd>{copy.proof[1]}</dd>
-            </div><div><dt>5</dt><dd>{copy.proof[2]}</dd></div>
-          </dl>
+          <ul class="proof-strip" aria-label={copy.proofLabel}>
+            {copy.proof.map((item) => <li>{item}</li>)}
+          </ul>
         </div>
         <div class="studio-window" aria-label={copy.previewLabel}>
           <div class="window-bar">
@@ -156,11 +162,6 @@ const rootClass = locale === 'zh-cn' ? 'locale-zh-cn' : undefined;
         </div>
       </section>
 
-      <section class="principle-band" aria-label={copy.principleLabel}>
-        <p>{copy.principleLabel}</p><h2>
-          {copy.principleTitle[0]}<br /><em>{copy.principleTitle[1]}</em>
-        </h2><p class="principle-note">{copy.principleNote}</p>
-      </section>
       <section class="journey" id="journey" aria-labelledby="journey-title">
         <div class="section-heading">
           <p class="kicker"><span></span> {copy.journeyKicker}</p><h2

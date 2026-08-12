@@ -15,9 +15,39 @@ describe('website app', () => {
       join('src', 'content', 'landing.ts'),
       'utf8',
     );
-    expect(landing).toContain('Files remain canonical');
+    expect(landing).toContain('Your content stays in Git');
     expect(landing).toContain('Hexo is the first proof');
+    expect(landing).toContain('保留现有网站');
+    expect(landing).toContain('内容仍在仓库');
+    expect(landing).not.toContain('在你的网站原本所在之处');
     expect(landing).not.toMatch(/multi-user|scheduled publishing|AI writing/i);
+  });
+
+  it('publishes concise localized metadata and crawler guidance', async () => {
+    const component = await readFile(
+      join('src', 'components', 'LandingPage.astro'),
+      'utf8',
+    );
+    const robots = await readFile(join('public', 'robots.txt'), 'utf8');
+
+    expect(component).toContain('property="og:title"');
+    expect(component).toContain('name="twitter:card"');
+    expect(component).not.toContain('principle-band');
+    expect(robots).toContain('Allow: /');
+    expect(robots).toContain(
+      'Sitemap: https://djangoailab.github.io/blog-studio/sitemap-index.xml',
+    );
+  });
+
+  it('keeps the Chinese documentation home focused on user tasks', async () => {
+    const home = await readFile(
+      join('src', 'content', 'docs', 'zh-cn', 'docs', 'index.mdx'),
+      'utf8',
+    );
+
+    expect(home).toContain('不用迁移内容');
+    expect(home).toContain('按你的目标开始');
+    expect(home).not.toContain('项目完成线');
   });
 
   it('generates reference pages from source contracts', async () => {

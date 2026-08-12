@@ -21,7 +21,7 @@ test('landing pages expose the locale contract', async ({ page }) => {
   await expect(
     page.getByRole('navigation', { name: 'Primary navigation' }),
   ).toBeVisible();
-  await expect(page.getByText('Files remain canonical.')).toBeVisible();
+  await expect(page.getByText('Your content stays in Git')).toBeVisible();
   await expect(page.getByText('Hexo is the first proof.')).toBeVisible();
   await expect(
     page.getByRole('link', { name: /read the quick start/i }),
@@ -34,8 +34,10 @@ test('landing pages expose the locale contract', async ({ page }) => {
 
   await page.goto(sitePath('zh-cn/'));
   await expect(
-    page.getByRole('heading', { name: /在你的网站原本所在之处写作/ }),
+    page.getByRole('heading', { name: /保留现有网站，更顺手地写作/ }),
   ).toBeVisible();
+  await expect(page.getByText('内容仍在仓库')).toBeVisible();
+  await expect(page.getByText('你的网站不是数据库中的一行。')).toHaveCount(0);
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
   await expect(page.getByRole('link', { name: 'English' })).toHaveAttribute(
     'href',
