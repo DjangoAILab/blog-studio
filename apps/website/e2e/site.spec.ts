@@ -104,7 +104,7 @@ test('project-base documentation actions and nested links resolve', async ({
   );
 
   await page.goto(sitePath('zh-cn/docs/'));
-  await page.getByRole('link', { name: '了解完整旅程' }).click();
+  await page.getByRole('link', { name: '了解工作方式' }).click();
   await expect(page).toHaveURL(
     new RegExp(`${sitePath('zh-cn/docs/concepts/core-journey/')}$`),
   );
