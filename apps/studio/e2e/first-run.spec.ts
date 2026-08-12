@@ -17,7 +17,7 @@ test('distinguishes credentials not ready from invalid configuration', async ({
 }) => {
   await page.goto('http://127.0.0.1:14313/');
   await expect(
-    page.getByRole('heading', { name: '回到文章本身。' }),
+    page.getByRole('heading', { name: '让 AI 理解整个网站。' }),
   ).toBeVisible();
   await expect(page.getByText('需要先在可信终端设置 Owner 密码')).toBeVisible();
   await expect(page.getByText(/auth init/)).toBeVisible();

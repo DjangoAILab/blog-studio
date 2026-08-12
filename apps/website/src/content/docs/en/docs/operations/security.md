@@ -1,6 +1,6 @@
 ---
 title: Security model
-description: Trust boundaries and hardening expectations for a single-user self-hosted publishing workbench.
+description: Trust boundaries and hardening expectations for a single-user self-hosted AI content workspace.
 ---
 
 ## Site Agent boundary

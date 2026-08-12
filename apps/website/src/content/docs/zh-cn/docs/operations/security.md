@@ -1,6 +1,6 @@
 ---
 title: 安全模型
-description: 单用户自托管发布工作台的信任边界和加固要求。
+description: 单用户自托管 AI 内容工作台的信任边界和加固要求。
 ---
 
 ## Site Agent 边界

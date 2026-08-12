@@ -2,7 +2,9 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Blog Studio 是一款面向文件式网站的自托管发布工作台。它保留 Markdown、Git、现有静态网站生成器和托管技术栈，同时让从写作到生产的完整旅程都能在一个浏览器标签页中完成。
+Blog Studio 是一款面向 Markdown 与 Git 网站的自托管 AI 内容工作台。内置 Site Agent 能理解并安全修改现有网站；你负责批准工具调用、审查每项差异，并决定何时发布。
+
+保留原有文件、Git 历史、生成器、主题、URL 和托管技术栈。Blog Studio 把 AI 辅助写作与整站维护带进同一个可验证的浏览器流程，而不是要求你把网站交给托管式 AI CMS。
 
 [官方网站](https://djangoailab.github.io/blog-studio/) ·
 [English documentation](https://djangoailab.github.io/blog-studio/en/docs/) ·
@@ -14,11 +16,14 @@ Blog Studio 是一款面向文件式网站的自托管发布工作台。它保�
 
 ## 产品承诺
 
+- 让 Site Agent 理解整个 Site，而不是反复粘贴孤立的内容片段。
+- 保留多个跟随 Site 的持久 Session，并显式附加文章、选区、编辑缓冲、预览与附件上下文。
+- Agent 只能通过有边界的文件和本地 Git 工具检查、修改工作区；可逐项审批，也可明确选择 YOLO。
+- 每项 AI 修改都能在准备 ChangeSet、本地提交或人工触发远程发布前审查。
 - 写作无需等待 Git 或部署。
 - 将策略允许的资源附加到文章范围资源库。
 - 先即时预览已净化的 Markdown，再按需使用真实网站生成器和主题。
 - 在本地提交或远程发布前，准备并审查持久 ChangeSet。
-- 可从任意位置打开限定于 Site 的 Agent，保留多个持久 Session，并在有边界的文件与本地 Git 工具内选择逐项审批或 YOLO。
 - 保留已有文件、URL 和基础设施。
 
 首个生产集成面向 Hexo、腾讯云 COS、腾讯云 CDN 和 GitHub。核心契约不依赖特定生成器、存储、仓库或部署方案。
@@ -65,7 +70,7 @@ curl --fail http://127.0.0.1:4310/api/health
 
 ## 一段话理解架构
 
-Studio 负责浏览器 session、持久草稿快照、任务和发布证据。配置的生成器负责 Markdown 语义和最终网站形态。有版本的适配器负责仓库访问、文章范围资源、发布和缓存失效。release 在隔离工作区中构建，先上传不可变资源，再上传页面，验证公网标记，最后才提交原生草稿提升。公开静态网站永远不依赖 Studio 进程在线。
+Studio 负责浏览器 session、Site Agent Session 与审批、持久草稿快照、任务和发布证据。Agent 只能使用限定于 Site 的类型化文件与本地 Git 工具，没有通用 Shell 或发布工具。配置的生成器负责 Markdown 语义和最终网站形态；有版本的适配器负责仓库访问、文章资源、发布和缓存失效。公开静态网站永远不依赖 Studio 进程在线。
 
 ## 开发与验证
 

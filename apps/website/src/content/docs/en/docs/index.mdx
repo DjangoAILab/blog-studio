@@ -1,39 +1,39 @@
 ---
 title: Blog Studio documentation
-description: Self-host a reliable browser writing and publishing journey without replacing your file-based site.
+description: Self-host an AI content workspace with a Site Agent for your existing Markdown and Git-based website.
 template: splash
 hero:
-  title: Publish without leaving your site behind.
-  tagline: Blog Studio keeps files, Git, your generator, and hosting canonical—then connects AI-assisted writing, preview, review, release, and recovery.
+  title: Let AI understand your whole Site.
+  tagline: Blog Studio gives a Site Agent your real Markdown workspace, local Git, and preview while you approve changes and control publishing.
   actions:
+    - text: Explore the Site Agent
+      link: ./use/agent/
+      icon: right-arrow
     - text: Self-host Blog Studio
       link: ./guides/self-hosting/
-      icon: right-arrow
-    - text: Understand the journey
-      link: ./concepts/core-journey/
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Start with the job, not the stack
+## Work with AI without giving up your stack
 
 <CardGrid>
-  <Card title="Write" icon="pencil">
-    Open an existing Markdown document, work in visual or source mode, and get
-    an acknowledged draft without waiting for Git or a deployment.
+  <Card title="Understand the whole Site" icon="seti:ai">
+    Keep multiple durable, Site-scoped Agent Sessions. Attach an article,
+    selection, editor buffer, preview error, or file only when it is relevant.
   </Card>
-  <Card title="Preview" icon="open-book">
-    Run the real generator and theme. Preview correctness comes from your site,
-    not from a second renderer that drifts over time.
+  <Card title="Make bounded changes" icon="pencil">
+    Let the Agent read, search, create, edit, move, and remove files through
+    typed tools constrained to the selected Site.
   </Card>
-  <Card title="Ask the Site Agent" icon="seti:ai">
-    Keep multiple durable, Site-scoped Sessions. Attach an article or Markdown
-    range explicitly, then approve bounded workspace changes or opt into YOLO.
+  <Card title="Review every AI action" icon="open-book">
+    Require approval for modifications, inspect local Git changes, and preview
+    with the real generator and theme before preparing a ChangeSet.
   </Card>
-  <Card title="Release" icon="rocket">
-    Inspect the manifest diff, publish immutable assets before pages, refresh
-    cache paths, and verify a public release marker.
+  <Card title="Publish under human control" icon="rocket">
+    Commit and release through a separate reviewed workflow. The Site Agent has
+    no remote or publishing tool and cannot bypass that decision.
   </Card>
   <Card title="Recover" icon="setting">
     Keep exact manifests and structured events so retries, cancellation, restart
@@ -47,7 +47,7 @@ import { Card, CardGrid } from '@astrojs/starlight/components';
   then [configure a workspace](./configuration/workspaces/).
 - **I have a Hexo site:** read the [Hexo guide](./guides/hexo/) before
   mounting the repository.
-- **I want AI assistance:** start with the [Site Agent guide](./use/agent/)
+- **I want the AI workflow:** start with the [Site Agent guide](./use/agent/)
   and review its approval, file, Git, attachment, and recovery boundaries.
 - **I operate Tencent COS/CDN:** understand the current
   [Tencent provider status and safety gates](./providers/tencent/).

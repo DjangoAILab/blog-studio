@@ -2,10 +2,13 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Blog Studio is a self-hosted publishing workbench for file-based websites.
-It keeps Markdown, Git, the existing static-site generator, and the existing
-hosting stack while making the complete writing-to-production journey usable
-from one browser tab.
+Blog Studio is a self-hosted AI content workspace for Markdown and Git-based
+websites. Its Site Agent can understand and safely modify an existing site while
+you approve tool calls, review every diff, and decide what gets published.
+
+Keep your files, Git history, generator, theme, URLs, and hosting stack. Blog
+Studio brings AI-assisted writing and site maintenance into the same verifiable
+browser journey without turning your website over to a hosted AI CMS.
 
 [Website](https://djangoailab.github.io/blog-studio/) ·
 [English documentation](https://djangoailab.github.io/blog-studio/en/docs/) ·
@@ -19,13 +22,18 @@ from one browser tab.
 
 ## Product promise
 
+- Give the Site Agent whole-Site context instead of pasting isolated fragments.
+- Keep multiple durable Site-scoped Sessions with explicit article, selection,
+  editor-buffer, preview, and attachment context.
+- Let the Agent inspect and modify the workspace through bounded file and local
+  Git tools; require per-change approval or explicitly opt into YOLO.
+- Review every AI-produced change before preparing a ChangeSet, committing, or
+  starting a separate human-controlled remote release.
 - Write without waiting for Git or deployments.
 - Attach policy-approved resources to an article-scoped library.
 - Preview immediately as sanitized Markdown, then optionally with the real site
   generator and theme.
 - Prepare and review a durable ChangeSet before local commit or remote release.
-- Open a Site-scoped Agent from anywhere, keep multiple durable Sessions, and
-  choose per-change approval or YOLO within bounded file and local-Git tools.
 - Preserve existing files, URLs, and infrastructure.
 
 The first production integration targets Hexo, Tencent COS, Tencent CDN, and
@@ -91,13 +99,13 @@ preview section of the self-hosting guide before enabling that optional ingress.
 
 ## Architecture in one paragraph
 
-Studio owns browser sessions, durable draft snapshots, jobs, and release
-evidence. The configured generator owns Markdown semantics and the final site
-shape. Versioned adapters own repository access, article-scoped assets,
-publication, and cache invalidation. A release builds in an isolated workspace,
-uploads immutable assets before pages, verifies a public marker, and only then
-commits a native draft promotion. The public static site never depends on the
-Studio process being online.
+Studio owns browser sessions, Site Agent Sessions and approvals, durable draft
+snapshots, jobs, and release evidence. The Agent uses typed, Site-bounded file
+and local Git tools and has no general shell or publishing tool. The configured
+generator owns Markdown semantics and the final site shape. Versioned adapters
+own repository access, article-scoped assets, publication, and cache
+invalidation. The public static site never depends on the Studio process being
+online.
 
 ## Develop and verify
 
