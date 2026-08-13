@@ -10,6 +10,7 @@ import type {
   AgentSessionDetails,
   AgentSessionSummary,
 } from '../../app/api.js';
+import { AgentMarkdown } from './agent-markdown.js';
 import {
   presentAgentHistory,
   type PresentedChip,
@@ -27,6 +28,8 @@ interface AgentPanelProps {
     { type: 'markdown-selection' }
   >;
   readonly openRequest: number;
+  readonly requestedSessionId?: string;
+  readonly createRequested?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
   readonly onSelectionConsumed: () => void;
   readonly onWorkspaceChanged?: (paths: readonly string[]) => void;
@@ -43,8 +46,8 @@ const turnLabels = {
   interrupted: '重启中断',
 } as const;
 
-function sessionStorageKey(siteId: string): string {
-  return `blog-studio:agent-session:${siteId}`;
+function sessionStorageKey(siteId: string, documentId?: string): string {
+  return `blog-studio:agent-session:${siteId}:${documentId ?? 'global'}`;
 }
 
 function ContextChip({
@@ -82,7 +85,7 @@ function isImageMime(mimeType?: string, filename?: string): boolean {
   return /\.(png|jpe?g|gif|webp|avif)$/i.test(filename ?? '');
 }
 
-function AttachmentChip({
+function AttachmentCard({
   chip,
   href,
   downloadHref,
@@ -96,28 +99,44 @@ function AttachmentChip({
   const previewable = Boolean(
     href && isImageMime(chip.mimeType, chip.filename),
   );
+  const name = chip.filename ?? chip.label.replace(/^附件 · /, '');
   return (
-    <span className="studio2-attachment-chip">
+    <span className="studio2-attachment">
       {previewable ? (
-        <a href={href} target="_blank" rel="noreferrer" title="预览图片">
-          <img src={href} alt={chip.filename ?? chip.label} />
-        </a>
-      ) : null}
-      <span>{chip.label}</span>
-      {downloadHref ? (
-        <a href={downloadHref} download={chip.filename ?? true}>
-          下载
-        </a>
-      ) : null}
-      {onRemove ? (
-        <button
-          type="button"
-          aria-label={`移除 ${chip.label}`}
-          onClick={onRemove}
+        <a
+          className="studio2-attachment-preview"
+          href={href}
+          target="_blank"
+          rel="noreferrer"
+          title="预览图片"
         >
-          ×
-        </button>
-      ) : null}
+          <img src={href} alt="" />
+        </a>
+      ) : (
+        <span className="studio2-attachment-icon" aria-hidden="true">
+          件
+        </span>
+      )}
+      <span className="studio2-attachment-copy">
+        <strong>{name}</strong>
+        <small>{chip.mimeType ?? '文件'}</small>
+      </span>
+      <span className="studio2-attachment-actions">
+        {downloadHref ? (
+          <a href={downloadHref} download={chip.filename ?? true}>
+            下载
+          </a>
+        ) : null}
+        {onRemove ? (
+          <button
+            type="button"
+            aria-label={`移除 ${name}`}
+            onClick={onRemove}
+          >
+            移除
+          </button>
+        ) : null}
+      </span>
     </span>
   );
 }
@@ -157,12 +176,16 @@ export function AgentPanel({
   articleContext,
   selectionContext,
   openRequest,
+  requestedSessionId,
+  createRequested = false,
   onOpenChange,
   onSelectionConsumed,
   onWorkspaceChanged,
 }: AgentPanelProps) {
   const [open, setOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherTab, setSwitcherTab] = useState<'create' | 'choose'>('create');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [sessions, setSessions] = useState<readonly AgentSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
@@ -172,7 +195,6 @@ export function AgentPanel({
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [includeArticle, setIncludeArticle] = useState(true);
   const [includeSelection, setIncludeSelection] = useState(false);
   const [attachments, setAttachments] = useState<
     readonly AgentAttachmentSummary[]
@@ -210,9 +232,22 @@ export function AgentPanel({
   async function loadSessions(nextSiteId: string): Promise<void> {
     const result = await api.agentSessions(nextSiteId, true);
     setSessions(result.sessions);
-    const stored = window.sessionStorage.getItem(sessionStorageKey(nextSiteId));
+    const stored = window.sessionStorage.getItem(
+      sessionStorageKey(nextSiteId, articleContext?.documentId),
+    );
+    const articleBound = articleContext
+      ? result.sessions.find(
+          (item) =>
+            item.state === 'active' &&
+            item.documentId === articleContext.documentId,
+        )
+      : undefined;
     const selected =
       result.sessions.find((item) => item.id === stored)?.id ??
+      articleBound?.id ??
+      result.sessions.find(
+        (item) => item.state === 'active' && !item.documentId,
+      )?.id ??
       result.sessions.find((item) => item.state === 'active')?.id ??
       '';
     setActiveSessionId(selected);
@@ -228,7 +263,16 @@ export function AgentPanel({
   }
 
   useEffect(() => {
-    if (openRequest > 0) changeOpen(true);
+    if (openRequest > 0) {
+      changeOpen(true);
+      if (requestedSessionId) {
+        setActiveSessionId(requestedSessionId);
+        setSwitcherOpen(false);
+      } else if (createRequested || !activeSessionId) {
+        setSwitcherTab('create');
+        setSwitcherOpen(true);
+      }
+    }
   }, [openRequest]);
 
   useEffect(() => {
@@ -237,7 +281,6 @@ export function AgentPanel({
     setAttachments([]);
     setLiveTools([]);
     setLiveText('');
-    setIncludeArticle(true);
     setIncludeSelection(false);
     setSwitcherOpen(false);
     if (!siteId) {
@@ -253,11 +296,14 @@ export function AgentPanel({
         reason instanceof Error ? reason.message : 'Agent Session 读取失败',
       ),
     );
-  }, [api, siteId]);
+  }, [api, articleContext?.documentId, siteId]);
 
   useEffect(() => {
     if (!siteId || !activeSessionId) return;
-    window.sessionStorage.setItem(sessionStorageKey(siteId), activeSessionId);
+    window.sessionStorage.setItem(
+      sessionStorageKey(siteId, articleContext?.documentId),
+      activeSessionId,
+    );
     void refreshDetails().catch((reason: unknown) =>
       setError(reason instanceof Error ? reason.message : 'Agent 历史读取失败'),
     );
@@ -269,10 +315,6 @@ export function AgentPanel({
       setOpen(true);
     }
   }, [selectionContext]);
-
-  useEffect(() => {
-    setIncludeArticle(true);
-  }, [articleContext?.documentId]);
 
   useEffect(() => {
     historyEnd.current?.scrollIntoView({ block: 'end' });
@@ -287,10 +329,10 @@ export function AgentPanel({
 
   const contexts = useMemo(() => {
     const result: AgentMessageContext[] = [];
-    if (includeArticle && articleContext) result.push(articleContext);
+    if (articleContext) result.push(articleContext);
     if (includeSelection && selectionContext) result.push(selectionContext);
     return result;
-  }, [articleContext, includeArticle, includeSelection, selectionContext]);
+  }, [articleContext, includeSelection, selectionContext]);
 
   function upsertLiveTool(next: PresentedTool): void {
     setLiveTools((items) => {
@@ -396,10 +438,19 @@ export function AgentPanel({
     try {
       const session = await api.createAgentSession({
         siteId,
-        displayName: `写作会话 ${sessions.length + 1}`,
+        displayName: articleContext
+          ? `文章 · ${articleContext.title ?? '未命名'}`
+          : `站点会话 ${sessions.filter((item) => !item.documentId).length + 1}`,
+        ...(articleContext
+          ? {
+              documentId: articleContext.documentId,
+              collectionId: articleContext.collectionId,
+            }
+          : {}),
       });
       await loadSessions(siteId);
       setActiveSessionId(session.id);
+      setSwitcherOpen(false);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : '新建 Session 失败');
     } finally {
@@ -462,6 +513,11 @@ export function AgentPanel({
           disabled={!siteId}
           onClick={() => changeOpen(true)}
         >
+          <span className="agent-launcher-glow" aria-hidden="true" />
+          <span className="agent-launcher-spark" aria-hidden="true" />
+          <span className="agent-launcher-mark" aria-hidden="true">
+            ✦
+          </span>
           Agent
         </button>
       )}
@@ -482,9 +538,20 @@ export function AgentPanel({
                 <button
                   className="studio2-secondary-button"
                   type="button"
-                  onClick={() => setSwitcherOpen(true)}
+                  onClick={() => {
+                    setSwitcherTab(activeSessionId ? 'choose' : 'create');
+                    setSwitcherOpen(true);
+                  }}
                 >
                   切换会话
+                </button>
+                <button
+                  className="studio2-icon-more"
+                  type="button"
+                  aria-label="Agent 设置"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  ⚙
                 </button>
                 <button
                   className="studio2-sheet-close"
@@ -500,13 +567,150 @@ export function AgentPanel({
             <Dialog.Root open={switcherOpen} onOpenChange={setSwitcherOpen}>
               <Dialog.Portal>
                 <Dialog.Backdrop className="studio2-dialog-backdrop" />
-                <Dialog.Viewport className="studio2-dialog-viewport">
+                <Dialog.Viewport className="studio2-dialog-viewport is-center">
                   <Dialog.Popup className="studio2-dialog-card">
                     <header>
-                      <Dialog.Title>切换会话</Dialog.Title>
-                      <Dialog.Description>
-                        会话跟随当前站点，不是当前文章。
-                      </Dialog.Description>
+                      <div>
+                        <Dialog.Title>会话</Dialog.Title>
+                        <Dialog.Description>
+                          {articleContext
+                            ? `默认绑定「${articleContext.title ?? '当前文章'}」，能力仍覆盖整个站点。`
+                            : '这是站点级会话，不绑定单篇文章。'}
+                        </Dialog.Description>
+                      </div>
+                      <Dialog.Close
+                        className="studio2-sheet-close"
+                        aria-label="关闭"
+                      >
+                        ×
+                      </Dialog.Close>
+                    </header>
+                    <div className="studio2-session-tabs" role="tablist">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={switcherTab === 'create'}
+                        className={switcherTab === 'create' ? 'is-active' : ''}
+                        onClick={() => setSwitcherTab('create')}
+                      >
+                        新建
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={switcherTab === 'choose'}
+                        className={switcherTab === 'choose' ? 'is-active' : ''}
+                        onClick={() => setSwitcherTab('choose')}
+                      >
+                        选择
+                      </button>
+                    </div>
+                    {switcherTab === 'create' ? (
+                      <div className="agent-switcher">
+                        <p>
+                          {articleContext
+                            ? '新建一个只挂在这篇文章上的会话。'
+                            : '新建一个站点级会话。'}
+                        </p>
+                        <button
+                          className="studio2-primary-button"
+                          type="button"
+                          disabled={busy || !siteId}
+                          onClick={() => void createSession()}
+                        >
+                          {busy ? '正在创建…' : '创建会话'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="agent-switcher">
+                        <select
+                          aria-label="Agent Session"
+                          value={activeSessionId}
+                          onChange={(event) => {
+                            setActiveSessionId(event.target.value);
+                            if (event.target.value) setSwitcherOpen(false);
+                          }}
+                        >
+                          <option value="">选择会话</option>
+                          {sessions.map((session) => (
+                            <option key={session.id} value={session.id}>
+                              {session.documentId ? '文章 · ' : '全局 · '}
+                              {session.state === 'archived' ? '〔已归档〕' : ''}
+                              {session.displayName}
+                            </option>
+                          ))}
+                        </select>
+                        <label>
+                          会话名称
+                          <input
+                            aria-label="会话名称"
+                            disabled={
+                              !activeSession ||
+                              activeSession.state === 'archived'
+                            }
+                            value={activeSession?.displayName ?? ''}
+                            onChange={(event) => {
+                              const displayName = event.target.value;
+                              setSessions((items) =>
+                                items.map((item) =>
+                                  item.id === activeSessionId
+                                    ? { ...item, displayName }
+                                    : item,
+                                ),
+                              );
+                            }}
+                            onBlur={() => {
+                              if (!siteId || !activeSession) return;
+                              const displayName =
+                                activeSession.displayName.trim();
+                              if (!displayName) return;
+                              void api
+                                .updateAgentSession({
+                                  siteId,
+                                  sessionId: activeSession.id,
+                                  displayName,
+                                })
+                                .then(() => loadSessions(siteId));
+                            }}
+                          />
+                        </label>
+                        <div className="agent-switcher-actions">
+                          <button
+                            type="button"
+                            disabled={
+                              !activeSession ||
+                              activeSession.state === 'archived' ||
+                              Boolean(activeTurn)
+                            }
+                            onClick={() => {
+                              if (!siteId || !activeSession) return;
+                              void api
+                                .archiveAgentSession(siteId, activeSession.id)
+                                .then(() => loadSessions(siteId));
+                            }}
+                          >
+                            归档
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Dialog.Popup>
+                </Dialog.Viewport>
+              </Dialog.Portal>
+            </Dialog.Root>
+
+            <Dialog.Root open={settingsOpen} onOpenChange={setSettingsOpen}>
+              <Dialog.Portal>
+                <Dialog.Backdrop className="studio2-dialog-backdrop" />
+                <Dialog.Viewport className="studio2-dialog-viewport is-center">
+                  <Dialog.Popup className="studio2-dialog-card">
+                    <header>
+                      <div>
+                        <Dialog.Title>Agent 设置</Dialog.Title>
+                        <Dialog.Description>
+                          全局和当前站点的默认执行模式。会话可以再覆盖。
+                        </Dialog.Description>
+                      </div>
                       <Dialog.Close
                         className="studio2-sheet-close"
                         aria-label="关闭"
@@ -515,161 +719,59 @@ export function AgentPanel({
                       </Dialog.Close>
                     </header>
                     <div className="agent-switcher">
-                      <select
-                        aria-label="Agent Session"
-                        value={activeSessionId}
-                        onChange={(event) =>
-                          setActiveSessionId(event.target.value)
-                        }
-                      >
-                        <option value="">选择 Session</option>
-                        {sessions.map((session) => (
-                          <option key={session.id} value={session.id}>
-                            {session.state === 'archived' ? '〔已归档〕' : ''}
-                            {session.displayName}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="agent-switcher-actions">
-                        <button
-                          type="button"
-                          disabled={busy || !siteId}
-                          onClick={() => void createSession()}
-                        >
-                          新建
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            !activeSession || activeSession.state === 'archived'
-                          }
-                          onClick={() => {
-                            if (!siteId || !activeSession) return;
-                            const displayName = window.prompt(
-                              'Session 名称',
-                              activeSession.displayName,
-                            );
-                            if (!displayName?.trim()) return;
+                      <label>
+                        全局默认
+                        <select
+                          aria-label="Agent 全局默认模式"
+                          value={preferenceDefaults.global ?? 'approval'}
+                          onChange={(event) => {
+                            if (!siteId) return;
                             void api
-                              .updateAgentSession({
+                              .updateAgentPreferenceDefaults({
                                 siteId,
-                                sessionId: activeSession.id,
-                                displayName,
+                                scope: 'global',
+                                mode: event.target.value as
+                                  | 'approval'
+                                  | 'yolo',
                               })
-                              .then(() => loadSessions(siteId));
+                              .then((value) => {
+                                setPreferenceDefaults(value);
+                                return refreshDetails();
+                              });
                           }}
                         >
-                          改名
-                        </button>
-                        <button
-                          type="button"
-                          disabled={
-                            !activeSession ||
-                            activeSession.state === 'archived' ||
-                            Boolean(activeTurn)
-                          }
-                          onClick={() => {
-                            if (!siteId || !activeSession) return;
+                          <option value="approval">每次审批</option>
+                          <option value="yolo">YOLO</option>
+                        </select>
+                      </label>
+                      <label>
+                        当前站点默认
+                        <select
+                          aria-label="Agent 当前站点默认模式"
+                          value={preferenceDefaults.site ?? 'inherit'}
+                          onChange={(event) => {
+                            if (!siteId) return;
+                            const value = event.target.value;
                             void api
-                              .archiveAgentSession(siteId, activeSession.id)
-                              .then(() => loadSessions(siteId));
+                              .updateAgentPreferenceDefaults({
+                                siteId,
+                                scope: 'site',
+                                mode:
+                                  value === 'inherit'
+                                    ? null
+                                    : (value as 'approval' | 'yolo'),
+                              })
+                              .then((next) => {
+                                setPreferenceDefaults(next);
+                                return refreshDetails();
+                              });
                           }}
                         >
-                          归档
-                        </button>
-                      </div>
-                      {activeSessionId ? (
-                        <label>
-                          执行模式
-                          <select
-                            value={activeSession?.approvalMode ?? 'inherit'}
-                            onChange={(event) => {
-                              if (!siteId) return;
-                              const value = event.target.value;
-                              const approvalMode =
-                                value === 'inherit'
-                                  ? null
-                                  : (value as 'approval' | 'yolo');
-                              void api
-                                .updateAgentSession({
-                                  siteId,
-                                  sessionId: activeSessionId,
-                                  approvalMode,
-                                })
-                                .then(async () => {
-                                  await loadSessions(siteId);
-                                  await refreshDetails();
-                                });
-                            }}
-                          >
-                            <option value="inherit">跟随站点 / 全局</option>
-                            <option value="approval">每次审批</option>
-                            <option value="yolo">YOLO</option>
-                          </select>
-                        </label>
-                      ) : null}
-                      <details className="agent-mode-defaults">
-                        <summary>默认模式</summary>
-                        <label>
-                          全局默认
-                          <select
-                            aria-label="Agent 全局默认模式"
-                            value={preferenceDefaults.global ?? 'approval'}
-                            onChange={(event) => {
-                              if (!siteId) return;
-                              void api
-                                .updateAgentPreferenceDefaults({
-                                  siteId,
-                                  scope: 'global',
-                                  mode: event.target.value as
-                                    'approval' | 'yolo',
-                                })
-                                .then((value) => {
-                                  setPreferenceDefaults(value);
-                                  return refreshDetails();
-                                });
-                            }}
-                          >
-                            <option value="approval">每次审批</option>
-                            <option value="yolo">YOLO</option>
-                          </select>
-                        </label>
-                        <label>
-                          当前站点默认
-                          <select
-                            aria-label="Agent 当前站点默认模式"
-                            value={preferenceDefaults.site ?? 'inherit'}
-                            onChange={(event) => {
-                              if (!siteId) return;
-                              const value = event.target.value;
-                              void api
-                                .updateAgentPreferenceDefaults({
-                                  siteId,
-                                  scope: 'site',
-                                  mode:
-                                    value === 'inherit'
-                                      ? null
-                                      : (value as 'approval' | 'yolo'),
-                                })
-                                .then((next) => {
-                                  setPreferenceDefaults(next);
-                                  return refreshDetails();
-                                });
-                            }}
-                          >
-                            <option value="inherit">跟随全局</option>
-                            <option value="approval">每次审批</option>
-                            <option value="yolo">YOLO</option>
-                          </select>
-                        </label>
-                      </details>
-                      {details?.effectiveApproval.mode === 'yolo' ? (
-                        <p className="agent-yolo-warning">
-                          YOLO
-                          仍受路径与工具边界保护，但删除未跟踪文件可能无法由
-                          Studio 恢复。
-                        </p>
-                      ) : null}
+                          <option value="inherit">跟随全局</option>
+                          <option value="approval">每次审批</option>
+                          <option value="yolo">YOLO</option>
+                        </select>
+                      </label>
                     </div>
                   </Dialog.Popup>
                 </Dialog.Viewport>
@@ -737,7 +839,7 @@ export function AgentPanel({
                           <div className="agent-history-chips">
                             {entry.chips.map((chip) =>
                               chip.kind === 'attachment' ? (
-                                <AttachmentChip
+                                <AttachmentCard
                                   key={`${entry.id}-${chip.label}`}
                                   chip={chip}
                                   {...(attachmentHref(chip.attachmentId)
@@ -758,7 +860,13 @@ export function AgentPanel({
                             )}
                           </div>
                         ) : null}
-                        {entry.text ? <p>{entry.text}</p> : null}
+                        {entry.text ? (
+                          entry.type === 'assistant' ? (
+                            <AgentMarkdown text={entry.text} />
+                          ) : (
+                            <p>{entry.text}</p>
+                          )
+                        ) : null}
                       </article>
                     );
                   })}
@@ -848,20 +956,6 @@ export function AgentPanel({
                   }}
                 >
                   <div className="agent-contexts" aria-label="本次消息上下文">
-                    {includeArticle && articleContext ? (
-                      <ContextChip
-                        label={`文章 · ${articleContext.title ?? articleContext.documentId}`}
-                        details={`${articleContext.collectionId} · ${articleContext.path ?? articleContext.documentId}`}
-                        onRemove={() => setIncludeArticle(false)}
-                      />
-                    ) : articleContext ? (
-                      <button
-                        type="button"
-                        onClick={() => setIncludeArticle(true)}
-                      >
-                        ＋ 当前文章
-                      </button>
-                    ) : null}
                     {includeSelection && selectionContext ? (
                       <ContextChip
                         label={`选区 · L${selectionContext.startLine}–${selectionContext.endLine}`}
@@ -870,11 +964,11 @@ export function AgentPanel({
                       />
                     ) : null}
                     {attachments.map((attachment) => (
-                      <AttachmentChip
+                      <AttachmentCard
                         key={attachment.id}
                         chip={{
                           kind: 'attachment',
-                          label: `附件 · ${attachment.filename}`,
+                          label: attachment.filename,
                           attachmentId: attachment.id,
                           mimeType: attachment.mimeType,
                           filename: attachment.filename,
@@ -895,6 +989,37 @@ export function AgentPanel({
                         }
                       />
                     ))}
+                    {activeSessionId ? (
+                      <label className="agent-mode-select">
+                        执行模式
+                        <select
+                          aria-label="执行模式"
+                          value={activeSession?.approvalMode ?? 'inherit'}
+                          onChange={(event) => {
+                            if (!siteId) return;
+                            const value = event.target.value;
+                            const approvalMode =
+                              value === 'inherit'
+                                ? null
+                                : (value as 'approval' | 'yolo');
+                            void api
+                              .updateAgentSession({
+                                siteId,
+                                sessionId: activeSessionId,
+                                approvalMode,
+                              })
+                              .then(async () => {
+                                await loadSessions(siteId);
+                                await refreshDetails();
+                              });
+                          }}
+                        >
+                          <option value="inherit">跟随默认</option>
+                          <option value="approval">每次审批</option>
+                          <option value="yolo">YOLO</option>
+                        </select>
+                      </label>
+                    ) : null}
                     {uploading ? (
                       <span className="studio2-inline-loading" role="status">
                         <span className="studio2-loading-orb" />
@@ -924,7 +1049,6 @@ export function AgentPanel({
                       <input
                         type="file"
                         disabled={uploading || !activeSessionId}
-                        accept="image/png,image/jpeg,image/webp,application/pdf,text/plain,application/zip"
                         onChange={(event) => {
                           const file = event.target.files?.[0];
                           if (!file || !siteId) return;
@@ -981,10 +1105,9 @@ export function AgentPanel({
               </>
             ) : (
               <div className="agent-empty">
-                <b>还没有 Session</b>
+                <b>还没有会话</b>
                 <p>
-                  点右上角「切换会话」新建一个；它会跟随当前
-                  Site，而不是当前页面。
+                  先新建或选择一个会话。打开文章时默认挂到当前文章，能力仍覆盖整个站点。
                 </p>
               </div>
             )}

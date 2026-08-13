@@ -37,7 +37,7 @@ interface ContentLibraryProps {
   }) => Promise<void>;
   readonly onFilterChange: (filter: ContentFilter) => void;
   readonly onAdvancedFiltersChange: (filters: ContentAdvancedFilters) => void;
-  readonly onDiscardUnavailable: (item: ContentSummary) => Promise<void>;
+  readonly onDiscardUnavailable: (item: ContentSummary) => void | Promise<void>;
   readonly onOpen: (item: ContentSummary) => void;
   readonly onPublish: (item: ContentSummary) => void;
   readonly onDelete: (item: ContentSummary) => void;

@@ -382,6 +382,16 @@ const migrations: readonly Migration[] = [
       ALTER TABLE agent_tool_audit ADD COLUMN decision_at TEXT;
     `,
   },
+  {
+    version: 11,
+    name: 'agent-session-article-binding',
+    sql: `
+      ALTER TABLE agent_sessions ADD COLUMN document_id TEXT;
+      ALTER TABLE agent_sessions ADD COLUMN collection_id TEXT;
+      CREATE INDEX agent_sessions_site_document
+        ON agent_sessions(site_id, document_id, collection_id, updated_at DESC);
+    `,
+  },
 ];
 
 export const STUDIO_SCHEMA_VERSION = migrations.at(-1)?.version ?? 0;

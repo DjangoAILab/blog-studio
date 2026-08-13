@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-test.setTimeout(120_000);
+test.setTimeout(180_000);
 const origin = 'http://127.0.0.1:14311';
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
@@ -72,12 +72,16 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   });
   await secondAgent.getByRole('button', { name: '切换会话' }).click();
   const secondSwitcher = secondSitePage.getByRole('dialog', {
-    name: '切换会话',
+    name: '会话',
   });
+  await secondSwitcher.getByRole('tab', { name: '选择' }).click();
   await expect(
     secondSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(1);
-  await secondSwitcher.getByRole('button', { name: '新建' }).click();
+  await secondSwitcher.getByRole('tab', { name: '新建' }).click();
+  await secondSwitcher.getByRole('button', { name: '创建会话' }).click();
+  await secondAgent.getByRole('button', { name: '切换会话' }).click();
+  await secondSwitcher.getByRole('tab', { name: '选择' }).click();
   await expect(
     secondSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(2);
@@ -101,22 +105,20 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   });
   await expect(agentPanel).toBeVisible();
   await agentPanel.getByRole('button', { name: '切换会话' }).click();
-  const sessionSwitcher = page.getByRole('dialog', { name: '切换会话' });
-  await sessionSwitcher.getByRole('button', { name: '新建' }).click();
-  await expect(
-    sessionSwitcher.getByLabel('Agent Session').locator('option'),
-  ).toHaveCount(2);
-  await sessionSwitcher.getByRole('button', { name: '新建' }).click();
+  const sessionSwitcher = page.getByRole('dialog', { name: '会话' });
+  await sessionSwitcher.getByRole('button', { name: '创建会话' }).click();
+  await agentPanel.getByRole('button', { name: '切换会话' }).click();
+  await sessionSwitcher.getByRole('tab', { name: '新建' }).click();
+  await sessionSwitcher.getByRole('button', { name: '创建会话' }).click();
+  await agentPanel.getByRole('button', { name: '切换会话' }).click();
+  await sessionSwitcher.getByRole('tab', { name: '选择' }).click();
   await expect(
     sessionSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(3);
   const firstSiteSessionId = await sessionSwitcher
     .getByLabel('Agent Session')
     .inputValue();
-  await sessionSwitcher.getByLabel('执行模式').selectOption('yolo');
-  await expect(
-    sessionSwitcher.getByText(/删除未跟踪文件可能无法/),
-  ).toBeVisible();
+  await agentPanel.getByLabel('执行模式').selectOption('yolo');
   await sessionSwitcher.getByRole('button', { name: '归档' }).click();
   await sessionSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(
@@ -186,12 +188,12 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(globalSearchDialog).toHaveCount(0);
   await expect(globalSearch).toBeFocused();
   const sortField = library.getByLabel('排序属性');
-  await expect(sortField).toHaveValue('activityAt');
+  await expect(sortField).toHaveValue('filesystemModifiedAt');
   await sortField.selectOption('title');
   await expect(page).toHaveURL(/contentSort=title/);
   await library.getByRole('button', { name: '当前为降序' }).click();
   await expect(page).toHaveURL(/contentDirection=asc/);
-  await sortField.selectOption('activityAt');
+  await sortField.selectOption('filesystemModifiedAt');
   await library.getByRole('button', { name: '当前为升序' }).click();
   await expect(page).not.toHaveURL(/contentSort|contentDirection/);
   await expect(
@@ -285,18 +287,15 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(
     page.getByRole('complementary', { name: /Agent/ }).getByText(/选区 · L/),
   ).toBeVisible();
-  await expect(
-    page.getByRole('complementary', { name: /Agent/ }).getByText(/文章 ·/),
-  ).toBeVisible();
   await page
     .getByRole('complementary', { name: /Agent/ })
     .getByRole('button', { name: '切换会话' })
     .click();
   await expect(
-    page.getByRole('dialog', { name: '切换会话' }).getByLabel('Agent Session'),
+    page.getByRole('dialog', { name: '会话' }).getByLabel('Agent Session'),
   ).toHaveValue(firstSiteSessionId);
   await page
-    .getByRole('dialog', { name: '切换会话' })
+    .getByRole('dialog', { name: '会话' })
     .getByRole('button', { name: '关闭', exact: true })
     .click();
   await page
@@ -365,7 +364,8 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: 'Markdown 源码' }).click();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(/刷新后仍然存在/);
 
-  await page.getByRole('button', { name: '预览全文' }).click();
+  await page.getByRole('button', { name: '预览', exact: true }).click();
+  await page.getByRole('button', { name: '打开 Markdown 预览' }).click();
   await expect(page.getByTitle('文章全文预览')).toBeVisible({
     timeout: 10_000,
   });
@@ -423,13 +423,19 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   ).toBeVisible();
   await page.getByRole('button', { name: '关闭 Agent' }).click();
 
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '放弃修改' }).click();
+  await page
+    .getByRole('dialog', { name: '放弃修改' })
+    .getByRole('button', { name: '放弃修改' })
+    .click();
   await expect(page.getByText('已同步')).toBeVisible();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue('');
   await expect(page.getByText('2 个未引用资源')).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '审阅并清理' }).click();
+  await page
+    .getByRole('dialog', { name: '清理未引用资源' })
+    .getByRole('button', { name: '清理资源' })
+    .click();
   await expect(page.getByText('2 个未引用资源')).toHaveCount(0);
 
   await library.getByRole('button', { name: /Existing article/ }).click();

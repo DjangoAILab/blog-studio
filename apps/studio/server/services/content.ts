@@ -179,7 +179,7 @@ export class ContentService {
       const contentUpdatedAt = summary.contentUpdatedAt ?? summary.updatedAt;
       const filesystemModifiedAt = summary.filesystemModifiedAt;
       const activityAt =
-        contentUpdatedAt ?? publishedAt ?? filesystemModifiedAt;
+        filesystemModifiedAt ?? contentUpdatedAt ?? publishedAt;
       return {
         siteId: site.id,
         documentId: summary.ref.documentId,
@@ -263,7 +263,7 @@ export class ContentService {
         compareContent(
           left,
           right,
-          query.sort ?? 'activityAt',
+          query.sort ?? 'filesystemModifiedAt',
           query.direction ?? 'desc',
         ),
       );

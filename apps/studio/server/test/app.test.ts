@@ -863,17 +863,28 @@ describe('Studio workspace API', () => {
           collectionId: string;
           state: string;
           path: string;
+          title: string;
         }>;
         counts: Record<string, number>;
       };
     }>().content;
     expect(initialContent).toMatchObject({
       counts: { all: 2, published: 2, draft: 0, modified: 0 },
-      items: [
-        { title: 'Hello', state: 'published', collectionId: 'posts' },
-        { title: 'Alpha old', state: 'published', collectionId: 'posts' },
-      ],
     });
+    expect(initialContent.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Hello',
+          state: 'published',
+          collectionId: 'posts',
+        }),
+        expect.objectContaining({
+          title: 'Alpha old',
+          state: 'published',
+          collectionId: 'posts',
+        }),
+      ]),
+    );
     expect(JSON.stringify(initialContent)).not.toContain('Body');
     const publishedAscending = await app.inject({
       url: `/api/sites/${siteId}/content?sort=publishedAt&direction=asc&page=1&pageSize=1`,
@@ -905,7 +916,7 @@ describe('Studio workspace API', () => {
     expect(categorySearch.json()).toMatchObject({
       content: { total: 1, items: [{ title: 'Hello' }] },
     });
-    const published = initialContent.items[0];
+    const published = initialContent.items.find((item) => item.title === 'Hello');
     if (!published) throw new Error('fixture post missing');
 
     const opened = await app.inject({

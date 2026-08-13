@@ -217,6 +217,8 @@ export interface AgentSessionSummary {
   readonly id: string;
   readonly siteId: string;
   readonly displayName: string;
+  readonly documentId?: string;
+  readonly collectionId?: string;
   readonly state: 'active' | 'archived';
   readonly approvalMode?: AgentApprovalMode;
   readonly createdAt: string;
@@ -1010,6 +1012,8 @@ export class StudioApi {
     readonly siteId: string;
     readonly displayName: string;
     readonly approvalMode?: AgentApprovalMode;
+    readonly documentId?: string;
+    readonly collectionId?: string;
   }) {
     return this.#request<AgentSessionSummary>(
       `/api/sites/${input.siteId}/agent/sessions`,
@@ -1018,6 +1022,12 @@ export class StudioApi {
         body: JSON.stringify({
           displayName: input.displayName,
           ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+          ...(input.documentId && input.collectionId
+            ? {
+                documentId: input.documentId,
+                collectionId: input.collectionId,
+              }
+            : {}),
         }),
       },
     );

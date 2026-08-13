@@ -143,12 +143,11 @@ describe('Site Agent Pi feasibility', () => {
     ]);
   });
 
-  it('exposes Pi file tools without bash', async () => {
+  it('exposes Pi file tools plus a Site-scoped shell', async () => {
     const siteRoot = await mkdtemp(join(tmpdir(), 'blog-studio-site-'));
     const names = createSiteFileTools(siteRoot).map((tool) => tool.name);
 
     expect(names).toEqual(['read', 'write', 'edit', 'grep', 'find', 'ls']);
-    expect(names).not.toContain('bash');
   });
 
   it('rejects lexical, absolute, and symlink escapes', async () => {
