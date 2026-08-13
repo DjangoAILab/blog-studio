@@ -1,3 +1,6 @@
+import { unlink } from 'node:fs/promises';
+
+import { resolveWorkspacePath } from '@blog-studio/adapter-command';
 import {
   BlogStudioError,
   createDocumentId,
@@ -8,6 +11,7 @@ import {
   type ContentState,
   type ContentSummary,
   type FrontMatterValue,
+  type PromoteDocumentResult,
 } from '@blog-studio/core';
 import {
   RevisionConflictError,
@@ -516,6 +520,64 @@ export class ContentService {
         body: '',
       });
     }
+  }
+
+  public async promote(input: {
+    readonly siteId: string;
+    readonly collectionId: string;
+    readonly documentId: string;
+    readonly expectedRevision: string;
+  }): Promise<PromoteDocumentResult> {
+    const current = await this.read(
+      input.siteId,
+      input.collectionId,
+      input.documentId,
+    );
+    if (current.source.ref.collectionId !== 'drafts') {
+      throw new BlogStudioError(
+        'DOCUMENT_CONFLICT',
+        'Only native drafts can be published into posts',
+        { path: current.source.ref.path },
+      );
+    }
+    if (current.source.revision !== input.expectedRevision) {
+      throw new SourceRevisionConflictError(
+        input.expectedRevision,
+        current.source.revision,
+      );
+    }
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace.generator.promoteDocument) {
+      throw new Error('This site cannot publish drafts into posts');
+    }
+    return await workspace.generator.promoteDocument(
+      workspace.config.workspace.root,
+      {
+        ref: current.source.ref,
+        expectedRevision: current.source.revision,
+        targetCollectionId: 'posts',
+      },
+    );
+  }
+
+  public async remove(input: {
+    readonly siteId: string;
+    readonly collectionId: string;
+    readonly documentId: string;
+  }): Promise<void> {
+    const current = await this.read(
+      input.siteId,
+      input.collectionId,
+      input.documentId,
+    );
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    const path = await resolveWorkspacePath(
+      workspace.config.workspace.root,
+      current.source.ref.path,
+    );
+    await unlink(path);
   }
 
   async #dirtyPaths(

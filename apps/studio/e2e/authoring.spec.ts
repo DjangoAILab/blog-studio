@@ -71,13 +71,17 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     name: /Second Browser Site Agent/,
   });
   await secondAgent.getByRole('button', { name: '切换会话' }).click();
+  const secondSwitcher = secondSitePage.getByRole('dialog', {
+    name: '切换会话',
+  });
   await expect(
-    secondAgent.getByLabel('Agent Session').locator('option'),
+    secondSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(1);
-  await secondAgent.getByRole('button', { name: '新建' }).click();
+  await secondSwitcher.getByRole('button', { name: '新建' }).click();
   await expect(
-    secondAgent.getByLabel('Agent Session').locator('option'),
+    secondSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(2);
+  await secondSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
   await secondAgent.getByRole('button', { name: '关闭 Agent' }).click();
   await secondSitePage.getByRole('button', { name: '配置本地调试' }).click();
   await expect(
@@ -97,20 +101,24 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   });
   await expect(agentPanel).toBeVisible();
   await agentPanel.getByRole('button', { name: '切换会话' }).click();
-  await agentPanel.getByRole('button', { name: '新建' }).click();
+  const sessionSwitcher = page.getByRole('dialog', { name: '切换会话' });
+  await sessionSwitcher.getByRole('button', { name: '新建' }).click();
   await expect(
-    agentPanel.getByLabel('Agent Session').locator('option'),
+    sessionSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(2);
-  await agentPanel.getByRole('button', { name: '新建' }).click();
+  await sessionSwitcher.getByRole('button', { name: '新建' }).click();
   await expect(
-    agentPanel.getByLabel('Agent Session').locator('option'),
+    sessionSwitcher.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(3);
-  const firstSiteSessionId = await agentPanel
+  const firstSiteSessionId = await sessionSwitcher
     .getByLabel('Agent Session')
     .inputValue();
-  await agentPanel.getByLabel('执行模式').selectOption('yolo');
-  await expect(agentPanel.getByText(/删除未跟踪文件可能无法/)).toBeVisible();
-  await agentPanel.getByRole('button', { name: '归档' }).click();
+  await sessionSwitcher.getByLabel('执行模式').selectOption('yolo');
+  await expect(
+    sessionSwitcher.getByText(/删除未跟踪文件可能无法/),
+  ).toBeVisible();
+  await sessionSwitcher.getByRole('button', { name: '归档' }).click();
+  await sessionSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(
     agentPanel.getByRole('button', { name: '恢复 Session' }),
   ).toBeVisible();
@@ -285,10 +293,12 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .getByRole('button', { name: '切换会话' })
     .click();
   await expect(
-    page
-      .getByRole('complementary', { name: /Agent/ })
-      .getByLabel('Agent Session'),
+    page.getByRole('dialog', { name: '切换会话' }).getByLabel('Agent Session'),
   ).toHaveValue(firstSiteSessionId);
+  await page
+    .getByRole('dialog', { name: '切换会话' })
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await page
     .getByRole('complementary', { name: /Agent/ })
     .getByRole('button', { name: /查看 选区/ })

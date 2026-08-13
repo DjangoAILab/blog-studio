@@ -76,7 +76,16 @@ export function LocalDevelopment({
           <h2>本地调试站点</h2>
         </div>
         <span className={`is-${details.status}`}>
-          {statusLabel[details.status]}
+          {busy || details.status === 'starting' ? (
+            <>
+              <span className="studio2-loading-orb" />
+              {details.status === 'starting' || busy
+                ? '启动中，可能需要一会儿'
+                : statusLabel[details.status]}
+            </>
+          ) : (
+            statusLabel[details.status]
+          )}
         </span>
       </header>
       <p>
@@ -117,7 +126,7 @@ export function LocalDevelopment({
             disabled={busy}
             onClick={() => void control('start')}
           >
-            启动本地站点
+            {busy ? '正在启动…' : '启动本地站点'}
           </button>
         )}
       </div>

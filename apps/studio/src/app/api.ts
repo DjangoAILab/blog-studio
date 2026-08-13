@@ -705,6 +705,42 @@ export class StudioApi {
     );
   }
 
+  public publishDraft(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedRevision: string;
+  }) {
+    return this.#request<DocumentPayload>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/publish?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ expectedRevision: input.expectedRevision }),
+      },
+    );
+  }
+
+  public deleteContent(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+  }) {
+    return this.#request<{ deleted: true }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}?collection=${encodeURIComponent(input.collection)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  public agentAttachmentUrl(
+    siteId: string,
+    sessionId: string,
+    attachmentId: string,
+    download = false,
+  ): string {
+    const parameters = download ? '?download=1' : '';
+    return `/api/sites/${siteId}/agent/sessions/${sessionId}/attachments/${attachmentId}${parameters}`;
+  }
+
   public discardWorkingCopy(input: {
     readonly siteId: string;
     readonly documentId: string;

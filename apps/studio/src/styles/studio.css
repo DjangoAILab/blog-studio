@@ -48,24 +48,23 @@ body::before {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  border: 1px solid #494f49;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0.78rem 1rem;
+  padding: 0.72rem 1rem;
   background: var(--ink);
   color: #f8f3e8;
   box-shadow: 0 12px 32px #20282542;
   font-size: 0.76rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   cursor: pointer;
-}
-.agent-launcher span {
-  color: #efb76b;
-  font-size: 1rem;
 }
 .agent-launcher:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+.studio2-shell.is-agent-open {
+  padding-right: min(30rem, 38vw);
 }
 .agent-panel {
   position: fixed;
@@ -75,11 +74,11 @@ body::before {
   z-index: 82;
   display: flex;
   flex-direction: column;
-  width: min(31rem, 94vw);
-  border-left: 1px solid #3e453f;
-  background: linear-gradient(180deg, #252d29 0, #1f2623 48%, #171d1a 100%);
-  color: #f3eee2;
-  box-shadow: -22px 0 60px #151a184d;
+  width: min(30rem, 38vw);
+  border-left: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: -18px 0 40px #20282514;
 }
 .agent-panel button,
 .agent-panel select,
@@ -92,7 +91,7 @@ body::before {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid #454d47;
+  border-bottom: 1px solid var(--line);
 }
 .agent-panel-header strong {
   min-width: 0;
@@ -109,37 +108,21 @@ body::before {
   align-items: center;
   gap: 0.35rem;
 }
-.agent-header-actions button {
-  border: 1px solid #535d56;
-  border-radius: 999px;
-  background: #2b342f;
-  padding: 0.35rem 0.7rem;
-  font-size: 0.68rem;
-  cursor: pointer;
-}
-.agent-header-actions button[aria-label='关闭 Agent'] {
-  width: 2rem;
-  height: 2rem;
-  border: 0;
-  border-radius: 50%;
-  padding: 0;
-  background: transparent;
-  color: #bcc3bd;
-  font-size: 1.45rem;
+.agent-header-actions .studio2-secondary-button {
+  min-height: 34px;
+  padding: 0 0.8rem;
+  font-size: 0.72rem;
 }
 .agent-switcher {
   display: grid;
   gap: 0.65rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #39413c;
-  background: #1c2320;
 }
 .agent-switcher select,
 .agent-switcher-actions button {
   min-width: 0;
-  border: 1px solid #535d56;
-  border-radius: 4px;
-  background: #2b342f;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
   padding: 0.5rem 0.65rem;
   font-size: 0.72rem;
 }
@@ -153,7 +136,7 @@ body::before {
 .agent-switcher > label {
   display: grid;
   gap: 0.3rem;
-  color: #aeb7b0;
+  color: var(--muted);
   font-size: 0.62rem;
   font-weight: 750;
 }
@@ -236,21 +219,22 @@ body::before {
 }
 .agent-turn-state {
   margin: 0;
-  padding: 0.45rem 1rem;
-  border-bottom: 1px solid #39413c;
-  color: #bdc7bf;
-  font-size: 0.66rem;
+  padding: 0.55rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 .agent-turn-state[data-state='failed'],
 .agent-turn-state[data-state='interrupted'] {
-  color: #ffc5b2;
+  color: var(--accent);
 }
 .agent-yolo-warning {
   margin: 0;
-  padding: 0.65rem 1rem;
-  border-bottom: 1px solid #744b35;
-  background: #5c3326;
-  color: #f1d7bd;
+  padding: 0.65rem 0;
+  color: var(--accent);
   font-size: 0.68rem;
   line-height: 1.5;
 }
@@ -259,32 +243,26 @@ body::before {
   min-height: 0;
   overflow-y: auto;
   padding: 1rem;
-  scrollbar-color: #5a655e transparent;
 }
 .agent-history article {
   margin: 0 0 0.85rem;
   padding: 0.75rem 0.85rem;
-  border: 1px solid #424c46;
-  border-radius: 4px 14px 14px 14px;
-  background: #2a332e;
+  border: 1px solid var(--line);
+  border-radius: 4px 16px 16px 16px;
+  background: white;
 }
 .agent-history article[data-role='user'] {
-  margin-left: 2rem;
-  border-color: #78574a;
-  border-radius: 14px 4px 14px 14px;
-  background: #47372f;
-}
-.agent-history article[data-role='context'] {
-  border-style: dashed;
-  background: transparent;
+  margin-left: 1.5rem;
+  border-radius: 16px 4px 16px 16px;
+  background: #f3efe4;
 }
 .agent-history article.is-streaming {
-  border-color: #829378;
+  border-color: var(--moss);
 }
 .agent-history article > span {
   display: block;
   margin-bottom: 0.35rem;
-  color: #d3a66b;
+  color: var(--muted);
   font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -292,9 +270,9 @@ body::before {
 .agent-history article p {
   margin: 0;
   overflow-wrap: anywhere;
-  color: #ede8dc;
+  color: var(--ink);
   font:
-    400 0.86rem/1.6 'Avenir Next',
+    400 0.9rem/1.6 'Avenir Next',
     'Noto Sans CJK SC',
     sans-serif;
   white-space: pre-wrap;
@@ -302,14 +280,14 @@ body::before {
 .agent-history-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.4rem;
   margin: 0 0 0.4rem;
 }
 .agent-history-chips em {
-  border: 1px solid #58645c;
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.15rem 0.45rem;
-  color: #c5cdc6;
+  color: var(--muted);
   font-size: 0.6rem;
   font-style: normal;
 }
@@ -337,11 +315,11 @@ body::before {
 .agent-empty {
   align-self: center;
   padding: 2rem;
-  color: #aeb6b0;
+  color: var(--muted);
   text-align: center;
 }
 .agent-empty b {
-  color: #f0eadf;
+  color: var(--ink);
 }
 .agent-empty p {
   font-size: 0.76rem;
@@ -355,8 +333,8 @@ body::before {
 .agent-approval {
   margin: 0 1rem 0.8rem;
   padding: 0.8rem;
-  border: 1px solid #ba7b49;
-  background: #352a23;
+  border: 1px solid #e4c8b0;
+  background: #f7efe6;
 }
 .agent-approval b,
 .agent-approval code {
@@ -364,7 +342,7 @@ body::before {
   margin-bottom: 0.5rem;
 }
 .agent-approval code {
-  color: #d9c9b8;
+  color: var(--muted);
   font-size: 0.68rem;
   overflow-wrap: anywhere;
 }
@@ -386,8 +364,8 @@ body::before {
 }
 .agent-composer {
   padding: 0.8rem 1rem 1rem;
-  border-top: 1px solid #454e48;
-  background: #202824;
+  border-top: 1px solid var(--line);
+  background: #f3efe4;
 }
 .agent-contexts {
   display: flex;
@@ -397,10 +375,10 @@ body::before {
 }
 .agent-contexts > button,
 .agent-context-chip {
-  border: 1px solid #58645c;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: #303a34;
-  color: #cbd3cc;
+  background: white;
+  color: var(--ink);
   padding: 0.32rem 0.55rem;
   font-size: 0.62rem;
 }
@@ -419,7 +397,7 @@ body::before {
   border: 0;
   border-radius: 50%;
   padding: 0;
-  background: #4c5750;
+  background: var(--line);
   cursor: pointer;
   line-height: 1;
 }
@@ -439,7 +417,7 @@ body::before {
   flex-basis: 100%;
   max-width: 22rem;
   padding: 0.3rem 0.15rem 0.1rem;
-  color: #e1e6e2;
+  color: var(--muted);
   line-height: 1.45;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -447,18 +425,18 @@ body::before {
 .agent-composer > textarea {
   width: 100%;
   resize: vertical;
-  border: 1px solid #59645c;
-  border-radius: 7px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   outline: none;
-  background: #161d19;
+  background: white;
   padding: 0.8rem;
-  color: #f2ede2;
-  font-size: 0.78rem;
+  color: var(--ink);
+  font-size: 0.86rem;
   line-height: 1.5;
 }
 .agent-composer > textarea:focus {
-  border-color: #b68354;
-  box-shadow: 0 0 0 2px #b6835426;
+  border-color: var(--moss);
+  box-shadow: 0 0 0 2px #83967533;
 }
 .agent-composer-actions {
   display: flex;
@@ -468,9 +446,9 @@ body::before {
 }
 .agent-composer-actions button,
 .agent-upload-button {
-  border: 1px solid #5b665f;
-  border-radius: 4px;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
   padding: 0.52rem 0.72rem;
   font-size: 0.7rem;
   cursor: pointer;
@@ -491,8 +469,8 @@ body::before {
 .agent-error {
   margin: 0;
   padding: 0.65rem 1rem;
-  background: #6f3027;
-  color: #ffe5df;
+  background: #f6e4df;
+  color: var(--accent);
   font-size: 0.7rem;
 }
 .source-editor-wrap {
@@ -517,6 +495,14 @@ body::before {
   cursor: pointer;
 }
 
+@media (max-width: 860px) {
+  .studio2-shell.is-agent-open {
+    padding-right: 0;
+  }
+  .agent-panel {
+    width: min(100vw, 28rem);
+  }
+}
 @media (max-width: 700px) {
   .agent-panel {
     width: 100vw;
@@ -2280,26 +2266,34 @@ select:focus-visible,
   min-height: 100px;
   padding: 12px 14px;
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 42px;
+  grid-template-columns: minmax(0, 1fr) 42px;
   align-items: center;
-  gap: 18px;
+  gap: 8px;
   border: 0;
   border-radius: 21px;
   color: var(--studio-ink);
   background: transparent;
-  cursor: pointer;
   text-align: left;
-  transition:
-    background-color 160ms ease,
-    transform 160ms ease;
+  transition: background-color 160ms ease;
+}
+
+.studio2-article-open {
+  min-width: 0;
+  min-height: 76px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .studio2-article-row:hover {
   background: rgba(118, 118, 128, 0.065);
-}
-
-.studio2-article-row:active {
-  transform: scale(0.995);
 }
 
 .studio2-article-mark {
@@ -2392,25 +2386,24 @@ select:focus-visible,
   font-style: normal;
 }
 
-.studio2-row-more {
+.studio2-row-more,
+.studio2-icon-more {
   width: 38px;
   height: 38px;
   display: grid;
   place-items: center;
-  border: 1px solid transparent;
+  border: 1px solid var(--studio-line);
   border-radius: 13px;
   color: var(--studio-muted);
+  background: rgba(255, 255, 255, 0.72);
   font-size: 11px;
   letter-spacing: 0.08em;
-  opacity: 0;
-  transition: opacity 150ms ease;
+  cursor: pointer;
 }
 
-.studio2-article-row:hover .studio2-row-more,
-.studio2-article-row:focus-visible .studio2-row-more {
-  border-color: var(--studio-line);
-  background: rgba(255, 255, 255, 0.62);
-  opacity: 1;
+.studio2-icon-more {
+  width: 34px;
+  height: 34px;
 }
 
 .studio2-list-state {
@@ -2798,6 +2791,110 @@ select:focus-visible,
   align-items: flex-end;
   justify-content: flex-end;
   padding: 28px;
+}
+
+.studio2-dialog-card {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 48px));
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  border-radius: 24px;
+  color: var(--studio-ink);
+  background: rgba(252, 251, 249, 0.94);
+  box-shadow: 0 24px 70px rgba(38, 31, 25, 0.22);
+}
+
+.studio2-dialog-card > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.studio2-dialog-card h2,
+.studio2-dialog-card [data-slot='title'] {
+  margin: 0;
+  font-size: 20px;
+}
+
+.studio2-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.25rem 0.45rem;
+  background: white;
+  font-size: 0.68rem;
+}
+
+.studio2-attachment-chip img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.studio2-attachment-chip a,
+.studio2-attachment-chip button {
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.studio2-agent-process {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.studio2-agent-process[data-outcome='failed'] {
+  border-color: #e4b4ac;
+  background: #fbf1ee;
+}
+
+.studio2-agent-process summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.studio2-agent-process p {
+  margin: 0.4rem 0 0;
+  white-space: pre-wrap;
+}
+
+.studio2-inline-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.studio3-content-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 4px;
+}
+
+.studio3-content-row.is-selected {
+  border-radius: 15px;
+  background: white;
+  box-shadow:
+    0 4px 14px rgba(51, 45, 40, 0.06),
+    inset 0 0 0 1px rgba(60, 60, 67, 0.06);
+}
+
+.studio3-content-list .studio3-content-row button {
+  grid-template-columns: 9px minmax(0, 1fr);
 }
 
 .studio2-change-sheet {

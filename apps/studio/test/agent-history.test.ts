@@ -24,45 +24,131 @@ describe('Agent history presentation', () => {
     ]);
   });
 
-  it('drops tool results and keeps the assistant reply people should read', () => {
+  it('binds uploaded attachments onto the user chips', () => {
     const items = presentAgentHistory({
       history: [
         {
           id: 'u1',
           kind: 'message',
           role: 'user',
-          text: '写一段开场',
+          text: '看看这张图',
+        },
+      ],
+      attachments: [
+        {
+          id: 'att-1',
+          filename: 'cover.png',
+          mimeType: 'image/png',
+          byteSize: 12,
+          status: 'ready',
+          messageEntryId: 'u1',
+        },
+      ],
+    });
+    expect(items).toMatchObject([
+      {
+        type: 'user',
+        chips: [
+          {
+            kind: 'attachment',
+            label: '附件 · cover.png',
+            attachmentId: 'att-1',
+            mimeType: 'image/png',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('folds tools and inner monologue after a successful turn', () => {
+    const items = presentAgentHistory({
+      history: [
+        { id: 'u1', kind: 'message', role: 'user', text: '写一段开场' },
+        {
+          id: 'a0',
+          kind: 'message',
+          role: 'assistant',
+          text: '先读一下草稿再改。',
         },
         {
           id: 't1',
           kind: 'message',
           role: 'toolResult',
-          text: '# 整篇文章被倒进历史',
+          text: 'write source/_drafts/test.md',
         },
         {
           id: 'a1',
           kind: 'message',
           role: 'assistant',
-          text: '已经写好开场，并更新了草稿。',
+          text: '文章已经写好了，原图也已经放进去。下面是我做的事情汇总：',
         },
       ],
+      lastTurnStatus: 'completed',
     });
-    expect(items).toEqual([
-      {
-        type: 'user',
-        id: 'u1',
-        text: '写一段开场',
-        chips: [],
-      },
-      {
-        type: 'assistant',
-        id: 'a1',
-        text: '已经写好开场，并更新了草稿。',
-      },
+    expect(items.map((item) => item.type)).toEqual([
+      'user',
+      'process',
+      'assistant',
+    ]);
+    expect(items[1]).toMatchObject({
+      type: 'process',
+      collapsed: true,
+      outcome: 'completed',
+    });
+    expect(items[2]).toMatchObject({
+      type: 'assistant',
+      text: '文章已经写好了，原图也已经放进去。下面是我做的事情汇总：',
+    });
+  });
+
+  it('keeps the process open when the turn failed', () => {
+    const items = presentAgentHistory({
+      history: [
+        { id: 'u1', kind: 'message', role: 'user', text: '删掉那篇' },
+        {
+          id: 'a0',
+          kind: 'message',
+          role: 'assistant',
+          text: '我来删除。',
+        },
+        {
+          id: 't1',
+          kind: 'message',
+          role: 'toolResult',
+          text: 'delete_path failed',
+        },
+      ],
+      lastTurnStatus: 'failed',
+    });
+    expect(items.map((item) => item.type)).toEqual(['user', 'process']);
+    expect(items[1]).toMatchObject({
+      type: 'process',
+      collapsed: false,
+      outcome: 'failed',
+    });
+  });
+
+  it('leaves a continue message visible and not folded', () => {
+    const items = presentAgentHistory({
+      history: [
+        { id: 'u1', kind: 'message', role: 'user', text: '写开场' },
+        { id: 'a1', kind: 'message', role: 'assistant', text: '先写了一半。' },
+        { id: 'u2', kind: 'message', role: 'user', text: '继续' },
+        { id: 'a2', kind: 'message', role: 'assistant', text: '写完了。' },
+      ],
+      lastTurnStatus: 'completed',
+    });
+    expect(
+      items.map((item) => [item.type, 'text' in item ? item.text : '']),
+    ).toEqual([
+      ['user', '写开场'],
+      ['assistant', '先写了一半。'],
+      ['user', '继续'],
+      ['assistant', '写完了。'],
     ]);
   });
 
-  it('shows live tools only while they are running', () => {
+  it('keeps live tools open while the turn is running', () => {
     const items = presentAgentHistory({
       history: [
         { id: 'u1', kind: 'message', role: 'user', text: '改一下标题' },
@@ -77,13 +163,20 @@ describe('Agent history presentation', () => {
         },
       ],
       liveText: '正在写入…',
+      lastTurnStatus: 'running',
     });
     expect(items.map((item) => item.type)).toEqual([
       'user',
-      'tool',
+      'process',
       'assistant',
     ]);
-    expect(items.at(-1)).toMatchObject({
+    expect(items[1]).toMatchObject({
+      type: 'process',
+      collapsed: false,
+      outcome: 'running',
+    });
+    expect(items[2]).toMatchObject({
+      type: 'assistant',
       streaming: true,
       text: '正在写入…',
     });
