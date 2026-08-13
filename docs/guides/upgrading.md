@@ -4,6 +4,10 @@ Blog Studio keeps canonical content in the mounted workspace and operational
 state in SQLite. Upgrade the Studio container independently from the generated
 public site, and always pin an immutable image digest for production.
 
+This page is the **stable** install path. The home-server editor tracks `dev`
+and is documented in [Development and release](development-and-release.md). Do
+not point a durable public host at `blog-studio:dev`.
+
 ## Before upgrading
 
 1. Read the release notes and confirm configuration compatibility.
@@ -12,7 +16,7 @@ public site, and always pin an immutable image digest for production.
 4. Record the current `BLOG_STUDIO_IMAGE` digest and the exact Compose file set.
 5. Verify the current health endpoint and one authenticated edit/preview journey.
 
-For a v0.1 upgrade, initialize owner credentials before exposing the v0.2
+For a v0.1 upgrade, initialize owner credentials before exposing the v0.3
 login, retain the existing configuration and SQLite database, and let migration
 run only after the checksum-validated backup exists. The existing workspace is
 not silently registered: after login, inspect it as a Site candidate and confirm

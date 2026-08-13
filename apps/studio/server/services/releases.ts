@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { isAbsolute, relative, resolve, sep, join } from 'node:path';
+import { utimes } from 'node:fs/promises';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import {
   createReleaseId,
@@ -321,9 +322,28 @@ export class ReleaseService {
         draftInput.documentId,
       );
       const snapshot = this.options.drafts.get(ref.workspaceId, ref.documentId);
-      if (!snapshot || snapshot.version !== draftInput.version)
-        throw new Error('Draft changed before release started');
-      draft = { snapshot, ref };
+      if (snapshot) {
+        if (snapshot.version !== draftInput.version)
+          throw new Error('Draft changed before release started');
+        draft = { snapshot, ref };
+      } else {
+        const source = await workspace.generator.readDocument(
+          workspace.config.workspace.root,
+          ref,
+        );
+        draft = {
+          snapshot: {
+            workspaceId: ref.workspaceId,
+            documentId: ref.documentId,
+            version: draftInput.version,
+            sourceRevision: source.revision,
+            frontMatter: source.frontMatter,
+            body: source.body,
+            savedAt: this.#now().toISOString(),
+          },
+          ref,
+        };
+      }
     }
 
     const now = this.#now().toISOString();
@@ -497,11 +517,17 @@ export class ReleaseService {
             throw new Error(
               `Generator ${workspace.generator.id} does not support draft promotion`,
             );
-          await workspace.generator.promoteDocument(workspaceRoot, {
-            ref: draft.ref,
-            targetCollectionId: 'posts',
-            expectedRevision: written.revision,
-          });
+          const promoted = await workspace.generator.promoteDocument(
+            workspaceRoot,
+            {
+              ref: draft.ref,
+              targetCollectionId: 'posts',
+              expectedRevision: written.revision,
+            },
+          );
+          const stamp = new Date(release.createdAt);
+          if (!Number.isNaN(stamp.valueOf()))
+            await utimes(join(workspaceRoot, promoted.ref.path), stamp, stamp);
         }
       };
       const result = await new ReleaseOrchestrator({
@@ -521,11 +547,16 @@ export class ReleaseService {
               prepare: () => prepareDraft(sandbox!.workspaceRoot),
               commit: async () => {
                 await prepareDraft(workspace.config.workspace.root);
+                const leftover = this.options.drafts.get(
+                  draft.snapshot.workspaceId,
+                  draft.snapshot.documentId,
+                );
                 if (
+                  leftover &&
                   !this.options.drafts.delete(
-                    draft.snapshot.workspaceId,
-                    draft.snapshot.documentId,
-                    draft.snapshot.version,
+                    leftover.workspaceId,
+                    leftover.documentId,
+                    leftover.version,
                   )
                 )
                   throw new Error('Draft changed while committing release');

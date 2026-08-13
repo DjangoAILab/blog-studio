@@ -8,9 +8,12 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
+import { AddToChatIcon } from '../features/agent/add-to-chat-icon.js';
 import { AgentPanel } from '../features/agent/agent-panel.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
 import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
+import { ArticleActions } from '../features/library/article-actions.js';
+import { ConfirmDialog } from '../features/shell/confirm-dialog.js';
 import {
   ContentLibrary,
   type ContentAdvancedFilters,
@@ -23,6 +26,7 @@ import {
   type ResourceUploadView,
 } from '../features/resources/resource-picker.js';
 import { SystemSettings } from '../features/settings/system-settings.js';
+import { LocalDebugControl } from '../features/site/local-debug-control.js';
 import { SiteOverview } from '../features/site/site-overview.js';
 import { GlobalSearch } from '../features/search/global-search.js';
 import {
@@ -62,7 +66,7 @@ function initialContentSearch(): string {
 }
 
 function initialContentSort(): ContentSortField {
-  if (typeof window === 'undefined') return 'activityAt';
+  if (typeof window === 'undefined') return 'filesystemModifiedAt';
   const sort = new URLSearchParams(window.location.search).get('contentSort');
   return [
     'activityAt',
@@ -74,7 +78,7 @@ function initialContentSort(): ContentSortField {
     'path',
   ].includes(sort ?? '')
     ? (sort as ContentSortField)
-    : 'activityAt';
+    : 'filesystemModifiedAt';
 }
 
 function initialContentDirection(): ContentSortDirection {
@@ -231,6 +235,7 @@ export function StudioApp() {
   const [version, setVersion] = useState(0);
   const [mode, setMode] = useState<'visual' | 'source'>('visual');
   const [saveState, setSaveState] = useState<SaveState>('clean');
+  const saveGeneration = useRef(0);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewError, setPreviewError] = useState('');
@@ -252,6 +257,18 @@ export function StudioApp() {
     Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
   >();
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
+  const [agentCreateRequested, setAgentCreateRequested] = useState(false);
+  const [agentDocked, setAgentDocked] = useState(false);
+  const [agentSlot, setAgentSlot] = useState<HTMLDivElement | null>(null);
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
+  const [confirm, setConfirm] = useState<{
+    readonly title: string;
+    readonly description: string;
+    readonly confirmLabel?: string;
+    readonly danger?: boolean;
+    readonly run: () => void | Promise<void>;
+  }>();
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
 
   function uploadResource(file: File): void {
@@ -386,7 +403,8 @@ export function StudioApp() {
     const url = new URL(window.location.href);
     if (contentSearch) url.searchParams.set('contentSearch', contentSearch);
     else url.searchParams.delete('contentSearch');
-    if (contentSort === 'activityAt') url.searchParams.delete('contentSort');
+    if (contentSort === 'filesystemModifiedAt')
+      url.searchParams.delete('contentSort');
     else url.searchParams.set('contentSort', contentSort);
     if (contentDirection === 'desc')
       url.searchParams.delete('contentDirection');
@@ -539,16 +557,16 @@ export function StudioApp() {
         if (cancelled) return;
         setDocument(result);
         setLoadedDocumentId(selected.documentId);
-        const nextBody = result.draft?.body ?? result.source.body;
+        const nextBody = result.source.body;
         setBody(nextBody);
         setMode(/\{%[\s\S]*?%\}/.test(nextBody) ? 'source' : 'visual');
-        const matter = result.draft?.frontMatter ?? result.source.frontMatter;
+        const matter = result.source.frontMatter;
         setFrontMatter(matter);
         setTitle(
           typeof matter.title === 'string' ? matter.title : selected.title,
         );
-        setVersion(result.draft?.version ?? 0);
-        setSaveState(result.stale ? 'conflict' : 'clean');
+        setVersion(0);
+        setSaveState('clean');
       });
     return () => {
       cancelled = true;
@@ -581,7 +599,15 @@ export function StudioApp() {
     return () => {
       cancelled = true;
     };
-  }, [api, loadedDocumentId, selected, site, version]);
+  }, [
+    api,
+    document?.source.revision,
+    editorEpoch,
+    loadedDocumentId,
+    selected,
+    site,
+    version,
+  ]);
 
   useEffect(() => {
     if (
@@ -592,6 +618,7 @@ export function StudioApp() {
       loadedDocumentId !== selected.documentId
     )
       return;
+    const generation = saveGeneration.current;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
       void api
@@ -605,10 +632,16 @@ export function StudioApp() {
           body,
         })
         .then((result) => {
-          setVersion(result.draft.version);
+          if (generation !== saveGeneration.current) return;
+          setDocument({
+            source: result.source,
+            draft: null,
+          });
+          setVersion(0);
           setSaveState('saved');
         })
         .catch((reason: unknown) => {
+          if (generation !== saveGeneration.current) return;
           setSaveState(
             reason instanceof Error && /conflict/i.test(reason.message)
               ? 'conflict'
@@ -630,10 +663,130 @@ export function StudioApp() {
     site,
   ]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's')
+        return;
+      event.preventDefault();
+      if (saveState === 'clean' || saveState === 'saved') setSaveState('saved');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [saveState]);
+
   function openContentDocument(item: ContentSummary): void {
     setSelected(item);
     setDestination('content');
     setPanel('write');
+  }
+
+  async function refreshContentList(): Promise<ContentQueryResult | undefined> {
+    if (!site) return undefined;
+    const refreshed = await api.content(site.id, contentQuery);
+    setSiteContent(refreshed.content);
+    return refreshed.content;
+  }
+
+  function publishArticle(item: ContentSummary): void {
+    if (!site || item.sourceState !== 'draft') return;
+    setConfirm({
+      title: '转为正式文章',
+      description: `把「${item.title}」从草稿移到已发布目录。之后再通过更改审阅提交到 Git。`,
+      confirmLabel: '转为正式文章',
+      run: async () => {
+        const opened = await api.siteDocument(
+          site.id,
+          item.documentId,
+          item.collectionId,
+        );
+        const published = await api.publishDraft({
+          siteId: site.id,
+          documentId: item.documentId,
+          collection: item.collectionId,
+          expectedRevision: opened.source.revision,
+        });
+        const list = await refreshContentList();
+        const next = list?.items.find(
+          (candidate) =>
+            candidate.documentId === published.source.ref.documentId,
+        );
+        if (next) openContentDocument(next);
+        else if (selected?.documentId === item.documentId) {
+          setSelected(undefined);
+          setDocument(undefined);
+        }
+      },
+    });
+  }
+
+  function deleteArticle(item: ContentSummary): void {
+    if (!site) return;
+    setConfirm({
+      title: item.sourceState === 'draft' ? '删除草稿' : '删除文章',
+      description:
+        item.sourceState === 'draft'
+          ? `删除草稿「${item.title}」？文件会从磁盘移除。`
+          : `从磁盘删除「${item.title}」？已提交的版本仍可通过 Git 恢复。`,
+      confirmLabel: '删除',
+      danger: true,
+      run: async () => {
+        await api.deleteContent({
+          siteId: site.id,
+          documentId: item.documentId,
+          collection: item.collectionId,
+        });
+        await refreshContentList();
+        if (selected?.documentId === item.documentId) {
+          setSelected(undefined);
+          setDocument(undefined);
+          setBody('');
+        }
+      },
+    });
+  }
+
+  async function reloadOpenDocument(paths?: readonly string[]): Promise<void> {
+    if (!site || !selected) return;
+    if (
+      paths &&
+      paths.length > 0 &&
+      !paths.some(
+        (path) =>
+          path === selected.path ||
+          path.endsWith(`/${selected.path}`) ||
+          selected.path.endsWith(path),
+      )
+    ) {
+      const refreshed = await api.content(site.id, contentQuery);
+      setSiteContent(refreshed.content);
+      return;
+    }
+    const restored = await api.siteDocument(
+      site.id,
+      selected.documentId,
+      selected.collectionId,
+    );
+    saveGeneration.current += 1;
+    setDocument(restored);
+    setLoadedDocumentId(selected.documentId);
+    setBody(restored.source.body);
+    setFrontMatter(restored.source.frontMatter);
+    setTitle(
+      typeof restored.source.frontMatter.title === 'string'
+        ? restored.source.frontMatter.title
+        : selected.title,
+    );
+    setVersion(0);
+    setSaveState('clean');
+    setEditorEpoch((value) => value + 1);
+    const refreshed = await api.content(site.id, contentQuery);
+    setSiteContent(refreshed.content);
+    setSelected(
+      (current) =>
+        refreshed.content.items.find(
+          (item) => item.documentId === current?.documentId,
+        ) ?? current,
+    );
   }
 
   function prepareChanges(): void {
@@ -710,7 +863,9 @@ export function StudioApp() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="studio-shell studio2-shell">
+      <div
+        className={`studio-shell studio2-shell${agentDocked ? ' is-agent-open' : ''}${destination === 'content' ? ' is-content' : ''}`}
+      >
         <StudioNavigation
           destination={destination}
           onCreateDocument={() => {
@@ -787,6 +942,7 @@ export function StudioApp() {
           onClose={() => setChangeSetOpen(false)}
           onOpenAgent={() => {
             setChangeSetOpen(false);
+            setAgentCreateRequested(false);
             setAgentOpenRequest((value) => value + 1);
           }}
           onCommit={async (review, input) => {
@@ -875,6 +1031,8 @@ export function StudioApp() {
                 }
                 onOpenContent={() => setDestination('content')}
                 onOpenDocument={openContentDocument}
+                onPublishDocument={publishArticle}
+                onDeleteDocument={deleteArticle}
                 onPrepareChanges={prepareChanges}
                 onReloadSite={async (siteId) => {
                   const latest = (await api.site(siteId)).site;
@@ -941,15 +1099,41 @@ export function StudioApp() {
             <h1>{selected?.title ?? '内容'}</h1>
           </div>
           <div className="studio2-content-actions">
+            {agentDocked ? (
+              <button
+                className="studio2-secondary-button"
+                type="button"
+                onClick={() => setLibraryCollapsed((value) => !value)}
+              >
+                {libraryCollapsed ? '显示内容' : '收起内容'}
+              </button>
+            ) : null}
             <SaveBadge state={saveState} />
-            <button
-              className="studio2-secondary-button"
-              disabled={!site || !selected}
-              type="button"
-              onClick={() => startPreview('markdown')}
-            >
-              预览全文
-            </button>
+            {selected ? (
+              <ArticleActions
+                compact
+                article={selected}
+                onOpen={openContentDocument}
+                onPublish={publishArticle}
+                onDelete={deleteArticle}
+              />
+            ) : null}
+            {site ? (
+              <LocalDebugControl
+                configured={site.capabilities.developmentConfigured}
+                profilesAvailable={
+                  site.capabilities.developmentProfiles.length > 0
+                }
+                siteId={site.id}
+                onConfigure={() => setDestination('site')}
+                onLoad={async (siteId) =>
+                  (await api.development(siteId)).development
+                }
+                onControl={async (siteId, action) =>
+                  (await api.controlDevelopment(siteId, action)).development
+                }
+              />
+            ) : null}
           </div>
         </motion.section>
 
@@ -973,6 +1157,8 @@ export function StudioApp() {
         <div
           className={`workspace-grid ${
             destination !== 'content' || !site ? 'studio2-hidden' : ''
+          }${agentDocked ? ' is-agent-open' : ''}${
+            libraryCollapsed ? ' is-library-collapsed' : ''
           }`}
         >
           <div className={`studio3-library-slot mobile-${panel}`}>
@@ -1022,23 +1208,29 @@ export function StudioApp() {
                 setContentAdvancedFilters(filters);
                 setContentPage(1);
               }}
-              onDiscardUnavailable={async (item) => {
+              onDiscardUnavailable={(item) => {
                 if (!site || !item.workingCopy) return;
-                if (
-                  !window.confirm(
+                setConfirm({
+                  title: '删除无法定位的工作副本',
+                  description:
                     '只删除这个无法定位的工作副本？源文件与站点中的其他内容不会被修改。',
-                  )
-                )
-                  return;
-                await api.discardUnavailableWorkingCopy({
-                  siteId: site.id,
-                  documentId: item.documentId,
-                  expectedVersion: item.workingCopy.version,
+                  confirmLabel: '删除工作副本',
+                  danger: true,
+                  run: async () => {
+                    if (!item.workingCopy) return;
+                    await api.discardUnavailableWorkingCopy({
+                      siteId: site.id,
+                      documentId: item.documentId,
+                      expectedVersion: item.workingCopy.version,
+                    });
+                    const refreshed = await api.content(site.id, contentQuery);
+                    setSiteContent(refreshed.content);
+                  },
                 });
-                const refreshed = await api.content(site.id, contentQuery);
-                setSiteContent(refreshed.content);
               }}
               onOpen={openContentDocument}
+              onPublish={publishArticle}
+              onDelete={deleteArticle}
               onPageChange={setContentPage}
               onSearchChange={(nextSearch) => {
                 setContentSearch(nextSearch);
@@ -1057,7 +1249,7 @@ export function StudioApp() {
               <span>文章</span>
               <i />
               {selected?.state === 'modified'
-                ? '工作副本'
+                ? '未提交改动'
                 : selected?.sourceState === 'draft'
                   ? '草稿'
                   : '已发布'}
@@ -1142,6 +1334,13 @@ export function StudioApp() {
                       Markdown 源码
                     </button>
                   </div>
+                  <button
+                    className="studio2-secondary-button"
+                    type="button"
+                    onClick={() => setPanel('preview')}
+                  >
+                    预览
+                  </button>
                   <ResourcePicker
                     accept={site?.capabilities.resourceMediaTypes ?? []}
                     inputRef={resourceInput}
@@ -1158,30 +1357,33 @@ export function StudioApp() {
                     uploads={uploads}
                     onDeleteOrphans={() => {
                       if (!orphanPlan || !site || !selected) return;
-                      if (
-                        !window.confirm(
-                          `清理这 ${orphanPlan.assets.length} 个未引用资源？删除前会再次核对文章版本；已引用资源不会被删除。`,
-                        )
-                      )
-                        return;
-                      setOrphanBusy(true);
-                      setOrphanError('');
-                      void api
-                        .deleteOrphanResources({
-                          siteId: site.id,
-                          documentId: selected.documentId,
-                          collection: selected.collectionId,
-                          confirmation: orphanPlan.confirmation,
-                        })
-                        .then(() => setOrphanPlan(undefined))
-                        .catch((reason: unknown) =>
-                          setOrphanError(
-                            reason instanceof Error
-                              ? reason.message
-                              : '未引用资源清理失败，请重新审阅',
-                          ),
-                        )
-                        .finally(() => setOrphanBusy(false));
+                      setConfirm({
+                        title: '清理未引用资源',
+                        description: `清理这 ${orphanPlan.assets.length} 个未引用资源？删除前会再次核对文章版本；已引用资源不会被删除。`,
+                        confirmLabel: '清理资源',
+                        danger: true,
+                        run: async () => {
+                          setOrphanBusy(true);
+                          setOrphanError('');
+                          try {
+                            await api.deleteOrphanResources({
+                              siteId: site.id,
+                              documentId: selected.documentId,
+                              collection: selected.collectionId,
+                              confirmation: orphanPlan.confirmation,
+                            });
+                            setOrphanPlan(undefined);
+                          } catch (reason: unknown) {
+                            setOrphanError(
+                              reason instanceof Error
+                                ? reason.message
+                                : '未引用资源清理失败，请重新审阅',
+                            );
+                          } finally {
+                            setOrphanBusy(false);
+                          }
+                        },
+                      });
                     }}
                     onDismiss={(upload) =>
                       setUploads((items) =>
@@ -1198,42 +1400,65 @@ export function StudioApp() {
                       uploadResource(upload.file);
                     }}
                   />
-                  {version > 0 && site && selected ? (
+                  {site && selected ? (
                     <button
                       className="discard-button"
                       onClick={() => {
-                        if (
-                          !window.confirm(
-                            '放弃已自动保存的修改并恢复到文件版本？原生 Markdown 文件不会被删除。',
-                          )
-                        )
-                          return;
-                        void api
-                          .discardWorkingCopy({
-                            siteId: site.id,
-                            documentId: selected.documentId,
-                            collection: selected.collectionId,
-                            expectedVersion: version,
-                          })
-                          .then(async () => {
-                            const restored = await api.siteDocument(
-                              site.id,
-                              selected.documentId,
-                              selected.collectionId,
-                            );
-                            setDocument(restored);
-                            setBody(restored.source.body);
-                            setFrontMatter(restored.source.frontMatter);
-                            setTitle(
-                              typeof restored.source.frontMatter.title ===
-                                'string'
-                                ? restored.source.frontMatter.title
-                                : selected.title,
-                            );
-                            setVersion(0);
-                            setSaveState('clean');
-                          })
-                          .catch(() => setSaveState('conflict'));
+                        setConfirm({
+                          title: '放弃修改',
+                          description:
+                            '放弃磁盘上尚未提交的修改，恢复到 Git 中的版本？新草稿若还没有提交记录，正文会清空。',
+                          confirmLabel: '放弃修改',
+                          danger: true,
+                          run: () => {
+                            const generation = ++saveGeneration.current;
+                            void api
+                              .discardWorkingCopy({
+                                siteId: site.id,
+                                documentId: selected.documentId,
+                                collection: selected.collectionId,
+                                expectedVersion: version,
+                              })
+                              .then(async () => {
+                                const restored = await api.siteDocument(
+                                  site.id,
+                                  selected.documentId,
+                                  selected.collectionId,
+                                );
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setDocument(restored);
+                                setBody(restored.source.body);
+                                setFrontMatter(restored.source.frontMatter);
+                                setTitle(
+                                  typeof restored.source.frontMatter.title ===
+                                    'string'
+                                    ? restored.source.frontMatter.title
+                                    : selected.title,
+                                );
+                                setVersion(0);
+                                setSaveState('clean');
+                                setEditorEpoch((value) => value + 1);
+                                const refreshed = await api.content(
+                                  site.id,
+                                  contentQuery,
+                                );
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setSiteContent(refreshed.content);
+                              })
+                              .catch((reason: unknown) => {
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setSaveState(
+                                  reason instanceof Error &&
+                                    /conflict/i.test(reason.message)
+                                    ? 'conflict'
+                                    : 'error',
+                                );
+                              });
+                          },
+                        });
                       }}
                     >
                       放弃修改
@@ -1333,8 +1558,39 @@ export function StudioApp() {
                     }
                   >
                     <VisualEditor
-                      key={`${selected?.documentId}-${mode}`}
+                      key={`${selected?.documentId}-${mode}-${document.source.revision}-${editorEpoch}`}
                       markdown={body}
+                      onSelectionChange={(selection) => {
+                        if (!selected) {
+                          setMarkdownSelection(undefined);
+                          return;
+                        }
+                        if (!selection) {
+                          setMarkdownSelection(undefined);
+                          return;
+                        }
+                        setMarkdownSelection({
+                          type: 'markdown-selection',
+                          documentId: selected.documentId,
+                          startLine: selection.startLine,
+                          endLine: selection.endLine,
+                          text: selection.text,
+                        });
+                      }}
+                      onAddToChat={(selection) => {
+                        if (!selected) return;
+                        const next = {
+                          type: 'markdown-selection' as const,
+                          documentId: selected.documentId,
+                          startLine: selection.startLine,
+                          endLine: selection.endLine,
+                          text: selection.text,
+                        };
+                        setMarkdownSelection(next);
+                        setAgentSelection(next);
+                        setAgentCreateRequested(false);
+                        setAgentOpenRequest((value) => value + 1);
+                      }}
                       resolveImageSource={(source) =>
                         `/api/sites/${site?.id ?? ''}/content/${selected?.documentId}/resource?collection=${encodeURIComponent(selected?.collectionId ?? '')}&source=${encodeURIComponent(source)}`
                       }
@@ -1376,20 +1632,25 @@ export function StudioApp() {
                         });
                       }}
                     />
-                    {markdownSelection ? (
-                      <button
-                        className="agent-selection-button"
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setAgentSelection(markdownSelection);
-                          setAgentOpenRequest((value) => value + 1);
-                        }}
-                      >
-                        ✦ 附加选区到 Agent
-                      </button>
-                    ) : null}
                   </div>
+                ) : null}
+                {markdownSelection &&
+                document &&
+                loadedDocumentId === selected?.documentId ? (
+                  <button
+                    className="agent-selection-button"
+                    type="button"
+                    aria-label="加入对话"
+                    title="加入对话"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setAgentSelection(markdownSelection);
+                      setAgentCreateRequested(false);
+                      setAgentOpenRequest((value) => value + 1);
+                    }}
+                  >
+                    <AddToChatIcon />
+                  </button>
                 ) : null}
               </section>
             )}
@@ -1407,10 +1668,40 @@ export function StudioApp() {
               onPreview={startPreview}
             />
           </div>
+          <div
+            ref={setAgentSlot}
+            className={`studio3-agent-slot${agentDocked ? ' is-open' : ''}`}
+            hidden={!agentDocked}
+          />
         </div>
+        <ConfirmDialog
+          open={Boolean(confirm)}
+          title={confirm?.title ?? ''}
+          description={confirm?.description ?? ''}
+          {...(confirm?.confirmLabel
+            ? { confirmLabel: confirm.confirmLabel }
+            : {})}
+          {...(confirm?.danger ? { danger: true } : {})}
+          onConfirm={() => {
+            const task = confirm?.run;
+            setConfirm(undefined);
+            void task?.();
+          }}
+          onOpenChange={(open) => {
+            if (!open) setConfirm(undefined);
+          }}
+        />
         <AgentPanel
           api={api}
           openRequest={agentOpenRequest}
+          createRequested={agentCreateRequested}
+          onOpenChange={(open) => {
+            setAgentDocked(open);
+            setLibraryCollapsed(open && destination === 'content');
+          }}
+          {...(destination === 'content' && agentSlot
+            ? { host: agentSlot }
+            : {})}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
           {...(destination === 'content' && selected
             ? {
@@ -1423,19 +1714,11 @@ export function StudioApp() {
                 },
               }
             : {})}
-          {...(destination === 'content' && selected && document
-            ? {
-                editorBufferContext: {
-                  type: 'editor-buffer' as const,
-                  documentId: selected.documentId,
-                  collectionId: selected.collectionId,
-                  sourceRevision: document.source.revision,
-                  body,
-                },
-              }
-            : {})}
           {...(agentSelection ? { selectionContext: agentSelection } : {})}
           onSelectionConsumed={() => setAgentSelection(undefined)}
+          onWorkspaceChanged={(paths) => {
+            void reloadOpenDocument(paths);
+          }}
         />
       </div>
     </MotionConfig>

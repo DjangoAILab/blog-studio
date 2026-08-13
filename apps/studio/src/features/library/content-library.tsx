@@ -8,6 +8,7 @@ import type {
   ContentState,
   ContentSummary,
 } from '../../app/api.js';
+import { ArticleActions } from './article-actions.js';
 
 type ContentFilter = 'all' | ContentState;
 
@@ -36,8 +37,10 @@ interface ContentLibraryProps {
   }) => Promise<void>;
   readonly onFilterChange: (filter: ContentFilter) => void;
   readonly onAdvancedFiltersChange: (filters: ContentAdvancedFilters) => void;
-  readonly onDiscardUnavailable: (item: ContentSummary) => Promise<void>;
+  readonly onDiscardUnavailable: (item: ContentSummary) => void | Promise<void>;
   readonly onOpen: (item: ContentSummary) => void;
+  readonly onPublish: (item: ContentSummary) => void;
+  readonly onDelete: (item: ContentSummary) => void;
   readonly onPageChange: (page: number) => void;
   readonly onSearchChange: (search: string) => void;
   readonly onSortChange: (
@@ -59,7 +62,7 @@ const filters: readonly {
 const stateLabels: Readonly<Record<ContentState, string>> = {
   draft: '草稿',
   published: '已发布',
-  modified: '工作副本',
+  modified: '未提交改动',
 };
 
 const sortLabels: Readonly<Record<ContentSortField, string>> = {
@@ -98,6 +101,8 @@ export function ContentLibrary({
   onAdvancedFiltersChange,
   onDiscardUnavailable,
   onOpen,
+  onPublish,
+  onDelete,
   onPageChange,
   onSearchChange,
   onSortChange,
@@ -444,38 +449,45 @@ export function ContentLibrary({
                     </button>
                   </div>
                 ) : (
-                  <button
-                    aria-current={
-                      selectedDocumentId === item.documentId
-                        ? 'page'
-                        : undefined
-                    }
-                    className={
+                  <div
+                    className={`studio3-content-row ${
                       selectedDocumentId === item.documentId
                         ? 'is-selected'
                         : ''
-                    }
-                    type="button"
-                    onClick={() => onOpen(item)}
+                    }`}
                   >
-                    <span
-                      className={`studio3-state-dot is-${
-                        item.workingCopy?.stale ? 'conflicted' : item.state
-                      }`}
+                    <button
+                      aria-current={
+                        selectedDocumentId === item.documentId
+                          ? 'page'
+                          : undefined
+                      }
+                      type="button"
+                      onClick={() => onOpen(item)}
+                    >
+                      <span
+                        className={`studio3-state-dot is-${
+                          item.workingCopy?.stale ? 'conflicted' : item.state
+                        }`}
+                      />
+                      <span className="studio3-content-copy">
+                        <b>{item.title}</b>
+                        <small>
+                          {item.workingCopy?.stale
+                            ? '工作副本 · 需处理冲突'
+                            : stateLabels[item.state]}{' '}
+                          · {formatDate(item.activityAt)}
+                        </small>
+                      </span>
+                    </button>
+                    <ArticleActions
+                      compact
+                      article={item}
+                      onOpen={onOpen}
+                      onPublish={onPublish}
+                      onDelete={onDelete}
                     />
-                    <span className="studio3-content-copy">
-                      <b>{item.title}</b>
-                      <small>
-                        {item.workingCopy?.stale
-                          ? '工作副本 · 需处理冲突'
-                          : stateLabels[item.state]}{' '}
-                        · {formatDate(item.activityAt)}
-                      </small>
-                    </span>
-                    <span aria-hidden="true" className="studio3-row-arrow">
-                      ›
-                    </span>
-                  </button>
+                  </div>
                 )}
               </motion.li>
             ))}

@@ -48,7 +48,7 @@ interface ActiveTurnContext {
   readonly turnId: string;
   readonly siteId: string;
   readonly sessionId: string;
-  readonly mode: AgentApprovalMode;
+  mode: AgentApprovalMode;
 }
 
 interface PendingApproval {
@@ -101,6 +101,24 @@ export interface SiteAgentSessionServiceOptions {
 
 function terminal(status: AgentTurnRecord['status']): boolean {
   return ['completed', 'failed', 'canceled', 'interrupted'].includes(status);
+}
+
+function isPlaceholderSessionName(name: string): boolean {
+  return (
+    name === '新会话' ||
+    /^站点会话\s+\d+$/.test(name) ||
+    name.startsWith('文章 · ')
+  );
+}
+
+function titleFromFirstMessage(text: string): string {
+  const line = text.trim().split('\n', 1)[0] ?? '';
+  const cleaned = line
+    .replace(/^[#>*\-\s]+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return '新会话';
+  return cleaned.length > 24 ? `${cleaned.slice(0, 23)}…` : cleaned;
 }
 
 function persistentPayload(
@@ -214,6 +232,8 @@ export class SiteAgentSessionService {
     readonly siteId: string;
     readonly displayName: string;
     readonly approvalMode?: AgentApprovalMode;
+    readonly documentId?: string;
+    readonly collectionId?: string;
   }): Promise<AgentSessionRecord> {
     const displayName = input.displayName.trim();
     if (!displayName || displayName.length > 120) {
@@ -245,6 +265,12 @@ export class SiteAgentSessionService {
         transcriptKey,
         displayName,
         ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+        ...(input.documentId && input.collectionId
+          ? {
+              documentId: input.documentId,
+              collectionId: input.collectionId,
+            }
+          : {}),
         createdAt: at,
         updatedAt: at,
       });
@@ -280,6 +306,16 @@ export class SiteAgentSessionService {
     const at = this.#now();
     if (mode) this.#preferences.setSession(siteId, sessionId, mode, at);
     else this.#preferences.clearSession(siteId, sessionId, at);
+    const live = this.#preferences.resolve(siteId, sessionId).mode;
+    const context = this.#activeContexts.get(sessionId);
+    if (context) context.mode = live;
+    if (live === 'yolo') {
+      for (const [toolCallId, pending] of this.#pendingApprovals) {
+        if (pending.sessionId !== sessionId) continue;
+        this.#pendingApprovals.delete(toolCallId);
+        pending.resolve('approved');
+      }
+    }
     return this.#requireSession(siteId, sessionId);
   }
 
@@ -338,19 +374,13 @@ export class SiteAgentSessionService {
       );
     }
     const filename = this.#safeFilename(input.filename);
-    const mimeType = this.#sniffMimeType(input.bytes);
+    const sniffed = this.#sniffMimeType(input.bytes);
     const claimed = input.claimedMimeType.split(';')[0]?.trim().toLowerCase();
-    if (
-      claimed &&
-      claimed !== 'application/octet-stream' &&
-      claimed !== mimeType
-    ) {
-      throw new SiteAgentServiceError(
-        'Agent attachment media type does not match its bytes',
-        'AGENT_ATTACHMENT_MEDIA_MISMATCH',
-        415,
-      );
-    }
+    const mimeType =
+      sniffed ??
+      (claimed && claimed !== 'application/octet-stream'
+        ? claimed
+        : 'application/octet-stream');
     const id = `agent-attachment-${randomUUID()}`;
     const storageKey = join(input.siteId, input.sessionId, id);
     const path = this.#attachmentPath(storageKey);
@@ -513,6 +543,9 @@ export class SiteAgentSessionService {
       }
     }
     const at = this.#now();
+    if (isPlaceholderSessionName(session.displayName)) {
+      this.#sessions.rename(session.id, titleFromFirstMessage(input.text), at);
+    }
     const mode = this.#preferences.resolve(input.siteId, input.sessionId).mode;
     const turn = this.#turns.create({
       id: `agent-turn-${randomUUID()}`,
@@ -837,11 +870,14 @@ export class SiteAgentSessionService {
             toolCallId: mutation.toolCallId,
             toolName: mutation.toolName,
             paths: mutation.paths,
-            mode: context.mode,
+            mode: this.#preferences.resolve(context.siteId, sessionId).mode,
           },
           async () => {
             const at = this.#now();
-            if (context.mode === 'yolo') {
+            if (
+              this.#preferences.resolve(context.siteId, sessionId).mode ===
+              'yolo'
+            ) {
               audit = this.#audit.create({
                 siteId: context.siteId,
                 sessionId,
@@ -899,7 +935,16 @@ export class SiteAgentSessionService {
             this.#emit(
               this.#requireTurn(sessionId, context.turnId),
               'tool-succeeded',
-              { toolCallId: mutation.toolCallId, toolName: mutation.toolName },
+              {
+                toolCallId: mutation.toolCallId,
+                toolName: mutation.toolName,
+                paths: mutation.paths,
+              },
+            );
+            this.#emit(
+              this.#requireTurn(sessionId, context.turnId),
+              'workspace-changed',
+              { paths: mutation.paths },
             );
             return result;
           },
@@ -1124,7 +1169,7 @@ export class SiteAgentSessionService {
       .join('');
   }
 
-  #sniffMimeType(bytes: Buffer): string {
+  #sniffMimeType(bytes: Buffer): string | undefined {
     if (bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')))
       return 'image/png';
     if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -1139,11 +1184,7 @@ export class SiteAgentSessionService {
     if (bytes.subarray(0, 4).equals(Buffer.from('504b0304', 'hex')))
       return 'application/zip';
     if (!bytes.includes(0)) return 'text/plain';
-    throw new SiteAgentServiceError(
-      'Agent attachment media type is unsupported',
-      'AGENT_ATTACHMENT_MEDIA_UNSUPPORTED',
-      415,
-    );
+    return undefined;
   }
 
   #attachmentPath(storageKey: string): string {

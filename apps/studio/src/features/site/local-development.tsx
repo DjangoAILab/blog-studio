@@ -75,12 +75,23 @@ export function LocalDevelopment({
           <p>LOCAL DEVELOPMENT</p>
           <h2>本地调试站点</h2>
         </div>
-        <span className={`is-${details.status}`}>
-          {statusLabel[details.status]}
+        <span
+          className={`studio2-status-chip is-${
+            busy || details.status === 'starting' ? 'starting' : details.status
+          }`}
+        >
+          {busy || details.status === 'starting' ? (
+            <>
+              <span className="studio2-loading-orb" />
+              启动中，可能需要一会儿
+            </>
+          ) : (
+            statusLabel[details.status]
+          )}
         </span>
       </header>
       <p>
-        运行命令只会在隔离的站点副本中执行；保存的工作副本会在下一次启动或重启时同步。
+        运行命令只会在隔离的站点副本中执行；磁盘上的当前稿会在下一次启动或重启时同步。
       </p>
       {details.message ? <p role="alert">{details.message}</p> : null}
       <div>
@@ -117,7 +128,7 @@ export function LocalDevelopment({
             disabled={busy}
             onClick={() => void control('start')}
           >
-            启动本地站点
+            {busy ? '正在启动…' : '启动本地站点'}
           </button>
         )}
       </div>

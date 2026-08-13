@@ -120,9 +120,9 @@ function ReviewDetails({ review }: { readonly review: ChangeSetReview }) {
       </dl>
 
       <section className="studio2-change-list">
-        <h3>文章工作副本</h3>
+        <h3>文章改动</h3>
         {documentCount === 0 ? (
-          <p className="studio2-change-empty">没有待应用的文章工作副本。</p>
+          <p className="studio2-change-empty">没有待确认的文章改动。</p>
         ) : (
           <div className="studio2-review-stack">
             {review.payload.documents.map((document) => (
@@ -361,7 +361,7 @@ export function ChangeSetReviewSheet({
                   type="button"
                   onClick={onOpenAgent}
                 >
-                  Agent
+                  AI
                 </button>
                 <Dialog.Close className="studio2-sheet-close" aria-label="关闭">
                   ×
@@ -620,9 +620,9 @@ export function ChangeSetReviewSheet({
                   <div>
                     <span className="studio2-inline-status" />
                     {review.status === 'prepared'
-                      ? '冻结记录未写入文件'
+                      ? '改动已在磁盘上，整理后可提交'
                       : review.status === 'applied'
-                        ? '已写入本地，尚未提交'
+                        ? '已确认本地改动，尚未提交'
                         : '本地提交已固定'}
                   </div>
                   <button type="button" onClick={onClose}>

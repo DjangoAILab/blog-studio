@@ -25,11 +25,26 @@ compose() {
   docker compose --project-directory "$repository_root" -p "$project" "$@"
 }
 
+dump_studio() {
+  echo "quick-start studio diagnostics${1:+: $1}" >&2
+  compose ps >&2 || true
+  compose logs --tail=200 studio >&2 || true
+}
+
 cleanup() {
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$fixture"
 }
-trap cleanup EXIT INT TERM
+
+on_exit() {
+  local status=$?
+  if [[ $status -ne 0 ]]; then
+    dump_studio "exit $status"
+  fi
+  cleanup
+}
+trap on_exit EXIT
+trap cleanup INT TERM
 
 mkdir -p "$fixture/config" "$fixture/data" "$fixture/secrets" "$fixture/workspace"
 cp "$repository_root/examples/config/blog-studio.yml" "$fixture/config/blog-studio.yml"
@@ -53,16 +68,26 @@ printf '%s\n' "$owner_password" | compose run --rm -T studio \
 compose up -d studio
 
 container="$(compose ps -q studio)"
-for _ in $(seq 1 60); do
-  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container")"
-  if [[ "$health" == 'healthy' ]]; then break; fi
-  if [[ "$health" == 'unhealthy' ]]; then
-    compose logs --tail=200 studio >&2
+[[ -n "$container" ]] || {
+  dump_studio 'container id missing after compose up'
+  exit 1
+}
+health='missing'
+for _ in $(seq 1 90); do
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
+  if [[ "$health" == 'healthy' ]]; then
+    break
+  fi
+  if [[ "$health" == 'unhealthy' || "$health" == 'exited' || "$health" == 'dead' ]]; then
+    dump_studio "$health"
     exit 1
   fi
   sleep 0.5
 done
-[[ "${health:-missing}" == 'healthy' ]]
+[[ "$health" == 'healthy' ]] || {
+  dump_studio "$health"
+  exit 1
+}
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/sites")" == '401' ]]
 
 session="$(curl --fail --silent --show-error \
@@ -121,6 +146,8 @@ preview="$(curl --fail --silent --show-error \
 preview_url="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).preview.url)' "$preview")"
 curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin$preview_url" | grep -q 'Quick Start verified body'
 test -s "$fixture/data/blog-studio.sqlite"
-[[ -z "$(git -C "$fixture/workspace" status --short)" ]]
+[[ -n "$(git -C "$fixture/workspace" status --short)" ]]
+git -C "$fixture/workspace" grep -q 'Quick Start verified body' -- . ||
+  grep -Rq 'Quick Start verified body' "$fixture/workspace"
 
-echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, durable autosave, real preview, publish disabled'
+echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, disk autosave, real preview, publish disabled'

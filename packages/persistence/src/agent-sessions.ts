@@ -9,6 +9,8 @@ export interface AgentSessionRecord {
   readonly piSessionId: string;
   readonly transcriptKey: string;
   readonly displayName: string;
+  readonly documentId?: string;
+  readonly collectionId?: string;
   readonly state: AgentSessionState;
   readonly approvalMode?: AgentApprovalMode;
   readonly createdAt: string;
@@ -29,6 +31,8 @@ interface AgentSessionRow {
   readonly pi_session_id: string;
   readonly transcript_key: string;
   readonly display_name: string;
+  readonly document_id: string | null;
+  readonly collection_id: string | null;
   readonly state: AgentSessionState;
   readonly approval_mode: AgentApprovalMode | null;
   readonly created_at: string;
@@ -50,6 +54,9 @@ function fromRow(row: AgentSessionRow): AgentSessionRecord {
     piSessionId: row.pi_session_id,
     transcriptKey: row.transcript_key,
     displayName: row.display_name,
+    ...(row.document_id && row.collection_id
+      ? { documentId: row.document_id, collectionId: row.collection_id }
+      : {}),
     state: row.state,
     ...(row.approval_mode === null ? {} : { approvalMode: row.approval_mode }),
     createdAt: row.created_at,
@@ -59,8 +66,8 @@ function fromRow(row: AgentSessionRow): AgentSessionRecord {
 }
 
 const selectSession = `SELECT id, site_id, pi_session_id, transcript_key,
-                               display_name, state, approval_mode,
-                               created_at, updated_at, archived_at
+                               display_name, document_id, collection_id, state,
+                               approval_mode, created_at, updated_at, archived_at
                           FROM agent_sessions`;
 
 export class SqliteAgentSessionRepository {
@@ -71,8 +78,9 @@ export class SqliteAgentSessionRepository {
       .prepare(
         `INSERT INTO agent_sessions (
            id, site_id, pi_session_id, transcript_key, display_name,
-           state, approval_mode, created_at, updated_at, archived_at
-         ) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)`,
+           document_id, collection_id, state, approval_mode,
+           created_at, updated_at, archived_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, NULL)`,
       )
       .run(
         input.id,
@@ -80,6 +88,8 @@ export class SqliteAgentSessionRepository {
         input.piSessionId,
         input.transcriptKey,
         input.displayName,
+        input.documentId ?? null,
+        input.collectionId ?? null,
         input.approvalMode ?? null,
         input.createdAt,
         input.updatedAt,

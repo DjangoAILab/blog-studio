@@ -9,6 +9,7 @@ import type {
   SiteConfigurationDetails,
   SiteConfigurationRevision,
 } from '../../app/api.js';
+import { ArticleActions } from '../library/article-actions.js';
 import { LocalDevelopment } from './local-development.js';
 import { SiteSettings } from '../settings/site-settings.js';
 
@@ -19,6 +20,8 @@ interface SiteOverviewProps {
   readonly error?: string | undefined;
   readonly onOpenContent: () => void;
   readonly onOpenDocument: (document: ContentSummary) => void;
+  readonly onPublishDocument: (document: ContentSummary) => void;
+  readonly onDeleteDocument: (document: ContentSummary) => void;
   readonly onPrepareChanges: () => void;
   readonly onLoadSiteEvents: (
     siteId: string,
@@ -105,6 +108,8 @@ export function SiteOverview({
   error,
   onOpenContent,
   onOpenDocument,
+  onPublishDocument,
+  onDeleteDocument,
   onPrepareChanges,
   onLoadSiteEvents,
   onReloadSite,
@@ -118,7 +123,13 @@ export function SiteOverview({
   onActivateConfiguration,
   onRevertConfiguration,
 }: SiteOverviewProps) {
-  const recent = content?.items.slice(0, 5) ?? [];
+  const recent = [...(content?.items ?? [])]
+    .sort((left, right) =>
+      (right.filesystemModifiedAt ?? right.activityAt ?? '').localeCompare(
+        left.filesystemModifiedAt ?? left.activityAt ?? '',
+      ),
+    )
+    .slice(0, 5);
   const pendingChanges = content?.counts.modified ?? 0;
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -228,25 +239,30 @@ export function SiteOverview({
             <ol>
               {recent.map((document) => (
                 <li key={`${document.collectionId}/${document.documentId}`}>
-                  <button
-                    className="studio2-article-row"
-                    type="button"
-                    onClick={() => onOpenDocument(document)}
-                  >
-                    <ArticleMark document={document} />
-                    <span className="studio2-article-copy">
-                      <strong>{document.title}</strong>
-                      <small>
-                        <span className={`is-${document.state}`} />
-                        {stateLabels[document.state]}
-                        <i>·</i>
-                        {formatDate(document.activityAt)}
-                      </small>
-                    </span>
-                    <span className="studio2-row-more" aria-hidden="true">
-                      •••
-                    </span>
-                  </button>
+                  <div className="studio2-article-row">
+                    <button
+                      className="studio2-article-open"
+                      type="button"
+                      onClick={() => onOpenDocument(document)}
+                    >
+                      <ArticleMark document={document} />
+                      <span className="studio2-article-copy">
+                        <strong>{document.title}</strong>
+                        <small>
+                          <span className={`is-${document.state}`} />
+                          {stateLabels[document.state]}
+                          <i>·</i>
+                          {formatDate(document.activityAt)}
+                        </small>
+                      </span>
+                    </button>
+                    <ArticleActions
+                      article={document}
+                      onOpen={onOpenDocument}
+                      onPublish={onPublishDocument}
+                      onDelete={onDeleteDocument}
+                    />
+                  </div>
                 </li>
               ))}
             </ol>

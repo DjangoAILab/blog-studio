@@ -82,7 +82,13 @@ git -C "$repository_root" archive \
   --prefix="blog-studio-$tag/" \
   --output="$output/$archive" \
   "$commit"
-cp "$repository_root/docs/releases/v0.1.0.md" "$output/RELEASE_NOTES.md"
+notes_tag="${tag%%-*}"
+notes_file="$repository_root/docs/releases/${notes_tag}.md"
+if [[ ! -f "$notes_file" ]]; then
+  echo "missing release notes: $notes_file" >&2
+  exit 1
+fi
+cp "$notes_file" "$output/RELEASE_NOTES.md"
 cp "$repository_root/docs/guides/upgrading.md" "$output/UPGRADE.md"
 printf '%s@%s\n' "$image" "$digest" >"$output/container-digest.txt"
 

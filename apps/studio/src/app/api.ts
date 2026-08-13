@@ -217,6 +217,8 @@ export interface AgentSessionSummary {
   readonly id: string;
   readonly siteId: string;
   readonly displayName: string;
+  readonly documentId?: string;
+  readonly collectionId?: string;
   readonly state: 'active' | 'archived';
   readonly approvalMode?: AgentApprovalMode;
   readonly createdAt: string;
@@ -669,7 +671,10 @@ export class StudioApi {
     readonly frontMatter: Readonly<Record<string, unknown>>;
     readonly body: string;
   }) {
-    return this.#request<{ draft: { version: number } }>(
+    return this.#request<{
+      draft: { version: number };
+      source: DocumentPayload['source'];
+    }>(
       `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
       {
         method: 'PUT',
@@ -700,6 +705,42 @@ export class StudioApi {
         }),
       },
     );
+  }
+
+  public publishDraft(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+    readonly expectedRevision: string;
+  }) {
+    return this.#request<DocumentPayload>(
+      `/api/sites/${input.siteId}/content/${input.documentId}/publish?collection=${encodeURIComponent(input.collection)}`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ expectedRevision: input.expectedRevision }),
+      },
+    );
+  }
+
+  public deleteContent(input: {
+    readonly siteId: string;
+    readonly documentId: string;
+    readonly collection: string;
+  }) {
+    return this.#request<{ deleted: true }>(
+      `/api/sites/${input.siteId}/content/${input.documentId}?collection=${encodeURIComponent(input.collection)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  public agentAttachmentUrl(
+    siteId: string,
+    sessionId: string,
+    attachmentId: string,
+    download = false,
+  ): string {
+    const parameters = download ? '?download=1' : '';
+    return `/api/sites/${siteId}/agent/sessions/${sessionId}/attachments/${attachmentId}${parameters}`;
   }
 
   public discardWorkingCopy(input: {
@@ -971,6 +1012,8 @@ export class StudioApi {
     readonly siteId: string;
     readonly displayName: string;
     readonly approvalMode?: AgentApprovalMode;
+    readonly documentId?: string;
+    readonly collectionId?: string;
   }) {
     return this.#request<AgentSessionSummary>(
       `/api/sites/${input.siteId}/agent/sessions`,
@@ -979,6 +1022,12 @@ export class StudioApi {
         body: JSON.stringify({
           displayName: input.displayName,
           ...(input.approvalMode ? { approvalMode: input.approvalMode } : {}),
+          ...(input.documentId && input.collectionId
+            ? {
+                documentId: input.documentId,
+                collectionId: input.collectionId,
+              }
+            : {}),
         }),
       },
     );

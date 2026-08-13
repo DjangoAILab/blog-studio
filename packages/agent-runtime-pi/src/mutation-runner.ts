@@ -7,7 +7,8 @@ export type SiteToolMutationRunner = <T>(input: {
     | 'move_path'
     | 'import_attachment'
     | 'git_restore_path'
-    | 'git_revert_agent_path';
+    | 'git_revert_agent_path'
+    | 'bash';
   readonly paths: readonly string[];
   readonly operation: () => Promise<T>;
 }) => Promise<T>;

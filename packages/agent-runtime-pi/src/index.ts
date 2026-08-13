@@ -16,6 +16,7 @@ export {
 } from './site-path.js';
 export { createSiteFileTools } from './site-tools.js';
 export { SiteFileMutationInputError } from './site-tools.js';
+export { createSiteShellTool } from './shell-tool.js';
 export { createStructuredGitTools } from './git-tools.js';
 export type { SiteToolMutationRunner } from './mutation-runner.js';
 export { SiteWriteLocks } from './site-write-lock.js';

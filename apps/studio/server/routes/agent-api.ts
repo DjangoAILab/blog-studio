@@ -275,7 +275,12 @@ export function registerAgentApiRoutes(
 
   app.post<{
     Params: { siteId: string };
-    Body: { displayName: string; approvalMode?: 'approval' | 'yolo' };
+    Body: {
+      displayName: string;
+      approvalMode?: 'approval' | 'yolo';
+      documentId?: string;
+      collectionId?: string;
+    };
   }>(
     '/api/sites/:siteId/agent/sessions',
     {
@@ -288,6 +293,8 @@ export function registerAgentApiRoutes(
           properties: {
             displayName: { type: 'string', minLength: 1, maxLength: 120 },
             approvalMode: { type: 'string', enum: ['approval', 'yolo'] },
+            documentId: { type: 'string', minLength: 1 },
+            collectionId: { type: 'string', minLength: 1 },
           },
         },
       },
@@ -299,6 +306,12 @@ export function registerAgentApiRoutes(
           displayName: request.body.displayName,
           ...(request.body.approvalMode
             ? { approvalMode: request.body.approvalMode }
+            : {}),
+          ...(request.body.documentId && request.body.collectionId
+            ? {
+                documentId: request.body.documentId,
+                collectionId: request.body.collectionId,
+              }
             : {}),
         }),
       ),
@@ -466,18 +479,32 @@ export function registerAgentApiRoutes(
 
   app.get<{
     Params: { siteId: string; sessionId: string; attachmentId: string };
+    Querystring: { download?: string };
   }>(
     '/api/sites/:siteId/agent/sessions/:sessionId/attachments/:attachmentId',
-    { schema: { params: attachmentParams } },
+    {
+      schema: {
+        params: attachmentParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { download: { type: 'string' } },
+        },
+      },
+    },
     async (request, reply) => {
       const { attachment, bytes } = await sessions.attachmentBytes(
         request.params.siteId,
         request.params.sessionId,
         request.params.attachmentId,
       );
+      const disposition = request.query.download
+        ? `attachment; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`
+        : 'inline';
       return reply
         .header('cache-control', 'private, no-store')
         .header('x-content-type-options', 'nosniff')
+        .header('content-disposition', disposition)
         .type(attachment.mimeType)
         .send(bytes);
     },

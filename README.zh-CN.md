@@ -10,9 +10,15 @@ Blog Studio 是一款面向 Markdown 与 Git 网站的自托管 AI 内容工作�
 [English documentation](https://djangoailab.github.io/blog-studio/en/docs/) ·
 [简体中文文档](https://djangoailab.github.io/blog-studio/zh-cn/docs/)
 
-![Blog Studio Site Agent — 持久 Session、审批模式和显式 Markdown 上下文](docs/media/site-agent-demo.gif)
+![Blog Studio Site Agent — 用混排标签和照片附件根据图片写短文](docs/media/site-agent-demo.gif)
 
-> 状态：v0.1.0 已发布。当前分支完成了有证据支撑的 Site-first 和 Site Agent 能力关卡；在正常审查与发布流程完成之前，不会把它称为新的公开 release。
+<p>
+  <img src="docs/media/ai-workbench.png" alt="写作纸旁边嵌入的 AI 面板" width="32%" />
+  <img src="docs/media/ai-composer.png" alt="输入框里的 #1 标签、照片附件和写作提示" width="32%" />
+  <img src="docs/media/ai-add-to-chat.png" alt="选中句子后的加入对话 AI 加号按钮" width="32%" />
+</p>
+
+> 状态：v0.3.0 是面向公众的 AI First 版本。`dev` 仍部署 home-server 不稳定编辑器。生产安装请钉住带标签的 GHCR digest。见[开发与发布](docs/guides/development-and-release.md)。
 
 ## 产品承诺
 

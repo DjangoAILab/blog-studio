@@ -343,8 +343,10 @@ export class HexoGeneratorAdapter implements GeneratorAdapter {
             input.frontMatter,
             input.body,
           );
-    if (current === next)
+    if (current === next) {
+      if (modifiedAt) await utimes(path, modifiedAt, modifiedAt);
       return { revision: input.expectedRevision, changed: false };
+    }
 
     await writeFile(path, next, 'utf8');
     if (modifiedAt) await utimes(path, modifiedAt, modifiedAt);
