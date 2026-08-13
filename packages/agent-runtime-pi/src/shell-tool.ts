@@ -1,7 +1,10 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { defineTool, type ToolDefinition } from '@earendil-works/pi-coding-agent';
+import {
+  defineTool,
+  type ToolDefinition,
+} from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
 
 import type { SiteToolMutationRunner } from './mutation-runner.js';
@@ -43,7 +46,9 @@ export function createSiteShellTool(
               TERM: 'dumb',
             },
           });
-          return clip(`${result.stdout}${result.stderr}`.trimEnd() || '(no output)');
+          return clip(
+            `${result.stdout}${result.stderr}`.trimEnd() || '(no output)',
+          );
         } catch (error) {
           const failed = error as {
             readonly stdout?: string;
@@ -67,7 +72,12 @@ export function createSiteShellTool(
           })
         : await operation();
       return {
-        content: [{ type: 'text', text: typeof text === 'string' ? text : String(text) }],
+        content: [
+          {
+            type: 'text',
+            text: typeof text === 'string' ? text : String(text),
+          },
+        ],
         details: {},
       };
     },

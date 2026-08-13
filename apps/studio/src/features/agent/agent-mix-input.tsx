@@ -73,6 +73,7 @@ export function AgentMixInput({
       editTags: false,
       addTagOnBlur: false,
       pasteAsTags: false,
+      autoComplete: { enabled: false },
       dropdown: { enabled: 0, maxItems: 0 },
       originalInputValueFormat: (value) =>
         JSON.stringify({ value: String(value.value ?? '') }),

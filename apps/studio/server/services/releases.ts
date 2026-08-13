@@ -527,11 +527,7 @@ export class ReleaseService {
           );
           const stamp = new Date(release.createdAt);
           if (!Number.isNaN(stamp.valueOf()))
-            await utimes(
-              join(workspaceRoot, promoted.ref.path),
-              stamp,
-              stamp,
-            );
+            await utimes(join(workspaceRoot, promoted.ref.path), stamp, stamp);
         }
       };
       const result = await new ReleaseOrchestrator({

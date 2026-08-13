@@ -16,7 +16,7 @@ not point a durable public host at `blog-studio:dev`.
 4. Record the current `BLOG_STUDIO_IMAGE` digest and the exact Compose file set.
 5. Verify the current health endpoint and one authenticated edit/preview journey.
 
-For a v0.1 upgrade, initialize owner credentials before exposing the v0.2
+For a v0.1 upgrade, initialize owner credentials before exposing the v0.3
 login, retain the existing configuration and SQLite database, and let migration
 run only after the checksum-validated backup exists. The existing workspace is
 not silently registered: after login, inspect it as a Site candidate and confirm
