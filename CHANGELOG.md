@@ -6,19 +6,20 @@ All notable changes to Blog Studio are documented here. The format follows
 
 ## [Unreleased]
 
-### Changed
-
-- Authoring now writes the live Markdown file on autosave instead of keeping a
-  SQLite working copy in front of disk. Published posts with uncommitted Git
-  changes appear as “未提交改动”; discard restores the committed file, or
-  clears an untracked draft body.
-- The Site Agent reloads the open article after a tool writes the workspace.
-  Composer selection uses “加入对话”; the unused editor-buffer chip is gone.
-- ChangeSet preparation freezes dirty Git documents already on disk. Apply
-  confirms those files rather than pouring a SQLite snapshot onto them.
+## [0.3.0] - 2026-08-14
 
 ### Added
 
+- Site Agent: durable Site-scoped Sessions, approval or YOLO, typed file and
+  local Git tools, vision attachments, and an embedded AI workbench.
+- Mix-mode composer tags (`#1`, `#2`) via Tagify so selections live inside the
+  prompt. The shared AI-plus **加入对话** icon sits on the Crepe toolbar and
+  in source mode.
+- Disk-first authoring, unified content library, owner-password onboarding,
+  Site discovery, ChangeSet prepare/apply/commit/release, and the Focused
+  Workbench chrome.
+- Reproducible release bundles, signed-tag GHCR publish, and a documented
+  unstable `dev` channel for the home-server editor.
 - Site-first owner-password onboarding with trusted CLI initialization/reset,
   in-product password change, revocable opaque sessions, and global session
   invalidation.
@@ -53,4 +54,12 @@ All notable changes to Blog Studio are documented here. The format follows
   reproducible release bundles, signed-tag enforcement, and standalone artifact
   verification.
 
-[Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.1.0...HEAD
+### Changed
+
+- Authoring writes the live Markdown file on autosave. Published posts with
+  uncommitted Git changes appear as “未提交改动”.
+- Public positioning is an AI-first content workspace. Landing and README use a
+  photograph-to-essay task to show vision and outline.
+
+[Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DjangoAILab/blog-studio/compare/v0.1.0...v0.3.0

@@ -916,7 +916,9 @@ describe('Studio workspace API', () => {
     expect(categorySearch.json()).toMatchObject({
       content: { total: 1, items: [{ title: 'Hello' }] },
     });
-    const published = initialContent.items.find((item) => item.title === 'Hello');
+    const published = initialContent.items.find(
+      (item) => item.title === 'Hello',
+    );
     if (!published) throw new Error('fixture post missing');
 
     const opened = await app.inject({

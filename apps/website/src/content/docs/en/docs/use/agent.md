@@ -14,7 +14,7 @@ URL; it does not host the Agent runtime or copy the workspace.
 
 ## Start and manage Sessions
 
-Open **Agent** from any application page. Create as many independent Sessions
+Open **AI** from any application page. Create as many independent Sessions
 as the Site needs, then rename, switch, archive, or restore them from the panel.
 The Session list is owned by the explicit `siteId` in the URL. The active choice
 is remembered per browser tab, so two tabs may focus different Sessions without
@@ -28,15 +28,17 @@ never silently replaced.
 
 ## Attach one-message context
 
-On an article page, the composer proposes the current article. A dirty editor
-buffer may be attached explicitly. In Markdown source mode, select a range and
-choose **附加选区到 Agent** to add a line-labelled chip. The same typed mechanism
-supports preview errors, diffs, ChangeSets, and file references.
+The current page is turn context. In the visual toolbar or Markdown source
+mode, select a range and choose **加入对话**. The passage becomes a removable
+`#1` / `#2` mix tag inside the composer, so you can write “这一段 #1 跟这一段
+#2 矛盾”. The same Session can attach a photograph: a vision adapter describes
+it, and the original file stays on the transcript.
 
-Inspect or remove every chip before sending. Its materialized content is written
-into that user message exactly once and remains visible in Session history; it
-is not hidden state and is not injected into the next message. These references
-help the model, but never narrow its Site-wide filesystem authority.
+Inspect or remove every tag and attachment before sending. Its materialized
+content is written into that user message exactly once and remains visible in
+Session history; it is not hidden state and is not injected into the next
+message. These references help the model, but never narrow its Site-wide
+filesystem authority.
 
 ## Choose approval or YOLO
 

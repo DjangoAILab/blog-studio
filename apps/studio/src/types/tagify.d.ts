@@ -15,6 +15,7 @@ declare module '@yaireo/tagify' {
     placeholder?: string;
     originalInputValueFormat?: (value: TagData) => string;
     dropdown?: { enabled?: number; maxItems?: number };
+    autoComplete?: { enabled?: boolean };
     a11y?: { inputAriaLabel?: string };
   }
 

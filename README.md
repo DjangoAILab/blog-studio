@@ -14,12 +14,17 @@ browser journey without turning your website over to a hosted AI CMS.
 [English documentation](https://djangoailab.github.io/blog-studio/en/docs/) ·
 [简体中文文档](https://djangoailab.github.io/blog-studio/zh-cn/docs/)
 
-![Blog Studio Site Agent — durable Sessions, approval modes, and explicit Markdown context](docs/media/site-agent-demo.gif)
+![Blog Studio Site Agent — write from a photograph with mix tags and an attached image](docs/media/site-agent-demo.gif)
 
-> Status: v0.1.0 is released. Unreleased work merges to `dev` and deploys the
-> internal home-server editor. A new public release exists only after that
-> revision is merged to `main` and tagged. See
-> [Development and release](docs/guides/development-and-release.md).
+<p>
+  <img src="docs/media/ai-workbench.png" alt="Writing paper with the AI panel docked beside it" width="32%" />
+  <img src="docs/media/ai-composer.png" alt="Composer with a #1 mix tag, photograph attachment, and writing prompt" width="32%" />
+  <img src="docs/media/ai-add-to-chat.png" alt="加入对话 AI-plus control on a selected sentence" width="32%" />
+</p>
+
+> Status: v0.3.0 is the public AI-first release. `dev` still deploys the
+> internal home-server editor. Production installs pin the tagged GHCR digest.
+> See [Development and release](docs/guides/development-and-release.md).
 
 ## Product promise
 
