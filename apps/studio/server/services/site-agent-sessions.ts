@@ -103,6 +103,21 @@ function terminal(status: AgentTurnRecord['status']): boolean {
   return ['completed', 'failed', 'canceled', 'interrupted'].includes(status);
 }
 
+function isPlaceholderSessionName(name: string): boolean {
+  return (
+    name === '新会话' ||
+    /^站点会话\s+\d+$/.test(name) ||
+    name.startsWith('文章 · ')
+  );
+}
+
+function titleFromFirstMessage(text: string): string {
+  const line = text.trim().split('\n', 1)[0] ?? '';
+  const cleaned = line.replace(/^[#>*\-\s]+/, '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '新会话';
+  return cleaned.length > 24 ? `${cleaned.slice(0, 23)}…` : cleaned;
+}
+
 function persistentPayload(
   event: AgentRuntimeEvent,
 ): Readonly<Record<string, unknown>> {
@@ -525,6 +540,13 @@ export class SiteAgentSessionService {
       }
     }
     const at = this.#now();
+    if (isPlaceholderSessionName(session.displayName)) {
+      this.#sessions.rename(
+        session.id,
+        titleFromFirstMessage(input.text),
+        at,
+      );
+    }
     const mode = this.#preferences.resolve(input.siteId, input.sessionId).mode;
     const turn = this.#turns.create({
       id: `agent-turn-${randomUUID()}`,

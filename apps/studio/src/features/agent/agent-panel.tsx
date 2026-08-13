@@ -46,38 +46,23 @@ const turnLabels = {
   interrupted: '重启中断',
 } as const;
 
-function sessionStorageKey(siteId: string, documentId?: string): string {
-  return `blog-studio:agent-session:${siteId}:${documentId ?? 'global'}`;
+function sessionStorageKey(siteId: string): string {
+  return `blog-studio:agent-session:${siteId}`;
 }
 
-function ContextChip({
-  label,
-  details,
-  onRemove,
-}: {
-  readonly label: string;
-  readonly details: string;
-  readonly onRemove: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
+function isPlaceholderSessionName(name: string): boolean {
   return (
-    <span className="agent-context-chip" data-expanded={expanded}>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={`查看 ${label}`}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        {label}
-      </button>
-      <button type="button" aria-label={`移除 ${label}`} onClick={onRemove}>
-        ×
-      </button>
-      {expanded ? (
-        <span className="agent-context-detail">{details}</span>
-      ) : null}
-    </span>
+    name === '新会话' ||
+    /^站点会话\s+\d+$/.test(name) ||
+    name.startsWith('文章 · ')
   );
+}
+
+function titleFromFirstMessage(text: string): string {
+  const line = text.trim().split('\n', 1)[0] ?? '';
+  const cleaned = line.replace(/^[#>*\-\s]+/, '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '新会话';
+  return cleaned.length > 24 ? `${cleaned.slice(0, 23)}…` : cleaned;
 }
 
 function isImageMime(mimeType?: string, filename?: string): boolean {
@@ -184,8 +169,9 @@ export function AgentPanel({
 }: AgentPanelProps) {
   const [open, setOpen] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
-  const [switcherTab, setSwitcherTab] = useState<'create' | 'choose'>('create');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
   const [uploading, setUploading] = useState(false);
   const [sessions, setSessions] = useState<readonly AgentSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
@@ -232,22 +218,9 @@ export function AgentPanel({
   async function loadSessions(nextSiteId: string): Promise<void> {
     const result = await api.agentSessions(nextSiteId, true);
     setSessions(result.sessions);
-    const stored = window.sessionStorage.getItem(
-      sessionStorageKey(nextSiteId, articleContext?.documentId),
-    );
-    const articleBound = articleContext
-      ? result.sessions.find(
-          (item) =>
-            item.state === 'active' &&
-            item.documentId === articleContext.documentId,
-        )
-      : undefined;
+    const stored = window.sessionStorage.getItem(sessionStorageKey(nextSiteId));
     const selected =
       result.sessions.find((item) => item.id === stored)?.id ??
-      articleBound?.id ??
-      result.sessions.find(
-        (item) => item.state === 'active' && !item.documentId,
-      )?.id ??
       result.sessions.find((item) => item.state === 'active')?.id ??
       '';
     setActiveSessionId(selected);
@@ -269,8 +242,7 @@ export function AgentPanel({
         setActiveSessionId(requestedSessionId);
         setSwitcherOpen(false);
       } else if (createRequested || !activeSessionId) {
-        setSwitcherTab('create');
-        setSwitcherOpen(true);
+        void createSession();
       }
     }
   }, [openRequest]);
@@ -296,14 +268,11 @@ export function AgentPanel({
         reason instanceof Error ? reason.message : 'Agent Session 读取失败',
       ),
     );
-  }, [api, articleContext?.documentId, siteId]);
+  }, [api, siteId]);
 
   useEffect(() => {
     if (!siteId || !activeSessionId) return;
-    window.sessionStorage.setItem(
-      sessionStorageKey(siteId, articleContext?.documentId),
-      activeSessionId,
-    );
+    window.sessionStorage.setItem(sessionStorageKey(siteId), activeSessionId);
     void refreshDetails().catch((reason: unknown) =>
       setError(reason instanceof Error ? reason.message : 'Agent 历史读取失败'),
     );
@@ -438,19 +407,10 @@ export function AgentPanel({
     try {
       const session = await api.createAgentSession({
         siteId,
-        displayName: articleContext
-          ? `文章 · ${articleContext.title ?? '未命名'}`
-          : `站点会话 ${sessions.filter((item) => !item.documentId).length + 1}`,
-        ...(articleContext
-          ? {
-              documentId: articleContext.documentId,
-              collectionId: articleContext.collectionId,
-            }
-          : {}),
+        displayName: '新会话',
       });
       await loadSessions(siteId);
       setActiveSessionId(session.id);
-      setSwitcherOpen(false);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : '新建 Session 失败');
     } finally {
@@ -459,7 +419,10 @@ export function AgentPanel({
   }
 
   async function send(): Promise<void> {
-    if (!siteId || !activeSessionId || !text.trim()) return;
+    const message =
+      text.trim() ||
+      (includeSelection && selectionContext ? '请处理 #1' : '');
+    if (!siteId || !activeSessionId || !message) return;
     setBusy(true);
     setError('');
     setLiveText('');
@@ -468,12 +431,25 @@ export function AgentPanel({
       await api.submitAgentMessage({
         siteId,
         sessionId: activeSessionId,
-        text,
+        text: message,
         ...(contexts.length > 0 ? { contexts } : {}),
         ...(attachments.length > 0
           ? { attachmentIds: attachments.map((item) => item.id) }
           : {}),
       });
+      if (
+        activeSession &&
+        isPlaceholderSessionName(activeSession.displayName)
+      ) {
+        const displayName = titleFromFirstMessage(text.trim() || message);
+        void api
+          .updateAgentSession({
+            siteId,
+            sessionId: activeSessionId,
+            displayName,
+          })
+          .then(() => loadSessions(siteId));
+      }
       setText('');
       setAttachments([]);
       setIncludeSelection(false);
@@ -518,7 +494,7 @@ export function AgentPanel({
           <span className="agent-launcher-mark" aria-hidden="true">
             ✦
           </span>
-          Agent
+          AI
         </button>
       )}
       <AnimatePresence>
@@ -526,29 +502,92 @@ export function AgentPanel({
           <motion.aside
             id="site-agent-panel"
             className="agent-panel"
-            aria-label={`${siteName ?? '当前站点'} Agent`}
+            aria-label={`${siteName ?? '当前站点'} AI`}
             initial={{ x: 28, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 28, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
             <header className="agent-panel-header">
-              <strong>{sessionTitle}</strong>
+              <div className="agent-session-title">
+                {renaming ? (
+                  <input
+                    aria-label="会话名称"
+                    value={renameValue}
+                    autoFocus
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onBlur={() => {
+                      const displayName = renameValue.trim();
+                      setRenaming(false);
+                      if (!siteId || !activeSession || !displayName) return;
+                      void api
+                        .updateAgentSession({
+                          siteId,
+                          sessionId: activeSession.id,
+                          displayName,
+                        })
+                        .then(() => loadSessions(siteId));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur();
+                      if (event.key === 'Escape') setRenaming(false);
+                    }}
+                  />
+                ) : (
+                  <>
+                    <strong>{sessionTitle}</strong>
+                    <button
+                      className="agent-title-edit"
+                      type="button"
+                      aria-label="编辑会话名称"
+                      disabled={!activeSession}
+                      onClick={() => {
+                        setRenameValue(sessionTitle);
+                        setRenaming(true);
+                      }}
+                    >
+                      ✎
+                    </button>
+                  </>
+                )}
+              </div>
               <div className="agent-header-actions">
                 <button
                   className="studio2-secondary-button"
                   type="button"
+                  disabled={busy || !siteId}
+                  onClick={() => void createSession()}
+                >
+                  新建
+                </button>
+                <button
+                  className="studio2-secondary-button"
+                  type="button"
+                  onClick={() => setSwitcherOpen(true)}
+                >
+                  切换
+                </button>
+                <button
+                  className="studio2-secondary-button"
+                  type="button"
+                  disabled={
+                    !activeSession ||
+                    activeSession.state === 'archived' ||
+                    Boolean(activeTurn)
+                  }
                   onClick={() => {
-                    setSwitcherTab(activeSessionId ? 'choose' : 'create');
-                    setSwitcherOpen(true);
+                    if (!siteId || !activeSession) return;
+                    void api
+                      .archiveAgentSession(siteId, activeSession.id)
+                      .then(() => loadSessions(siteId));
                   }}
                 >
-                  切换会话
+                  归档
                 </button>
                 <button
                   className="studio2-icon-more"
                   type="button"
-                  aria-label="Agent 设置"
+                  aria-label="AI 设置"
                   onClick={() => setSettingsOpen(true)}
                 >
                   ⚙
@@ -556,7 +595,7 @@ export function AgentPanel({
                 <button
                   className="studio2-sheet-close"
                   type="button"
-                  aria-label="关闭 Agent"
+                  aria-label="关闭 AI"
                   onClick={() => changeOpen(false)}
                 >
                   ×
@@ -571,11 +610,9 @@ export function AgentPanel({
                   <Dialog.Popup className="studio2-dialog-card">
                     <header>
                       <div>
-                        <Dialog.Title>会话</Dialog.Title>
+                        <Dialog.Title>切换会话</Dialog.Title>
                         <Dialog.Description>
-                          {articleContext
-                            ? `默认绑定「${articleContext.title ?? '当前文章'}」，能力仍覆盖整个站点。`
-                            : '这是站点级会话，不绑定单篇文章。'}
+                          会话属于整个站点。当前页面会作为这一轮的动态上下文。
                         </Dialog.Description>
                       </div>
                       <Dialog.Close
@@ -585,115 +622,24 @@ export function AgentPanel({
                         ×
                       </Dialog.Close>
                     </header>
-                    <div className="studio2-session-tabs" role="tablist">
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={switcherTab === 'create'}
-                        className={switcherTab === 'create' ? 'is-active' : ''}
-                        onClick={() => setSwitcherTab('create')}
+                    <div className="agent-switcher">
+                      <select
+                        aria-label="AI Session"
+                        value={activeSessionId}
+                        onChange={(event) => {
+                          setActiveSessionId(event.target.value);
+                          if (event.target.value) setSwitcherOpen(false);
+                        }}
                       >
-                        新建
-                      </button>
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={switcherTab === 'choose'}
-                        className={switcherTab === 'choose' ? 'is-active' : ''}
-                        onClick={() => setSwitcherTab('choose')}
-                      >
-                        选择
-                      </button>
+                        <option value="">选择会话</option>
+                        {sessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {session.state === 'archived' ? '〔已归档〕' : ''}
+                            {session.displayName}
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                    {switcherTab === 'create' ? (
-                      <div className="agent-switcher">
-                        <p>
-                          {articleContext
-                            ? '新建一个只挂在这篇文章上的会话。'
-                            : '新建一个站点级会话。'}
-                        </p>
-                        <button
-                          className="studio2-primary-button"
-                          type="button"
-                          disabled={busy || !siteId}
-                          onClick={() => void createSession()}
-                        >
-                          {busy ? '正在创建…' : '创建会话'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="agent-switcher">
-                        <select
-                          aria-label="Agent Session"
-                          value={activeSessionId}
-                          onChange={(event) => {
-                            setActiveSessionId(event.target.value);
-                            if (event.target.value) setSwitcherOpen(false);
-                          }}
-                        >
-                          <option value="">选择会话</option>
-                          {sessions.map((session) => (
-                            <option key={session.id} value={session.id}>
-                              {session.documentId ? '文章 · ' : '全局 · '}
-                              {session.state === 'archived' ? '〔已归档〕' : ''}
-                              {session.displayName}
-                            </option>
-                          ))}
-                        </select>
-                        <label>
-                          会话名称
-                          <input
-                            aria-label="会话名称"
-                            disabled={
-                              !activeSession ||
-                              activeSession.state === 'archived'
-                            }
-                            value={activeSession?.displayName ?? ''}
-                            onChange={(event) => {
-                              const displayName = event.target.value;
-                              setSessions((items) =>
-                                items.map((item) =>
-                                  item.id === activeSessionId
-                                    ? { ...item, displayName }
-                                    : item,
-                                ),
-                              );
-                            }}
-                            onBlur={() => {
-                              if (!siteId || !activeSession) return;
-                              const displayName =
-                                activeSession.displayName.trim();
-                              if (!displayName) return;
-                              void api
-                                .updateAgentSession({
-                                  siteId,
-                                  sessionId: activeSession.id,
-                                  displayName,
-                                })
-                                .then(() => loadSessions(siteId));
-                            }}
-                          />
-                        </label>
-                        <div className="agent-switcher-actions">
-                          <button
-                            type="button"
-                            disabled={
-                              !activeSession ||
-                              activeSession.state === 'archived' ||
-                              Boolean(activeTurn)
-                            }
-                            onClick={() => {
-                              if (!siteId || !activeSession) return;
-                              void api
-                                .archiveAgentSession(siteId, activeSession.id)
-                                .then(() => loadSessions(siteId));
-                            }}
-                          >
-                            归档
-                          </button>
-                        </div>
-                      </div>
-                    )}
                   </Dialog.Popup>
                 </Dialog.Viewport>
               </Dialog.Portal>
@@ -706,7 +652,7 @@ export function AgentPanel({
                   <Dialog.Popup className="studio2-dialog-card">
                     <header>
                       <div>
-                        <Dialog.Title>Agent 设置</Dialog.Title>
+                        <Dialog.Title>AI 设置</Dialog.Title>
                         <Dialog.Description>
                           全局和当前站点的默认执行模式。会话可以再覆盖。
                         </Dialog.Description>
@@ -722,7 +668,7 @@ export function AgentPanel({
                       <label>
                         全局默认
                         <select
-                          aria-label="Agent 全局默认模式"
+                          aria-label="AI 全局默认模式"
                           value={preferenceDefaults.global ?? 'approval'}
                           onChange={(event) => {
                             if (!siteId) return;
@@ -747,7 +693,7 @@ export function AgentPanel({
                       <label>
                         当前站点默认
                         <select
-                          aria-label="Agent 当前站点默认模式"
+                          aria-label="AI 当前站点默认模式"
                           value={preferenceDefaults.site ?? 'inherit'}
                           onChange={(event) => {
                             if (!siteId) return;
@@ -831,8 +777,8 @@ export function AgentPanel({
                         <span>
                           {entry.type === 'assistant'
                             ? entry.streaming
-                              ? 'Agent · 正在回答'
-                              : 'Agent'
+                              ? 'AI · 正在回答'
+                              : 'AI'
                             : '你'}
                         </span>
                         {entry.type === 'user' && entry.chips.length > 0 ? (
@@ -874,8 +820,7 @@ export function AgentPanel({
                     <div className="agent-empty">
                       <b>从整个站点开始。</b>
                       <p>
-                        Agent 可以阅读与修改当前 Site
-                        的文件；页面只提供本次对话上下文。
+                        AI 可以阅读与修改当前站点的文件；当前页面会作为这一轮的动态上下文。
                       </p>
                     </div>
                   ) : null}
@@ -957,11 +902,23 @@ export function AgentPanel({
                 >
                   <div className="agent-contexts" aria-label="本次消息上下文">
                     {includeSelection && selectionContext ? (
-                      <ContextChip
-                        label={`选区 · L${selectionContext.startLine}–${selectionContext.endLine}`}
-                        details={selectionContext.text}
-                        onRemove={() => setIncludeSelection(false)}
-                      />
+                      <span className="studio2-composer-tag">
+                        <button
+                          type="button"
+                          title={selectionContext.text}
+                          onClick={() => undefined}
+                        >
+                          #1{' '}
+                          {selectionContext.text.trim().slice(0, 18) || '选区'}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="移除 #1"
+                          onClick={() => setIncludeSelection(false)}
+                        >
+                          ×
+                        </button>
+                      </span>
                     ) : null}
                     {attachments.map((attachment) => (
                       <AttachmentCard
@@ -1028,12 +985,21 @@ export function AgentPanel({
                     ) : null}
                   </div>
                   <textarea
-                    aria-label="发送给 Site Agent"
-                    placeholder="告诉 Agent 要检查、修改或解释什么…"
+                    aria-label="发送给 AI"
+                    placeholder="告诉 AI 要检查、修改或解释什么… 可用 #1 引用选区"
                     rows={4}
                     value={text}
                     onChange={(event) => setText(event.target.value)}
                     onKeyDown={(event) => {
+                      if (
+                        event.key === 'Backspace' &&
+                        !text &&
+                        includeSelection
+                      ) {
+                        event.preventDefault();
+                        setIncludeSelection(false);
+                        return;
+                      }
                       if (
                         (event.metaKey || event.ctrlKey) &&
                         event.key === 'Enter'
@@ -1106,9 +1072,7 @@ export function AgentPanel({
             ) : (
               <div className="agent-empty">
                 <b>还没有会话</b>
-                <p>
-                  先新建或选择一个会话。打开文章时默认挂到当前文章，能力仍覆盖整个站点。
-                </p>
+                <p>点左上角「新建」开一个；当前页面会自动带进这一轮。</p>
               </div>
             )}
 

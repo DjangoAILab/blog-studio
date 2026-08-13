@@ -115,7 +115,17 @@ export function materializeAgentMessage(input: {
         'AGENT_CONTEXT_TOO_LARGE',
       );
     }
-    return `<blog-studio-context index="${index + 1}" type="${context.type}">\n${body}\n</blog-studio-context>`;
+    const selectionNumber =
+      context.type === 'markdown-selection'
+        ? (input.contexts ?? [])
+            .slice(0, index + 1)
+            .filter((item) => item.type === 'markdown-selection').length
+        : 0;
+    const heading =
+      context.type === 'markdown-selection'
+        ? `Selection #${selectionNumber}\n`
+        : '';
+    return `<blog-studio-context index="${index + 1}" type="${context.type}">\n${heading}${body}\n</blog-studio-context>`;
   });
   for (const [index, note] of (input.attachmentNotes ?? []).entries()) {
     if (note.length > 40_000) {
