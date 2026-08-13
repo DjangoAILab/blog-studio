@@ -13,7 +13,7 @@ function git(root: string, ...arguments_: string[]): void {
 }
 
 describe('Studio Site Agent policy composition', () => {
-  it('exposes file and structured Git tools without general execution', async () => {
+  it('exposes file, structured Git, and a Site-scoped shell', async () => {
     const root = await mkdtemp(join(tmpdir(), 'blog-studio-agent-tools-'));
     git(root, 'init', '-q');
     const coordinator = new SiteAgentMutationCoordinator();
@@ -42,10 +42,10 @@ describe('Studio Site Agent policy composition', () => {
       'git_log',
       'git_show',
       'git_restore_path',
+      'bash',
     ]);
     expect(names).not.toEqual(
       expect.arrayContaining([
-        'bash',
         'shell',
         'exec',
         'git_clean',

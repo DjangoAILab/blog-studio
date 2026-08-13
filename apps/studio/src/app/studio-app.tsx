@@ -12,6 +12,7 @@ import { AgentPanel } from '../features/agent/agent-panel.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
 import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
 import { ArticleActions } from '../features/library/article-actions.js';
+import { ConfirmDialog } from '../features/shell/confirm-dialog.js';
 import {
   ContentLibrary,
   type ContentAdvancedFilters,
@@ -24,6 +25,7 @@ import {
   type ResourceUploadView,
 } from '../features/resources/resource-picker.js';
 import { SystemSettings } from '../features/settings/system-settings.js';
+import { LocalDebugControl } from '../features/site/local-debug-control.js';
 import { SiteOverview } from '../features/site/site-overview.js';
 import { GlobalSearch } from '../features/search/global-search.js';
 import {
@@ -41,6 +43,7 @@ import {
   type ContentSummary,
   type DocumentPayload,
   type AgentMessageContext,
+  type AgentSessionSummary,
   type OrphanAssetPlan,
   type PreviewFallbackReason,
   type ReleaseDetails,
@@ -63,7 +66,7 @@ function initialContentSearch(): string {
 }
 
 function initialContentSort(): ContentSortField {
-  if (typeof window === 'undefined') return 'activityAt';
+  if (typeof window === 'undefined') return 'filesystemModifiedAt';
   const sort = new URLSearchParams(window.location.search).get('contentSort');
   return [
     'activityAt',
@@ -75,7 +78,7 @@ function initialContentSort(): ContentSortField {
     'path',
   ].includes(sort ?? '')
     ? (sort as ContentSortField)
-    : 'activityAt';
+    : 'filesystemModifiedAt';
 }
 
 function initialContentDirection(): ContentSortDirection {
@@ -254,7 +257,22 @@ export function StudioApp() {
     Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
   >();
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
+  const [agentRequestedSessionId, setAgentRequestedSessionId] = useState('');
+  const [agentCreateRequested, setAgentCreateRequested] = useState(false);
   const [agentDocked, setAgentDocked] = useState(false);
+  const [siteSessions, setSiteSessions] = useState<
+    readonly AgentSessionSummary[]
+  >([]);
+  const [siteSessionsState, setSiteSessionsState] = useState<
+    'idle' | 'loading' | 'ready'
+  >('idle');
+  const [confirm, setConfirm] = useState<{
+    readonly title: string;
+    readonly description: string;
+    readonly confirmLabel?: string;
+    readonly danger?: boolean;
+    readonly run: () => Promise<void>;
+  }>();
   const [editorEpoch, setEditorEpoch] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
 
@@ -390,7 +408,8 @@ export function StudioApp() {
     const url = new URL(window.location.href);
     if (contentSearch) url.searchParams.set('contentSearch', contentSearch);
     else url.searchParams.delete('contentSearch');
-    if (contentSort === 'activityAt') url.searchParams.delete('contentSort');
+    if (contentSort === 'filesystemModifiedAt')
+      url.searchParams.delete('contentSort');
     else url.searchParams.set('contentSort', contentSort);
     if (contentDirection === 'desc')
       url.searchParams.delete('contentDirection');
@@ -463,6 +482,30 @@ export function StudioApp() {
         setAuthenticated(false);
       });
   }, [api]);
+  useEffect(() => {
+    if (!site) {
+      setSiteSessions([]);
+      setSiteSessionsState('idle');
+      return;
+    }
+    let cancelled = false;
+    setSiteSessionsState('loading');
+    void api
+      .agentSessions(site.id)
+      .then((result) => {
+        if (cancelled) return;
+        setSiteSessions(result.sessions);
+        setSiteSessionsState('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setSiteSessions([]);
+        setSiteSessionsState('ready');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, site, agentDocked, agentOpenRequest]);
   useEffect(() => {
     if (!site) {
       setSiteContent(undefined);
@@ -649,6 +692,18 @@ export function StudioApp() {
     site,
   ]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's')
+        return;
+      event.preventDefault();
+      if (saveState === 'clean' || saveState === 'saved')
+        setSaveState('saved');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [saveState]);
+
   function openContentDocument(item: ContentSummary): void {
     setSelected(item);
     setDestination('content');
@@ -662,58 +717,62 @@ export function StudioApp() {
     return refreshed.content;
   }
 
-  async function publishArticle(item: ContentSummary): Promise<void> {
-    if (!site) return;
-    if (item.sourceState !== 'draft') return;
-    if (
-      !window.confirm(
-        `把「${item.title}」从草稿转为正式文章？文件会从 _drafts 移到 _posts，之后再通过更改审阅提交。`,
-      )
-    )
-      return;
-    const opened = await api.siteDocument(
-      site.id,
-      item.documentId,
-      item.collectionId,
-    );
-    const published = await api.publishDraft({
-      siteId: site.id,
-      documentId: item.documentId,
-      collection: item.collectionId,
-      expectedRevision: opened.source.revision,
+  function publishArticle(item: ContentSummary): void {
+    if (!site || item.sourceState !== 'draft') return;
+    setConfirm({
+      title: '转为正式文章',
+      description: `把「${item.title}」从草稿移到已发布目录。之后再通过更改审阅提交到 Git。`,
+      confirmLabel: '转为正式文章',
+      run: async () => {
+        const opened = await api.siteDocument(
+          site.id,
+          item.documentId,
+          item.collectionId,
+        );
+        const published = await api.publishDraft({
+          siteId: site.id,
+          documentId: item.documentId,
+          collection: item.collectionId,
+          expectedRevision: opened.source.revision,
+        });
+        const list = await refreshContentList();
+        const next = list?.items.find(
+          (candidate) =>
+            candidate.documentId === published.source.ref.documentId,
+        );
+        if (next) openContentDocument(next);
+        else if (selected?.documentId === item.documentId) {
+          setSelected(undefined);
+          setDocument(undefined);
+        }
+      },
     });
-    const list = await refreshContentList();
-    const next = list?.items.find(
-      (candidate) => candidate.documentId === published.source.ref.documentId,
-    );
-    if (next) openContentDocument(next);
-    else if (selected?.documentId === item.documentId) {
-      setSelected(undefined);
-      setDocument(undefined);
-    }
   }
 
-  async function deleteArticle(item: ContentSummary): Promise<void> {
+  function deleteArticle(item: ContentSummary): void {
     if (!site) return;
-    if (
-      !window.confirm(
+    setConfirm({
+      title: item.sourceState === 'draft' ? '删除草稿' : '删除文章',
+      description:
         item.sourceState === 'draft'
           ? `删除草稿「${item.title}」？文件会从磁盘移除。`
           : `从磁盘删除「${item.title}」？已提交的版本仍可通过 Git 恢复。`,
-      )
-    )
-      return;
-    await api.deleteContent({
-      siteId: site.id,
-      documentId: item.documentId,
-      collection: item.collectionId,
+      confirmLabel: '删除',
+      danger: true,
+      run: async () => {
+        await api.deleteContent({
+          siteId: site.id,
+          documentId: item.documentId,
+          collection: item.collectionId,
+        });
+        await refreshContentList();
+        if (selected?.documentId === item.documentId) {
+          setSelected(undefined);
+          setDocument(undefined);
+          setBody('');
+        }
+      },
     });
-    await refreshContentList();
-    if (selected?.documentId === item.documentId) {
-      setSelected(undefined);
-      setDocument(undefined);
-      setBody('');
-    }
   }
 
   async function reloadOpenDocument(paths?: readonly string[]): Promise<void> {
@@ -913,6 +972,7 @@ export function StudioApp() {
           onClose={() => setChangeSetOpen(false)}
           onOpenAgent={() => {
             setChangeSetOpen(false);
+            setAgentCreateRequested(false);
             setAgentOpenRequest((value) => value + 1);
           }}
           onCommit={async (review, input) => {
@@ -974,6 +1034,18 @@ export function StudioApp() {
                 error={siteContentError}
                 key={`site-${site.id}`}
                 loading={siteContentState === 'loading'}
+                sessions={siteSessions}
+                sessionsLoading={siteSessionsState === 'loading'}
+                onCreateSession={() => {
+                  setAgentRequestedSessionId('');
+                  setAgentCreateRequested(true);
+                  setAgentOpenRequest((value) => value + 1);
+                }}
+                onOpenSession={(sessionId) => {
+                  setAgentRequestedSessionId(sessionId);
+                  setAgentCreateRequested(false);
+                  setAgentOpenRequest((value) => value + 1);
+                }}
                 site={site}
                 onLoadSiteEvents={async (siteId) =>
                   (await api.siteEvents(siteId)).events
@@ -1001,8 +1073,8 @@ export function StudioApp() {
                 }
                 onOpenContent={() => setDestination('content')}
                 onOpenDocument={openContentDocument}
-                onPublishDocument={(item) => void publishArticle(item)}
-                onDeleteDocument={(item) => void deleteArticle(item)}
+                onPublishDocument={publishArticle}
+                onDeleteDocument={deleteArticle}
                 onPrepareChanges={prepareChanges}
                 onReloadSite={async (siteId) => {
                   const latest = (await api.site(siteId)).site;
@@ -1075,18 +1147,26 @@ export function StudioApp() {
                 compact
                 article={selected}
                 onOpen={openContentDocument}
-                onPublish={(item) => void publishArticle(item)}
-                onDelete={(item) => void deleteArticle(item)}
+                onPublish={publishArticle}
+                onDelete={deleteArticle}
               />
             ) : null}
-            <button
-              className="studio2-secondary-button"
-              disabled={!site || !selected}
-              type="button"
-              onClick={() => startPreview('markdown')}
-            >
-              预览全文
-            </button>
+            {site ? (
+              <LocalDebugControl
+                configured={site.capabilities.developmentConfigured}
+                profilesAvailable={
+                  site.capabilities.developmentProfiles.length > 0
+                }
+                siteId={site.id}
+                onConfigure={() => setDestination('site')}
+                onLoad={async (siteId) =>
+                  (await api.development(siteId)).development
+                }
+                onControl={async (siteId, action) =>
+                  (await api.controlDevelopment(siteId, action)).development
+                }
+              />
+            ) : null}
           </div>
         </motion.section>
 
@@ -1159,25 +1239,29 @@ export function StudioApp() {
                 setContentAdvancedFilters(filters);
                 setContentPage(1);
               }}
-              onDiscardUnavailable={async (item) => {
+              onDiscardUnavailable={(item) => {
                 if (!site || !item.workingCopy) return;
-                if (
-                  !window.confirm(
+                setConfirm({
+                  title: '删除无法定位的工作副本',
+                  description:
                     '只删除这个无法定位的工作副本？源文件与站点中的其他内容不会被修改。',
-                  )
-                )
-                  return;
-                await api.discardUnavailableWorkingCopy({
-                  siteId: site.id,
-                  documentId: item.documentId,
-                  expectedVersion: item.workingCopy.version,
+                  confirmLabel: '删除工作副本',
+                  danger: true,
+                  run: async () => {
+                    if (!item.workingCopy) return;
+                    await api.discardUnavailableWorkingCopy({
+                      siteId: site.id,
+                      documentId: item.documentId,
+                      expectedVersion: item.workingCopy.version,
+                    });
+                    const refreshed = await api.content(site.id, contentQuery);
+                    setSiteContent(refreshed.content);
+                  },
                 });
-                const refreshed = await api.content(site.id, contentQuery);
-                setSiteContent(refreshed.content);
               }}
               onOpen={openContentDocument}
-              onPublish={(item) => void publishArticle(item)}
-              onDelete={(item) => void deleteArticle(item)}
+              onPublish={publishArticle}
+              onDelete={deleteArticle}
               onPageChange={setContentPage}
               onSearchChange={(nextSearch) => {
                 setContentSearch(nextSearch);
@@ -1281,6 +1365,13 @@ export function StudioApp() {
                       Markdown 源码
                     </button>
                   </div>
+                  <button
+                    className="studio2-secondary-button"
+                    type="button"
+                    onClick={() => setPanel('preview')}
+                  >
+                    预览
+                  </button>
                   <ResourcePicker
                     accept={site?.capabilities.resourceMediaTypes ?? []}
                     inputRef={resourceInput}
@@ -1297,30 +1388,33 @@ export function StudioApp() {
                     uploads={uploads}
                     onDeleteOrphans={() => {
                       if (!orphanPlan || !site || !selected) return;
-                      if (
-                        !window.confirm(
-                          `清理这 ${orphanPlan.assets.length} 个未引用资源？删除前会再次核对文章版本；已引用资源不会被删除。`,
-                        )
-                      )
-                        return;
-                      setOrphanBusy(true);
-                      setOrphanError('');
-                      void api
-                        .deleteOrphanResources({
-                          siteId: site.id,
-                          documentId: selected.documentId,
-                          collection: selected.collectionId,
-                          confirmation: orphanPlan.confirmation,
-                        })
-                        .then(() => setOrphanPlan(undefined))
-                        .catch((reason: unknown) =>
-                          setOrphanError(
-                            reason instanceof Error
-                              ? reason.message
-                              : '未引用资源清理失败，请重新审阅',
-                          ),
-                        )
-                        .finally(() => setOrphanBusy(false));
+                      setConfirm({
+                        title: '清理未引用资源',
+                        description: `清理这 ${orphanPlan.assets.length} 个未引用资源？删除前会再次核对文章版本；已引用资源不会被删除。`,
+                        confirmLabel: '清理资源',
+                        danger: true,
+                        run: async () => {
+                          setOrphanBusy(true);
+                          setOrphanError('');
+                          try {
+                            await api.deleteOrphanResources({
+                              siteId: site.id,
+                              documentId: selected.documentId,
+                              collection: selected.collectionId,
+                              confirmation: orphanPlan.confirmation,
+                            });
+                            setOrphanPlan(undefined);
+                          } catch (reason: unknown) {
+                            setOrphanError(
+                              reason instanceof Error
+                                ? reason.message
+                                : '未引用资源清理失败，请重新审阅',
+                            );
+                          } finally {
+                            setOrphanBusy(false);
+                          }
+                        },
+                      });
                     }}
                     onDismiss={(upload) =>
                       setUploads((items) =>
@@ -1341,12 +1435,13 @@ export function StudioApp() {
                     <button
                       className="discard-button"
                       onClick={() => {
-                        if (
-                          !window.confirm(
+                        setConfirm({
+                          title: '放弃修改',
+                          description:
                             '放弃磁盘上尚未提交的修改，恢复到 Git 中的版本？新草稿若还没有提交记录，正文会清空。',
-                          )
-                        )
-                          return;
+                          confirmLabel: '放弃修改',
+                          danger: true,
+                          run: () => {
                         const generation = ++saveGeneration.current;
                         void api
                           .discardWorkingCopy({
@@ -1390,6 +1485,8 @@ export function StudioApp() {
                                 : 'error',
                             );
                           });
+                          },
+                        });
                       }}
                     >
                       放弃修改
@@ -1560,6 +1657,7 @@ export function StudioApp() {
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setAgentSelection(markdownSelection);
+                      setAgentCreateRequested(false);
                       setAgentOpenRequest((value) => value + 1);
                     }}
                   >
@@ -1583,9 +1681,28 @@ export function StudioApp() {
             />
           </div>
         </div>
+        <ConfirmDialog
+          open={Boolean(confirm)}
+          title={confirm?.title ?? ''}
+          description={confirm?.description ?? ''}
+          {...(confirm?.confirmLabel
+            ? { confirmLabel: confirm.confirmLabel }
+            : {})}
+          {...(confirm?.danger ? { danger: true } : {})}
+          onConfirm={() => {
+            const task = confirm?.run;
+            setConfirm(undefined);
+            void task?.();
+          }}
+          onOpenChange={(open) => {
+            if (!open) setConfirm(undefined);
+          }}
+        />
         <AgentPanel
           api={api}
           openRequest={agentOpenRequest}
+          requestedSessionId={agentRequestedSessionId}
+          createRequested={agentCreateRequested}
           onOpenChange={setAgentDocked}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
           {...(destination === 'content' && selected

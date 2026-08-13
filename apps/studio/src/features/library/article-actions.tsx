@@ -27,7 +27,11 @@ export function ArticleActions({
         •••
       </Menu.Trigger>
       <Menu.Portal>
-        <Menu.Positioner align="end" sideOffset={6}>
+        <Menu.Positioner
+          className="studio2-menu-positioner"
+          align="end"
+          sideOffset={6}
+        >
           <Menu.Popup className="studio2-menu">
             <Menu.Group>
               <Menu.GroupLabel className="studio2-menu-label">

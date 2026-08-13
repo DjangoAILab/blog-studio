@@ -75,13 +75,15 @@ export function LocalDevelopment({
           <p>LOCAL DEVELOPMENT</p>
           <h2>本地调试站点</h2>
         </div>
-        <span className={`is-${details.status}`}>
+        <span
+          className={`studio2-status-chip is-${
+            busy || details.status === 'starting' ? 'starting' : details.status
+          }`}
+        >
           {busy || details.status === 'starting' ? (
             <>
               <span className="studio2-loading-orb" />
-              {details.status === 'starting' || busy
-                ? '启动中，可能需要一会儿'
-                : statusLabel[details.status]}
+              启动中，可能需要一会儿
             </>
           ) : (
             statusLabel[details.status]

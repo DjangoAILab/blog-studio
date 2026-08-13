@@ -3,12 +3,14 @@ import { motion } from 'motion/react';
 import { useState } from 'react';
 
 import type {
+  AgentSessionSummary,
   ContentQueryResult,
   ContentSummary,
   DevelopmentDetails,
   SiteConfigurationDetails,
   SiteConfigurationRevision,
 } from '../../app/api.js';
+import { AgentSessionBoard } from '../agent/agent-session-board.js';
 import { ArticleActions } from '../library/article-actions.js';
 import { LocalDevelopment } from './local-development.js';
 import { SiteSettings } from '../settings/site-settings.js';
@@ -38,6 +40,10 @@ interface SiteOverviewProps {
     readonly expectedUpdatedAt: string;
     readonly lifecycleState: 'active' | 'paused' | 'unregistered';
   }) => Promise<Site>;
+  readonly sessions?: readonly AgentSessionSummary[] | undefined;
+  readonly sessionsLoading?: boolean | undefined;
+  readonly onOpenSession: (sessionId: string) => void;
+  readonly onCreateSession: () => void;
   readonly onLoadDevelopment: (siteId: string) => Promise<DevelopmentDetails>;
   readonly onControlDevelopment: (
     siteId: string,
@@ -111,6 +117,10 @@ export function SiteOverview({
   onPublishDocument,
   onDeleteDocument,
   onPrepareChanges,
+  sessions,
+  sessionsLoading = false,
+  onOpenSession,
+  onCreateSession,
   onLoadSiteEvents,
   onReloadSite,
   onUpdateSite,
@@ -123,7 +133,13 @@ export function SiteOverview({
   onActivateConfiguration,
   onRevertConfiguration,
 }: SiteOverviewProps) {
-  const recent = content?.items.slice(0, 5) ?? [];
+  const recent = [...(content?.items ?? [])]
+    .sort((left, right) =>
+      (right.filesystemModifiedAt ?? right.activityAt ?? '').localeCompare(
+        left.filesystemModifiedAt ?? left.activityAt ?? '',
+      ),
+    )
+    .slice(0, 5);
   const pendingChanges = content?.counts.modified ?? 0;
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -199,6 +215,14 @@ export function SiteOverview({
         onConfigure={() => setSettingsOpen(true)}
         onLoad={onLoadDevelopment}
         onControl={onControlDevelopment}
+      />
+
+      <AgentSessionBoard
+        articles={content?.items ?? []}
+        loading={sessionsLoading}
+        sessions={sessions ?? []}
+        onCreateSession={onCreateSession}
+        onOpenSession={onOpenSession}
       />
 
       <section className="studio2-recent" aria-labelledby="recent-content">

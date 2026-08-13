@@ -66,6 +66,18 @@ describe('SQLite Agent Session repository', () => {
           `SELECT name FROM pragma_table_info('agent_sessions') ORDER BY cid`,
         )
         .all(),
+    ).toEqual(
+      expect.arrayContaining([
+        { name: 'document_id' },
+        { name: 'collection_id' },
+      ]),
+    );
+    expect(
+      database
+        .prepare(
+          `SELECT name FROM pragma_table_info('agent_sessions') ORDER BY cid`,
+        )
+        .all(),
     ).not.toEqual(expect.arrayContaining([{ name: 'messages_json' }]));
     database.close();
 

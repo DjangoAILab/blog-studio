@@ -275,7 +275,12 @@ export function registerAgentApiRoutes(
 
   app.post<{
     Params: { siteId: string };
-    Body: { displayName: string; approvalMode?: 'approval' | 'yolo' };
+    Body: {
+      displayName: string;
+      approvalMode?: 'approval' | 'yolo';
+      documentId?: string;
+      collectionId?: string;
+    };
   }>(
     '/api/sites/:siteId/agent/sessions',
     {
@@ -288,6 +293,8 @@ export function registerAgentApiRoutes(
           properties: {
             displayName: { type: 'string', minLength: 1, maxLength: 120 },
             approvalMode: { type: 'string', enum: ['approval', 'yolo'] },
+            documentId: { type: 'string', minLength: 1 },
+            collectionId: { type: 'string', minLength: 1 },
           },
         },
       },
@@ -299,6 +306,12 @@ export function registerAgentApiRoutes(
           displayName: request.body.displayName,
           ...(request.body.approvalMode
             ? { approvalMode: request.body.approvalMode }
+            : {}),
+          ...(request.body.documentId && request.body.collectionId
+            ? {
+                documentId: request.body.documentId,
+                collectionId: request.body.collectionId,
+              }
             : {}),
         }),
       ),
