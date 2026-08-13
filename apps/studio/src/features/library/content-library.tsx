@@ -59,7 +59,7 @@ const filters: readonly {
 const stateLabels: Readonly<Record<ContentState, string>> = {
   draft: '草稿',
   published: '已发布',
-  modified: '工作副本',
+  modified: '未提交改动',
 };
 
 const sortLabels: Readonly<Record<ContentSortField, string>> = {

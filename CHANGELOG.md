@@ -6,6 +6,17 @@ All notable changes to Blog Studio are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Authoring now writes the live Markdown file on autosave instead of keeping a
+  SQLite working copy in front of disk. Published posts with uncommitted Git
+  changes appear as “未提交改动”; discard restores the committed file, or
+  clears an untracked draft body.
+- The Site Agent reloads the open article after a tool writes the workspace.
+  Composer selection uses “加入对话”; the unused editor-buffer chip is gone.
+- ChangeSet preparation freezes dirty Git documents already on disk. Apply
+  confirms those files rather than pouring a SQLite snapshot onto them.
+
 ### Added
 
 - Site-first owner-password onboarding with trusted CLI initialization/reset,

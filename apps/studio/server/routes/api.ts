@@ -12,10 +12,7 @@ import {
   type AssetScope,
   type FrontMatterValue,
 } from '@blog-studio/core';
-import {
-  RevisionConflictError,
-  type SqliteDraftRepository,
-} from '@blog-studio/persistence';
+import type { SqliteDraftRepository } from '@blog-studio/persistence';
 import type { FastifyInstance } from 'fastify';
 
 import {
@@ -217,15 +214,14 @@ async function createOrphanAssetPlan(
     workspace.config.workspace.root,
     ref,
   );
-  const draft = dependencies.drafts.get(ref.workspaceId, ref.documentId);
   const scope = createArticleAssetScope(
     createWorkspaceId(input.workspaceId),
     createDocumentId(input.documentId),
     workspace.assetRootPrefix,
   );
   const referenceText = JSON.stringify({
-    frontMatter: draft?.frontMatter ?? source.frontMatter,
-    body: draft?.body ?? source.body,
+    frontMatter: source.frontMatter,
+    body: source.body,
   });
   const assets = (await workspace.assetProvider.list(scope))
     .filter(
@@ -243,7 +239,7 @@ async function createOrphanAssetPlan(
           documentId: input.documentId,
           collection: input.collection,
           sourceRevision: source.revision,
-          draftVersion: draft?.version ?? 0,
+          draftVersion: 0,
           assets: assets.map((asset) => ({
             id: asset.id,
             contentHash: asset.contentHash,
@@ -255,7 +251,7 @@ async function createOrphanAssetPlan(
   return {
     confirmation,
     sourceRevision: source.revision,
-    draftVersion: draft?.version ?? 0,
+    draftVersion: 0,
     assets,
     scope,
   };
@@ -804,16 +800,33 @@ export function registerApiRoutes(
             field.default === undefined ? [] : [[key, field.default]],
         ),
       ) as Record<string, FrontMatterValue>;
-      const draft = dependencies.drafts.save({
-        workspaceId: created.source.ref.workspaceId,
-        documentId: created.source.ref.documentId,
-        expectedVersion: 0,
-        sourceRevision: created.source.revision,
-        frontMatter: { ...created.source.frontMatter, ...configuredDefaults },
-        body: created.source.body,
-        savedAt: now.toISOString(),
+      let source = created.source;
+      if (Object.keys(configuredDefaults).length > 0) {
+        await workspace.generator.writeDocument(
+          workspace.config.workspace.root,
+          {
+            ref: created.source.ref,
+            expectedRevision: created.source.revision,
+            frontMatter: {
+              ...created.source.frontMatter,
+              ...configuredDefaults,
+            },
+            body: created.source.body,
+          },
+        );
+        source = await workspace.generator.readDocument(
+          workspace.config.workspace.root,
+          created.source.ref,
+        );
+      }
+      return reply.code(201).send({
+        source,
+        draft: {
+          version: 0,
+          frontMatter: source.frontMatter,
+          body: source.body,
+        },
       });
-      return reply.code(201).send({ source: created.source, draft });
     },
   );
 
@@ -924,19 +937,19 @@ export function registerApiRoutes(
         ...request.body,
       });
       const workspaceId = dependencies.sites.workspaceId(request.params.siteId);
-      const { ref } = await dependencies.workspaces.findDocument(
-        workspaceId,
+      const opened = await dependencies.content.read(
+        request.params.siteId,
         request.query.collection,
         request.params.documentId,
       );
       const development = await dependencies.development.sync({
         workspaceId,
-        ref,
-        sourceRevision: createContentHash(request.body.sourceRevision),
+        ref: opened.source.ref,
+        sourceRevision: opened.source.revision,
         frontMatter: request.body.frontMatter,
         body: request.body.body,
       });
-      return { draft, development };
+      return { draft, source: opened.source, development };
     },
   );
 
@@ -992,7 +1005,7 @@ export function registerApiRoutes(
           type: 'object',
           additionalProperties: false,
           required: ['expectedVersion'],
-          properties: { expectedVersion: { type: 'integer', minimum: 1 } },
+          properties: { expectedVersion: { type: 'integer', minimum: 0 } },
         },
       },
     },
@@ -1242,9 +1255,8 @@ export function registerApiRoutes(
         request.query.collection,
         request.params.documentId,
       );
-      const frontMatter =
-        opened.draft?.frontMatter ?? opened.source.frontMatter;
-      const body = opened.draft?.body ?? opened.source.body;
+      const frontMatter = opened.source.frontMatter;
+      const body = opened.source.body;
       const titleValue = frontMatter.title;
       const title =
         typeof titleValue === 'string' || typeof titleValue === 'number'
@@ -1354,16 +1366,14 @@ export function registerApiRoutes(
           createdAt: now.toISOString(),
         },
       );
-      const draft = dependencies.drafts.save({
-        workspaceId: created.source.ref.workspaceId,
-        documentId: created.source.ref.documentId,
-        expectedVersion: 0,
-        sourceRevision: created.source.revision,
-        frontMatter: created.source.frontMatter,
-        body: created.source.body,
-        savedAt: now.toISOString(),
+      return reply.code(201).send({
+        source: created.source,
+        draft: {
+          version: 0,
+          frontMatter: created.source.frontMatter,
+          body: created.source.body,
+        },
       });
-      return reply.code(201).send({ source: created.source, draft });
     },
   );
 
@@ -1683,16 +1693,26 @@ export function registerApiRoutes(
           source.revision,
         );
       }
-      const snapshot = dependencies.drafts.save({
-        workspaceId: ref.workspaceId,
-        documentId: ref.documentId,
-        expectedVersion: request.body.expectedVersion,
-        sourceRevision: createContentHash(request.body.sourceRevision),
+      await workspace.generator.writeDocument(workspace.config.workspace.root, {
+        ref,
+        expectedRevision: source.revision,
         frontMatter: request.body.frontMatter,
         body: request.body.body,
-        savedAt: new Date().toISOString(),
       });
-      return reply.code(200).send({ draft: snapshot });
+      const written = await workspace.generator.readDocument(
+        workspace.config.workspace.root,
+        ref,
+      );
+      return reply.code(200).send({
+        draft: {
+          version: 1,
+          sourceRevision: written.revision,
+          frontMatter: written.frontMatter,
+          body: written.body,
+          savedAt: new Date().toISOString(),
+        },
+        source: written,
+      });
     },
   );
 
@@ -1710,29 +1730,42 @@ export function registerApiRoutes(
           type: 'object',
           additionalProperties: false,
           required: ['expectedVersion'],
-          properties: { expectedVersion: { type: 'integer', minimum: 1 } },
+          properties: { expectedVersion: { type: 'integer', minimum: 0 } },
         },
       },
     },
     async (request) => {
+      const workspace = dependencies.workspaces.get(request.params.workspaceId);
       const { ref } = await dependencies.workspaces.findDocument(
         request.params.workspaceId,
         request.query.collection,
         request.params.documentId,
       );
-      const current = dependencies.drafts.get(ref.workspaceId, ref.documentId);
-      if (
-        !current ||
-        !dependencies.drafts.delete(
-          ref.workspaceId,
-          ref.documentId,
-          request.body.expectedVersion,
-        )
-      )
-        throw new RevisionConflictError(
-          request.body.expectedVersion,
-          current?.version ?? 0,
-        );
+      const source = await workspace.generator.readDocument(
+        workspace.config.workspace.root,
+        ref,
+      );
+      const restore = workspace.repository as {
+        readCommitted?(root: string, path: string): Promise<string | undefined>;
+        restorePath?(root: string, path: string): Promise<void>;
+      };
+      const committed = restore.readCommitted
+        ? await restore.readCommitted(workspace.config.workspace.root, ref.path)
+        : undefined;
+      if (committed !== undefined && restore.restorePath) {
+        await restore.restorePath(workspace.config.workspace.root, ref.path);
+        return { discarded: true };
+      }
+      const title = source.frontMatter.title;
+      await workspace.generator.writeDocument(workspace.config.workspace.root, {
+        ref,
+        expectedRevision: source.revision,
+        frontMatter: {
+          ...source.frontMatter,
+          ...(typeof title === 'string' ? { title } : {}),
+        },
+        body: '',
+      });
       return { discarded: true };
     },
   );

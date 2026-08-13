@@ -4,6 +4,10 @@ Blog Studio keeps canonical content in the mounted workspace and operational
 state in SQLite. Upgrade the Studio container independently from the generated
 public site, and always pin an immutable image digest for production.
 
+This page is the **stable** install path. The home-server editor tracks `dev`
+and is documented in [Development and release](development-and-release.md). Do
+not point a durable public host at `blog-studio:dev`.
+
 ## Before upgrading
 
 1. Read the release notes and confirm configuration compatibility.

@@ -3,7 +3,8 @@
 ## Supported versions
 
 Until v1.0, only the latest tagged minor release receives security fixes. The
-`main` branch is development code and is not a supported deployment channel.
+`dev` branch is the unstable internal editor. `main` is the integration branch
+for the next tagged release and is not itself a supported install channel.
 
 | Version     | Supported |
 | ----------- | --------- |

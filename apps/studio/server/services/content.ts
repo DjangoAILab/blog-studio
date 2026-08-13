@@ -1,6 +1,5 @@
 import {
   BlogStudioError,
-  createContentHash,
   createDocumentId,
   createWorkspaceId,
   type ContentSortDirection,
@@ -65,18 +64,6 @@ export class SourceRevisionConflictError extends BlogStudioError {
     });
     this.name = 'SourceRevisionConflictError';
   }
-}
-
-function stringValue(value: FrontMatterValue | undefined): string | undefined {
-  return typeof value === 'string' || typeof value === 'number'
-    ? String(value)
-    : undefined;
-}
-
-function stringList(value: FrontMatterValue | undefined): readonly string[] {
-  if (typeof value === 'string') return [value];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function withinDate(
@@ -179,80 +166,32 @@ export class ContentService {
     const issues = collectionResults.flatMap((result) =>
       result.issue ? [result.issue] : [],
     );
-    const drafts = new Map(
-      this.drafts
-        .listMetadataForWorkspace(
-          createWorkspaceId(workspace.config.workspace.id),
-        )
-        .map((draft) => [draft.documentId, draft] as const),
-    );
+    const dirtyPaths = await this.#dirtyPaths(workspace, workspaceId);
     const allItems: ContentSummary[] = summaries.map((summary) => {
-      const draft = drafts.get(summary.ref.documentId);
+      const dirty = dirtyPaths.has(summary.ref.path);
       const state: ContentState =
-        summary.state === 'published' && draft ? 'modified' : summary.state;
-      const title = stringValue(draft?.frontMatter.title) ?? summary.title;
-      const tags = draft ? stringList(draft.frontMatter.tags) : summary.tags;
-      const categories = draft
-        ? stringList(draft.frontMatter.categories)
-        : (summary.categories ?? []);
+        summary.state === 'published' && dirty ? 'modified' : summary.state;
       const publishedAt = summary.publishedAt;
       const contentUpdatedAt = summary.contentUpdatedAt ?? summary.updatedAt;
       const filesystemModifiedAt = summary.filesystemModifiedAt;
-      const workingCopySavedAt = draft?.savedAt;
-      const activityAt = workingCopySavedAt ?? contentUpdatedAt ?? publishedAt;
+      const activityAt =
+        contentUpdatedAt ?? publishedAt ?? filesystemModifiedAt;
       return {
         siteId: site.id,
         documentId: summary.ref.documentId,
         collectionId: summary.ref.collectionId,
         path: summary.ref.path,
-        title,
-        tags,
-        categories,
+        title: summary.title,
+        tags: summary.tags,
+        categories: summary.categories ?? [],
         state,
         sourceState: summary.state,
         ...(publishedAt ? { publishedAt } : {}),
         ...(contentUpdatedAt ? { contentUpdatedAt } : {}),
         ...(filesystemModifiedAt ? { filesystemModifiedAt } : {}),
-        ...(workingCopySavedAt ? { workingCopySavedAt } : {}),
         ...(activityAt ? { activityAt, updatedAt: activityAt } : {}),
-        ...(draft
-          ? {
-              workingCopy: {
-                version: draft.version,
-                savedAt: draft.savedAt,
-                sourceRevision: draft.sourceRevision,
-                stale: draft.sourceRevision !== summary.revision,
-              },
-            }
-          : {}),
       };
     });
-    const availableIds = new Set(
-      summaries.map((summary) => summary.ref.documentId),
-    );
-    for (const draft of drafts.values()) {
-      if (availableIds.has(draft.documentId)) continue;
-      allItems.push({
-        siteId: site.id,
-        documentId: draft.documentId,
-        collectionId: 'recovery',
-        path: '',
-        title: stringValue(draft.frontMatter.title) ?? '无法定位的工作副本',
-        tags: stringList(draft.frontMatter.tags),
-        categories: stringList(draft.frontMatter.categories),
-        state: 'modified',
-        sourceState: 'unavailable',
-        workingCopySavedAt: draft.savedAt,
-        activityAt: draft.savedAt,
-        updatedAt: draft.savedAt,
-        workingCopy: {
-          version: draft.version,
-          savedAt: draft.savedAt,
-          sourceRevision: draft.sourceRevision,
-          stale: true,
-        },
-      });
-    }
     const counts = {
       all: allItems.length,
       draft: allItems.filter((item) => item.state === 'draft').length,
@@ -393,11 +332,10 @@ export class ContentService {
       workspace.config.workspace.root,
       ref,
     );
-    const draft = this.drafts.get(ref.workspaceId, ref.documentId);
     return {
       source,
-      draft,
-      stale: draft ? draft.sourceRevision !== source.revision : false,
+      draft: null,
+      stale: false,
     };
   }
 
@@ -427,18 +365,46 @@ export class ContentService {
         'This document has invalid front matter and must be repaired in source mode before it can be saved.',
       );
     }
-    return this.drafts.save({
-      workspaceId: current.source.ref.workspaceId,
-      documentId: current.source.ref.documentId,
-      expectedVersion: input.expectedVersion,
-      sourceRevision: createContentHash(input.sourceRevision),
-      frontMatter: input.frontMatter,
-      ...(current.source.frontMatterSource
-        ? { frontMatterSource: current.source.frontMatterSource }
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    const savedAt = input.savedAt ?? new Date().toISOString();
+    try {
+      await workspace.generator.writeDocument(workspace.config.workspace.root, {
+        ref: current.source.ref,
+        expectedRevision: current.source.revision,
+        frontMatter: input.frontMatter,
+        body: input.body,
+        modifiedAt: savedAt,
+      });
+    } catch (error) {
+      if (error instanceof Error && /revision conflict/i.test(error.message)) {
+        const latest = await workspace.generator.readDocument(
+          workspace.config.workspace.root,
+          current.source.ref,
+        );
+        throw new SourceRevisionConflictError(
+          input.sourceRevision,
+          latest.revision,
+        );
+      }
+      throw error;
+    }
+    const source = await workspace.generator.readDocument(
+      workspace.config.workspace.root,
+      current.source.ref,
+    );
+    return {
+      workspaceId: source.ref.workspaceId,
+      documentId: source.ref.documentId,
+      version: 1,
+      sourceRevision: source.revision,
+      frontMatter: source.frontMatter,
+      ...(source.frontMatterSource
+        ? { frontMatterSource: source.frontMatterSource }
         : {}),
-      body: input.body,
-      savedAt: input.savedAt ?? new Date().toISOString(),
-    });
+      body: source.body,
+      savedAt,
+    };
   }
 
   public async repairFrontMatter(input: {
@@ -461,10 +427,6 @@ export class ContentService {
     }
     if (!current.source.frontMatterParseError)
       throw new Error('Front matter is already valid and does not need repair');
-    if (current.draft)
-      throw new Error(
-        'Discard or resolve the existing working copy before repairing canonical front matter.',
-      );
     const document = parseDocument(input.frontMatterSource);
     if (document.errors.length > 0)
       throw new Error(
@@ -501,18 +463,73 @@ export class ContentService {
       input.collectionId,
       input.documentId,
     );
-    if (
-      !current.draft ||
-      !this.drafts.delete(
-        current.source.ref.workspaceId,
-        current.source.ref.documentId,
-        input.expectedVersion,
-      )
-    ) {
-      throw new RevisionConflictError(
-        input.expectedVersion,
-        current.draft?.version ?? 0,
+    const workspaceId = this.sites.workspaceId(input.siteId);
+    const workspace = this.workspaces.get(workspaceId);
+    const root = workspace.config.workspace.root;
+    const repository = workspace.repository as {
+      readCommitted?(root: string, path: string): Promise<string | undefined>;
+      restorePath?(root: string, path: string): Promise<void>;
+    };
+    const committed = repository.readCommitted
+      ? await repository.readCommitted(root, current.source.ref.path)
+      : undefined;
+    if (committed !== undefined) {
+      if (!repository.restorePath) {
+        throw new BlogStudioError(
+          'DOCUMENT_CONFLICT',
+          'This repository cannot restore a committed file version',
+          { path: current.source.ref.path },
+        );
+      }
+      await repository.restorePath(root, current.source.ref.path);
+      return;
+    }
+    const title = current.source.frontMatter.title;
+    try {
+      await workspace.generator.writeDocument(root, {
+        ref: current.source.ref,
+        expectedRevision: current.source.revision,
+        frontMatter: {
+          ...current.source.frontMatter,
+          ...(typeof title === 'string' ? { title } : {}),
+        },
+        body: '',
+      });
+    } catch (error) {
+      if (!(
+        error instanceof Error && /revision conflict/i.test(error.message)
+      )) {
+        throw error;
+      }
+      const latest = await workspace.generator.readDocument(
+        root,
+        current.source.ref,
       );
+      const latestTitle = latest.frontMatter.title;
+      await workspace.generator.writeDocument(root, {
+        ref: latest.ref,
+        expectedRevision: latest.revision,
+        frontMatter: {
+          ...latest.frontMatter,
+          ...(typeof latestTitle === 'string' ? { title: latestTitle } : {}),
+        },
+        body: '',
+      });
+    }
+  }
+
+  async #dirtyPaths(
+    workspace: ReturnType<WorkspaceService['get']>,
+    workspaceId: string,
+  ): Promise<ReadonlySet<string>> {
+    try {
+      const status = await workspace.repository.status(
+        createWorkspaceId(workspaceId),
+        workspace.config.workspace.root,
+      );
+      return new Set(status.dirtyPaths);
+    } catch {
+      return new Set();
     }
   }
 }
