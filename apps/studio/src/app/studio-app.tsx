@@ -8,6 +8,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
+import { AddToChatIcon } from '../features/agent/add-to-chat-icon.js';
 import { AgentPanel } from '../features/agent/agent-panel.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
 import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
@@ -667,8 +668,7 @@ export function StudioApp() {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 's')
         return;
       event.preventDefault();
-      if (saveState === 'clean' || saveState === 'saved')
-        setSaveState('saved');
+      if (saveState === 'clean' || saveState === 'saved') setSaveState('saved');
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -1411,49 +1411,52 @@ export function StudioApp() {
                           confirmLabel: '放弃修改',
                           danger: true,
                           run: () => {
-                        const generation = ++saveGeneration.current;
-                        void api
-                          .discardWorkingCopy({
-                            siteId: site.id,
-                            documentId: selected.documentId,
-                            collection: selected.collectionId,
-                            expectedVersion: version,
-                          })
-                          .then(async () => {
-                            const restored = await api.siteDocument(
-                              site.id,
-                              selected.documentId,
-                              selected.collectionId,
-                            );
-                            if (generation !== saveGeneration.current) return;
-                            setDocument(restored);
-                            setBody(restored.source.body);
-                            setFrontMatter(restored.source.frontMatter);
-                            setTitle(
-                              typeof restored.source.frontMatter.title ===
-                                'string'
-                                ? restored.source.frontMatter.title
-                                : selected.title,
-                            );
-                            setVersion(0);
-                            setSaveState('clean');
-                            setEditorEpoch((value) => value + 1);
-                            const refreshed = await api.content(
-                              site.id,
-                              contentQuery,
-                            );
-                            if (generation !== saveGeneration.current) return;
-                            setSiteContent(refreshed.content);
-                          })
-                          .catch((reason: unknown) => {
-                            if (generation !== saveGeneration.current) return;
-                            setSaveState(
-                              reason instanceof Error &&
-                                /conflict/i.test(reason.message)
-                                ? 'conflict'
-                                : 'error',
-                            );
-                          });
+                            const generation = ++saveGeneration.current;
+                            void api
+                              .discardWorkingCopy({
+                                siteId: site.id,
+                                documentId: selected.documentId,
+                                collection: selected.collectionId,
+                                expectedVersion: version,
+                              })
+                              .then(async () => {
+                                const restored = await api.siteDocument(
+                                  site.id,
+                                  selected.documentId,
+                                  selected.collectionId,
+                                );
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setDocument(restored);
+                                setBody(restored.source.body);
+                                setFrontMatter(restored.source.frontMatter);
+                                setTitle(
+                                  typeof restored.source.frontMatter.title ===
+                                    'string'
+                                    ? restored.source.frontMatter.title
+                                    : selected.title,
+                                );
+                                setVersion(0);
+                                setSaveState('clean');
+                                setEditorEpoch((value) => value + 1);
+                                const refreshed = await api.content(
+                                  site.id,
+                                  contentQuery,
+                                );
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setSiteContent(refreshed.content);
+                              })
+                              .catch((reason: unknown) => {
+                                if (generation !== saveGeneration.current)
+                                  return;
+                                setSaveState(
+                                  reason instanceof Error &&
+                                    /conflict/i.test(reason.message)
+                                    ? 'conflict'
+                                    : 'error',
+                                );
+                              });
                           },
                         });
                       }}
@@ -1637,6 +1640,8 @@ export function StudioApp() {
                   <button
                     className="agent-selection-button"
                     type="button"
+                    aria-label="加入对话"
+                    title="加入对话"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => {
                       setAgentSelection(markdownSelection);
@@ -1644,7 +1649,7 @@ export function StudioApp() {
                       setAgentOpenRequest((value) => value + 1);
                     }}
                   >
-                    加入对话
+                    <AddToChatIcon />
                   </button>
                 ) : null}
               </section>
@@ -1694,7 +1699,9 @@ export function StudioApp() {
             setAgentDocked(open);
             setLibraryCollapsed(open && destination === 'content');
           }}
-          {...(destination === 'content' && agentSlot ? { host: agentSlot } : {})}
+          {...(destination === 'content' && agentSlot
+            ? { host: agentSlot }
+            : {})}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
           {...(destination === 'content' && selected
             ? {
