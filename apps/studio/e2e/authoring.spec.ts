@@ -66,27 +66,26 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     'Second Browser Site',
   );
   await expect(secondSitePage).toHaveURL(new RegExp(`siteId=${secondSiteId}`));
-  await secondSitePage.getByRole('button', { name: 'Agent' }).click();
+  await secondSitePage.getByRole('button', { name: 'AI', exact: true }).click();
   const secondAgent = secondSitePage.getByRole('complementary', {
-    name: /Second Browser Site Agent/,
+    name: /Second Browser Site AI/,
   });
-  await secondAgent.getByRole('button', { name: '切换会话' }).click();
+  await secondAgent.getByRole('button', { name: '切换' }).click();
   const secondSwitcher = secondSitePage.getByRole('dialog', {
-    name: '会话',
+    name: '切换会话',
   });
-  await secondSwitcher.getByRole('tab', { name: '选择' }).click();
   await expect(
-    secondSwitcher.getByLabel('Agent Session').locator('option'),
+    secondSwitcher.getByLabel('AI Session').locator('option'),
   ).toHaveCount(1);
-  await secondSwitcher.getByRole('tab', { name: '新建' }).click();
-  await secondSwitcher.getByRole('button', { name: '创建会话' }).click();
-  await secondAgent.getByRole('button', { name: '切换会话' }).click();
-  await secondSwitcher.getByRole('tab', { name: '选择' }).click();
+  await secondSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
+  await secondAgent.getByRole('button', { name: '新建' }).click();
+  await expect(secondAgent.getByText('新会话').first()).toBeVisible();
+  await secondAgent.getByRole('button', { name: '切换' }).click();
   await expect(
-    secondSwitcher.getByLabel('Agent Session').locator('option'),
+    secondSwitcher.getByLabel('AI Session').locator('option'),
   ).toHaveCount(2);
   await secondSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
-  await secondAgent.getByRole('button', { name: '关闭 Agent' }).click();
+  await secondAgent.getByRole('button', { name: '关闭 AI' }).click();
   await secondSitePage.getByRole('button', { name: '配置本地调试' }).click();
   await expect(
     secondSitePage
@@ -99,33 +98,30 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await secondSitePage.close();
   await expect(page).toHaveURL(new RegExp(`siteId=${firstSiteId}`));
 
-  await page.getByRole('button', { name: 'Agent' }).click();
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
   const agentPanel = page.getByRole('complementary', {
-    name: /test-browser-blog Agent/,
+    name: /test-browser-blog AI/,
   });
   await expect(agentPanel).toBeVisible();
-  await agentPanel.getByRole('button', { name: '切换会话' }).click();
-  const sessionSwitcher = page.getByRole('dialog', { name: '会话' });
-  await sessionSwitcher.getByRole('button', { name: '创建会话' }).click();
-  await agentPanel.getByRole('button', { name: '切换会话' }).click();
-  await sessionSwitcher.getByRole('tab', { name: '新建' }).click();
-  await sessionSwitcher.getByRole('button', { name: '创建会话' }).click();
-  await agentPanel.getByRole('button', { name: '切换会话' }).click();
-  await sessionSwitcher.getByRole('tab', { name: '选择' }).click();
+  await agentPanel.getByRole('button', { name: '新建' }).click();
+  await expect(agentPanel.getByText('新会话').first()).toBeVisible();
+  await agentPanel.getByRole('button', { name: '新建' }).click();
+  await agentPanel.getByRole('button', { name: '切换' }).click();
+  const sessionSwitcher = page.getByRole('dialog', { name: '切换会话' });
   await expect(
-    sessionSwitcher.getByLabel('Agent Session').locator('option'),
+    sessionSwitcher.getByLabel('AI Session').locator('option'),
   ).toHaveCount(3);
   const firstSiteSessionId = await sessionSwitcher
-    .getByLabel('Agent Session')
+    .getByLabel('AI Session')
     .inputValue();
-  await agentPanel.getByLabel('执行模式').selectOption('yolo');
-  await sessionSwitcher.getByRole('button', { name: '归档' }).click();
   await sessionSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
+  await agentPanel.getByLabel('执行模式').selectOption('yolo');
+  await agentPanel.getByRole('button', { name: '归档' }).click();
   await expect(
     agentPanel.getByRole('button', { name: '恢复 Session' }),
   ).toBeVisible();
   await agentPanel.getByRole('button', { name: '恢复 Session' }).click();
-  await agentPanel.getByRole('button', { name: '关闭 Agent' }).click();
+  await agentPanel.getByRole('button', { name: '关闭 AI' }).click();
 
   await page.getByRole('button', { name: '站点资料' }).click();
   await expect(page.getByRole('heading', { name: '站点资料' })).toBeVisible();
@@ -285,29 +281,25 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.keyboard.up('Shift');
   await page.getByRole('button', { name: '加入对话' }).click();
   await expect(
-    page.getByRole('complementary', { name: /Agent/ }).getByText(/选区 · L/),
+    page.getByRole('complementary', { name: /AI/ }).getByText(/#1/),
   ).toBeVisible();
   await page
-    .getByRole('complementary', { name: /Agent/ })
-    .getByRole('button', { name: '切换会话' })
+    .getByRole('complementary', { name: /AI/ })
+    .getByRole('button', { name: '切换' })
     .click();
   await expect(
-    page.getByRole('dialog', { name: '会话' }).getByLabel('Agent Session'),
+    page.getByRole('dialog', { name: '切换会话' }).getByLabel('AI Session'),
   ).toHaveValue(firstSiteSessionId);
   await page
-    .getByRole('dialog', { name: '会话' })
+    .getByRole('dialog', { name: '切换会话' })
     .getByRole('button', { name: '关闭', exact: true })
-    .click();
-  await page
-    .getByRole('complementary', { name: /Agent/ })
-    .getByRole('button', { name: /查看 选区/ })
     .click();
   await expect(
     page
-      .getByRole('complementary', { name: /Agent/ })
-      .getByText('# 浏览器可靠草稿', { exact: false }),
+      .getByRole('complementary', { name: /AI/ })
+      .getByText(/浏览器可靠草稿/),
   ).toBeVisible();
-  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await page.getByRole('button', { name: '关闭 AI' }).click();
 
   await page.route(
     '**/api/sites/*/content/*/resources?*',
@@ -387,11 +379,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
       ),
     )
     .toBe(true);
-  await page.getByRole('button', { name: 'Agent' }).click();
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
   await expect(
-    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+    page.getByRole('complementary', { name: /Browser Test Blog AI/ }),
   ).toBeVisible();
-  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await page.getByRole('button', { name: '关闭 AI' }).click();
   await page.getByRole('button', { name: '站点主题' }).click();
   await expect(page.getByRole('status')).toContainText('Markdown 预览');
   await expect
@@ -417,11 +409,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .click();
   await expect(page.getByRole('heading', { name: '更改审阅' })).toBeVisible();
   await expect(page.getByText('改动已在磁盘上，整理后可提交')).toBeVisible();
-  await page.getByRole('button', { name: 'Agent' }).click();
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
   await expect(
-    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+    page.getByRole('complementary', { name: /Browser Test Blog AI/ }),
   ).toBeVisible();
-  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await page.getByRole('button', { name: '关闭 AI' }).click();
 
   await page.getByRole('button', { name: '放弃修改' }).click();
   await page
@@ -528,11 +520,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '完成' }).click();
 
   await page.getByRole('button', { name: '系统', exact: true }).click();
-  await page.getByRole('button', { name: 'Agent' }).click();
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
   await expect(
-    page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),
+    page.getByRole('complementary', { name: /Browser Test Blog AI/ }),
   ).toBeVisible();
-  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await page.getByRole('button', { name: '关闭 AI' }).click();
   await page.getByLabel('当前密码').fill('browser-test-owner-password');
   await page
     .getByLabel('新密码', { exact: true })
@@ -557,9 +549,9 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   ).toBeVisible();
   await page.getByRole('button', { name: '写作', exact: true }).click();
   await expect(page.getByLabel('文章标题')).toBeVisible();
-  await page.getByRole('button', { name: 'Agent' }).click();
+  await page.getByRole('button', { name: 'AI', exact: true }).click();
   const mobileAgent = page.getByRole('complementary', {
-    name: /Browser Test Blog Agent/,
+    name: /Browser Test Blog AI/,
   });
   await expect(mobileAgent).toBeVisible();
   await expect
@@ -571,7 +563,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     )
     .toBe('1');
   await expectNoSeriousAccessibilityViolations(page);
-  await page.getByRole('button', { name: '关闭 Agent' }).click();
+  await page.getByRole('button', { name: '关闭 AI' }).click();
   await expect(mobileAgent).toBeHidden();
   expect(
     await page.evaluate(

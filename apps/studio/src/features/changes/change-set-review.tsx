@@ -361,7 +361,7 @@ export function ChangeSetReviewSheet({
                   type="button"
                   onClick={onOpenAgent}
                 >
-                  Agent
+                  AI
                 </button>
                 <Dialog.Close className="studio2-sheet-close" aria-label="关闭">
                   ×

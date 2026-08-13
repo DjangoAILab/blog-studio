@@ -1,4 +1,5 @@
 import { Crepe } from '@milkdown/crepe';
+import { editorViewCtx } from '@milkdown/kit/core';
 import { htmlSchema } from '@milkdown/kit/preset/commonmark';
 import { $view } from '@milkdown/kit/utils';
 import '@milkdown/crepe/theme/common/style.css';
@@ -11,16 +12,25 @@ import {
   protectedSourceLabel,
 } from './protected-source.js';
 
+interface EditorSelection {
+  readonly text: string;
+  readonly startLine: number;
+  readonly endLine: number;
+}
+
 interface VisualEditorProps {
   readonly markdown: string;
   readonly onChange: (markdown: string) => void;
   readonly resolveImageSource: (source: string) => string;
-  readonly onSelectionChange?: (selection?: {
-    readonly text: string;
-    readonly startLine: number;
-    readonly endLine: number;
-  }) => void;
+  readonly onSelectionChange?: (selection?: EditorSelection) => void;
+  readonly onAddToChat?: (selection: EditorSelection) => void;
 }
+
+const addToChatIcon = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="72" height="24" viewBox="0 0 72 24">
+    <text x="0" y="17" font-size="12" font-weight="700" fill="currentColor">加入对话</text>
+  </svg>
+`;
 
 const protectedHtmlSourceView = $view(htmlSchema.node, () => (node) => {
   const source = String(node.attrs.value ?? '');
@@ -53,16 +63,43 @@ function EditorSurface({
   onChange,
   resolveImageSource,
   onSelectionChange,
+  onAddToChat,
 }: VisualEditorProps) {
   const changeHandler = useRef(onChange);
   const selectionHandler = useRef(onSelectionChange);
+  const addToChatHandler = useRef(onAddToChat);
   const surface = useRef<HTMLDivElement>(null);
   changeHandler.current = onChange;
   selectionHandler.current = onSelectionChange;
+  addToChatHandler.current = onAddToChat;
   useEditor((root) => {
-    const crepe = new Crepe({ root, defaultValue: markdown }).addFeature(
-      (editor) => editor.use(protectedHtmlSourceView),
-    );
+    const crepe = new Crepe({
+      root,
+      defaultValue: markdown,
+      featureConfigs: {
+        [Crepe.Feature.Toolbar]: {
+          buildToolbar: (builder) => {
+            builder.addGroup('studio-ai', 'AI').addItem('add-to-chat', {
+              icon: addToChatIcon,
+              active: () => false,
+              onRun: (ctx) => {
+                const view = ctx.get(editorViewCtx);
+                const { from, to } = view.state.selection;
+                const text = view.state.doc.textBetween(from, to, '\n');
+                if (!text.trim()) return;
+                const before = view.state.doc.textBetween(0, from, '\n');
+                const startLine = before.split('\n').length;
+                addToChatHandler.current?.({
+                  text,
+                  startLine,
+                  endLine: startLine + text.split('\n').length - 1,
+                });
+              },
+            });
+          },
+        },
+      },
+    }).addFeature((editor) => editor.use(protectedHtmlSourceView));
     let initialized = false;
     crepe.on((listener) => {
       listener.markdownUpdated((_context, next, previous) => {

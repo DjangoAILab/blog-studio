@@ -43,7 +43,6 @@ import {
   type ContentSummary,
   type DocumentPayload,
   type AgentMessageContext,
-  type AgentSessionSummary,
   type OrphanAssetPlan,
   type PreviewFallbackReason,
   type ReleaseDetails,
@@ -257,21 +256,14 @@ export function StudioApp() {
     Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
   >();
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
-  const [agentRequestedSessionId, setAgentRequestedSessionId] = useState('');
   const [agentCreateRequested, setAgentCreateRequested] = useState(false);
   const [agentDocked, setAgentDocked] = useState(false);
-  const [siteSessions, setSiteSessions] = useState<
-    readonly AgentSessionSummary[]
-  >([]);
-  const [siteSessionsState, setSiteSessionsState] = useState<
-    'idle' | 'loading' | 'ready'
-  >('idle');
   const [confirm, setConfirm] = useState<{
     readonly title: string;
     readonly description: string;
     readonly confirmLabel?: string;
     readonly danger?: boolean;
-    readonly run: () => Promise<void>;
+    readonly run: () => void | Promise<void>;
   }>();
   const [editorEpoch, setEditorEpoch] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
@@ -482,30 +474,6 @@ export function StudioApp() {
         setAuthenticated(false);
       });
   }, [api]);
-  useEffect(() => {
-    if (!site) {
-      setSiteSessions([]);
-      setSiteSessionsState('idle');
-      return;
-    }
-    let cancelled = false;
-    setSiteSessionsState('loading');
-    void api
-      .agentSessions(site.id)
-      .then((result) => {
-        if (cancelled) return;
-        setSiteSessions(result.sessions);
-        setSiteSessionsState('ready');
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSiteSessions([]);
-        setSiteSessionsState('ready');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, site, agentDocked, agentOpenRequest]);
   useEffect(() => {
     if (!site) {
       setSiteContent(undefined);
@@ -1034,18 +1002,6 @@ export function StudioApp() {
                 error={siteContentError}
                 key={`site-${site.id}`}
                 loading={siteContentState === 'loading'}
-                sessions={siteSessions}
-                sessionsLoading={siteSessionsState === 'loading'}
-                onCreateSession={() => {
-                  setAgentRequestedSessionId('');
-                  setAgentCreateRequested(true);
-                  setAgentOpenRequest((value) => value + 1);
-                }}
-                onOpenSession={(sessionId) => {
-                  setAgentRequestedSessionId(sessionId);
-                  setAgentCreateRequested(false);
-                  setAgentOpenRequest((value) => value + 1);
-                }}
                 site={site}
                 onLoadSiteEvents={async (siteId) =>
                   (await api.siteEvents(siteId)).events
@@ -1605,6 +1561,20 @@ export function StudioApp() {
                           text: selection.text,
                         });
                       }}
+                      onAddToChat={(selection) => {
+                        if (!selected) return;
+                        const next = {
+                          type: 'markdown-selection' as const,
+                          documentId: selected.documentId,
+                          startLine: selection.startLine,
+                          endLine: selection.endLine,
+                          text: selection.text,
+                        };
+                        setMarkdownSelection(next);
+                        setAgentSelection(next);
+                        setAgentCreateRequested(false);
+                        setAgentOpenRequest((value) => value + 1);
+                      }}
                       resolveImageSource={(source) =>
                         `/api/sites/${site?.id ?? ''}/content/${selected?.documentId}/resource?collection=${encodeURIComponent(selected?.collectionId ?? '')}&source=${encodeURIComponent(source)}`
                       }
@@ -1701,7 +1671,6 @@ export function StudioApp() {
         <AgentPanel
           api={api}
           openRequest={agentOpenRequest}
-          requestedSessionId={agentRequestedSessionId}
           createRequested={agentCreateRequested}
           onOpenChange={setAgentDocked}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
