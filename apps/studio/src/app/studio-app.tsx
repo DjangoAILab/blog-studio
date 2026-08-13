@@ -258,6 +258,8 @@ export function StudioApp() {
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
   const [agentCreateRequested, setAgentCreateRequested] = useState(false);
   const [agentDocked, setAgentDocked] = useState(false);
+  const [agentSlot, setAgentSlot] = useState<HTMLDivElement | null>(null);
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   const [confirm, setConfirm] = useState<{
     readonly title: string;
     readonly description: string;
@@ -1097,6 +1099,15 @@ export function StudioApp() {
             <h1>{selected?.title ?? '内容'}</h1>
           </div>
           <div className="studio2-content-actions">
+            {agentDocked ? (
+              <button
+                className="studio2-secondary-button"
+                type="button"
+                onClick={() => setLibraryCollapsed((value) => !value)}
+              >
+                {libraryCollapsed ? '显示内容' : '收起内容'}
+              </button>
+            ) : null}
             <SaveBadge state={saveState} />
             {selected ? (
               <ArticleActions
@@ -1146,6 +1157,8 @@ export function StudioApp() {
         <div
           className={`workspace-grid ${
             destination !== 'content' || !site ? 'studio2-hidden' : ''
+          }${agentDocked ? ' is-agent-open' : ''}${
+            libraryCollapsed ? ' is-library-collapsed' : ''
           }`}
         >
           <div className={`studio3-library-slot mobile-${panel}`}>
@@ -1650,6 +1663,11 @@ export function StudioApp() {
               onPreview={startPreview}
             />
           </div>
+          <div
+            ref={setAgentSlot}
+            className={`studio3-agent-slot${agentDocked ? ' is-open' : ''}`}
+            hidden={!agentDocked}
+          />
         </div>
         <ConfirmDialog
           open={Boolean(confirm)}
@@ -1672,7 +1690,11 @@ export function StudioApp() {
           api={api}
           openRequest={agentOpenRequest}
           createRequested={agentCreateRequested}
-          onOpenChange={setAgentDocked}
+          onOpenChange={(open) => {
+            setAgentDocked(open);
+            setLibraryCollapsed(open && destination === 'content');
+          }}
+          {...(destination === 'content' && agentSlot ? { host: agentSlot } : {})}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
           {...(destination === 'content' && selected
             ? {
