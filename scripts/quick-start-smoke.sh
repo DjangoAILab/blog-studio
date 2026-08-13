@@ -59,7 +59,8 @@ fail_studio() {
   exit 1
 }
 
-container="$(compose ps -aq studio | head -n 1)"
+container="$(compose ps -aq --status running studio)"
+container="${container%%$'\n'*}"
 [[ -n "$container" ]] || fail_studio 'container id missing after compose up'
 health='missing'
 for _ in $(seq 1 90); do

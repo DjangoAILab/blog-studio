@@ -992,12 +992,14 @@ describe('Studio workspace API', () => {
           { id: 'drafts', count: 1 },
           { id: 'posts', count: 2 },
         ],
-        tags: expect.arrayContaining([
-          { name: 'Release', count: 1 },
-          { name: '中文', count: 1 },
-        ]),
       },
     });
+    expect(mergedContent.facets.tags).toEqual(
+      expect.arrayContaining([
+        { name: 'Release', count: 1 },
+        { name: '中文', count: 1 },
+      ]),
+    );
     expect(mergedContent.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ title: 'Native idea', state: 'draft' }),
@@ -1134,13 +1136,12 @@ describe('Studio workspace API', () => {
       headers,
     });
     expect(unavailableList.statusCode, unavailableList.body).toBe(200);
-    expect(unavailableList.json()).toMatchObject({
-      content: {
-        items: expect.not.arrayContaining([
-          expect.objectContaining({ documentId: published.documentId }),
-        ]),
-      },
-    });
+    const unavailableItems = unavailableList.json<{
+      content: { items: Array<{ documentId: string }> };
+    }>().content.items;
+    expect(unavailableItems.map((item) => item.documentId)).not.toContain(
+      published.documentId,
+    );
   });
 
   it('exposes configured front-matter fields and applies their defaults to a native draft', async () => {
