@@ -146,6 +146,8 @@ preview="$(curl --fail --silent --show-error \
 preview_url="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).preview.url)' "$preview")"
 curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin$preview_url" | grep -q 'Quick Start verified body'
 test -s "$fixture/data/blog-studio.sqlite"
-[[ -z "$(git -C "$fixture/workspace" status --short)" ]]
+[[ -n "$(git -C "$fixture/workspace" status --short)" ]]
+git -C "$fixture/workspace" grep -q 'Quick Start verified body' -- . ||
+  grep -Rq 'Quick Start verified body' "$fixture/workspace"
 
-echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, durable autosave, real preview, publish disabled'
+echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, disk autosave, real preview, publish disabled'
