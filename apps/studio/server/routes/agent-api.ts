@@ -466,18 +466,32 @@ export function registerAgentApiRoutes(
 
   app.get<{
     Params: { siteId: string; sessionId: string; attachmentId: string };
+    Querystring: { download?: string };
   }>(
     '/api/sites/:siteId/agent/sessions/:sessionId/attachments/:attachmentId',
-    { schema: { params: attachmentParams } },
+    {
+      schema: {
+        params: attachmentParams,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { download: { type: 'string' } },
+        },
+      },
+    },
     async (request, reply) => {
       const { attachment, bytes } = await sessions.attachmentBytes(
         request.params.siteId,
         request.params.sessionId,
         request.params.attachmentId,
       );
+      const disposition = request.query.download
+        ? `attachment; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`
+        : 'inline';
       return reply
         .header('cache-control', 'private, no-store')
         .header('x-content-type-options', 'nosniff')
+        .header('content-disposition', disposition)
         .type(attachment.mimeType)
         .send(bytes);
     },

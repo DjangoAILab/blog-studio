@@ -893,6 +893,59 @@ export function registerApiRoutes(
       ),
   );
 
+  app.post<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+    Body: { expectedRevision: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId/publish',
+    {
+      schema: {
+        params: siteDocumentParams,
+        querystring: collectionQuery,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedRevision'],
+          properties: { expectedRevision: { type: 'string', minLength: 1 } },
+        },
+      },
+    },
+    async (request) => {
+      const promoted = await dependencies.content.promote({
+        siteId: request.params.siteId,
+        collectionId: request.query.collection,
+        documentId: request.params.documentId,
+        expectedRevision: request.body.expectedRevision,
+      });
+      return {
+        source: (
+          await dependencies.content.read(
+            request.params.siteId,
+            promoted.ref.collectionId,
+            promoted.ref.documentId,
+          )
+        ).source,
+      };
+    },
+  );
+
+  app.delete<{
+    Params: { siteId: string; documentId: string };
+    Querystring: { collection: string };
+  }>(
+    '/api/sites/:siteId/content/:documentId',
+    { schema: { params: siteDocumentParams, querystring: collectionQuery } },
+    async (request) => {
+      await dependencies.content.remove({
+        siteId: request.params.siteId,
+        collectionId: request.query.collection,
+        documentId: request.params.documentId,
+      });
+      return { deleted: true };
+    },
+  );
+
   app.put<{
     Params: { siteId: string; documentId: string };
     Querystring: { collection: string };

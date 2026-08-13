@@ -2268,6 +2268,62 @@ content:
     ).resolves.toMatch(/title: New draft[\s\S]*---\n$/);
   });
 
+  it('publishes a native draft into posts and can delete it', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Publish Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Ready draft', slug: 'ready-draft' },
+    });
+    const payload = created.json<{
+      source: {
+        revision: string;
+        ref: { documentId: string; path: string };
+      };
+    }>();
+    const published = await app.inject({
+      method: 'POST',
+      url: `/api/sites/${siteId}/content/${payload.source.ref.documentId}/publish?collection=drafts`,
+      headers,
+      payload: { expectedRevision: payload.source.revision },
+    });
+    expect(published.statusCode, published.body).toBe(200);
+    const next = published.json<{
+      source: {
+        ref: { collectionId: string; path: string; documentId: string };
+      };
+    }>().source;
+    expect(next.ref.collectionId).toBe('posts');
+    expect(next.ref.path).toBe('source/_posts/ready-draft.md');
+    await expect(
+      readFile(join(workspace, 'source/_posts/ready-draft.md'), 'utf8'),
+    ).resolves.toContain('title: Ready draft');
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/sites/${siteId}/content/${next.ref.documentId}?collection=posts`,
+      headers,
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
+    await expect(
+      readFile(join(workspace, 'source/_posts/ready-draft.md'), 'utf8'),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('discards an untracked Site draft without deleting the file', async () => {
     const { app, workspace } = await fixture();
     const session = await login(app);

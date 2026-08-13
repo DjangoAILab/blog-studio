@@ -11,6 +11,7 @@ import { ChangeSetReviewSheet } from '../features/changes/change-set-review.js';
 import { AgentPanel } from '../features/agent/agent-panel.js';
 import { WorkingCopyConflict } from '../features/editor/working-copy-conflict.js';
 import { FrontMatterEditor } from '../features/editor/front-matter-editor.js';
+import { ArticleActions } from '../features/library/article-actions.js';
 import {
   ContentLibrary,
   type ContentAdvancedFilters,
@@ -253,6 +254,7 @@ export function StudioApp() {
     Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
   >();
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
+  const [agentDocked, setAgentDocked] = useState(false);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
 
@@ -653,6 +655,67 @@ export function StudioApp() {
     setPanel('write');
   }
 
+  async function refreshContentList(): Promise<ContentQueryResult | undefined> {
+    if (!site) return undefined;
+    const refreshed = await api.content(site.id, contentQuery);
+    setSiteContent(refreshed.content);
+    return refreshed.content;
+  }
+
+  async function publishArticle(item: ContentSummary): Promise<void> {
+    if (!site) return;
+    if (item.sourceState !== 'draft') return;
+    if (
+      !window.confirm(
+        `把「${item.title}」从草稿转为正式文章？文件会从 _drafts 移到 _posts，之后再通过更改审阅提交。`,
+      )
+    )
+      return;
+    const opened = await api.siteDocument(
+      site.id,
+      item.documentId,
+      item.collectionId,
+    );
+    const published = await api.publishDraft({
+      siteId: site.id,
+      documentId: item.documentId,
+      collection: item.collectionId,
+      expectedRevision: opened.source.revision,
+    });
+    const list = await refreshContentList();
+    const next = list?.items.find(
+      (candidate) => candidate.documentId === published.source.ref.documentId,
+    );
+    if (next) openContentDocument(next);
+    else if (selected?.documentId === item.documentId) {
+      setSelected(undefined);
+      setDocument(undefined);
+    }
+  }
+
+  async function deleteArticle(item: ContentSummary): Promise<void> {
+    if (!site) return;
+    if (
+      !window.confirm(
+        item.sourceState === 'draft'
+          ? `删除草稿「${item.title}」？文件会从磁盘移除。`
+          : `从磁盘删除「${item.title}」？已提交的版本仍可通过 Git 恢复。`,
+      )
+    )
+      return;
+    await api.deleteContent({
+      siteId: site.id,
+      documentId: item.documentId,
+      collection: item.collectionId,
+    });
+    await refreshContentList();
+    if (selected?.documentId === item.documentId) {
+      setSelected(undefined);
+      setDocument(undefined);
+      setBody('');
+    }
+  }
+
   async function reloadOpenDocument(paths?: readonly string[]): Promise<void> {
     if (!site || !selected) return;
     if (
@@ -771,7 +834,9 @@ export function StudioApp() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="studio-shell studio2-shell">
+      <div
+        className={`studio-shell studio2-shell${agentDocked ? ' is-agent-open' : ''}`}
+      >
         <StudioNavigation
           destination={destination}
           onCreateDocument={() => {
@@ -936,6 +1001,8 @@ export function StudioApp() {
                 }
                 onOpenContent={() => setDestination('content')}
                 onOpenDocument={openContentDocument}
+                onPublishDocument={(item) => void publishArticle(item)}
+                onDeleteDocument={(item) => void deleteArticle(item)}
                 onPrepareChanges={prepareChanges}
                 onReloadSite={async (siteId) => {
                   const latest = (await api.site(siteId)).site;
@@ -1003,6 +1070,15 @@ export function StudioApp() {
           </div>
           <div className="studio2-content-actions">
             <SaveBadge state={saveState} />
+            {selected ? (
+              <ArticleActions
+                compact
+                article={selected}
+                onOpen={openContentDocument}
+                onPublish={(item) => void publishArticle(item)}
+                onDelete={(item) => void deleteArticle(item)}
+              />
+            ) : null}
             <button
               className="studio2-secondary-button"
               disabled={!site || !selected}
@@ -1100,6 +1176,8 @@ export function StudioApp() {
                 setSiteContent(refreshed.content);
               }}
               onOpen={openContentDocument}
+              onPublish={(item) => void publishArticle(item)}
+              onDelete={(item) => void deleteArticle(item)}
               onPageChange={setContentPage}
               onSearchChange={(nextSearch) => {
                 setContentSearch(nextSearch);
@@ -1508,6 +1586,7 @@ export function StudioApp() {
         <AgentPanel
           api={api}
           openRequest={agentOpenRequest}
+          onOpenChange={setAgentDocked}
           {...(site ? { siteId: site.id, siteName: site.displayName } : {})}
           {...(destination === 'content' && selected
             ? {

@@ -110,7 +110,7 @@ export function PreviewPane({
             <h3>
               {state === 'building'
                 ? mode === 'enhanced'
-                  ? '正在验证站点主题'
+                  ? '正在启动主题预览，可能需要一会儿'
                   : '正在渲染 Markdown'
                 : state === 'error'
                   ? '预览暂时不可用'
