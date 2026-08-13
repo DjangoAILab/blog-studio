@@ -12,7 +12,7 @@ Blog Studio 是一款面向 Markdown 与 Git 网站的自托管 AI 内容工作�
 
 ![Blog Studio Site Agent — 持久 Session、审批模式和显式 Markdown 上下文](docs/media/site-agent-demo.gif)
 
-> 状态：v0.1.0 已发布。当前分支完成了有证据支撑的 Site-first 和 Site Agent 能力关卡；在正常审查与发布流程完成之前，不会把它称为新的公开 release。
+> 状态：v0.1.0 已发布。未上线改动合并到 `dev`，由 CI/CD 部署到 home-server 不稳定编辑器；合并 `main` 并打标签后才算正式发布。见[开发与发布](docs/guides/development-and-release.md)。
 
 ## 产品承诺
 

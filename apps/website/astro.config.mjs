@@ -57,6 +57,7 @@ export default defineConfig({
             { slug: 'docs/configuration/workspaces' },
             { slug: 'docs/providers/tencent' },
             { slug: 'docs/operations/security' },
+            { slug: 'docs/operations/development-and-release' },
             { slug: 'docs/operations/backup-restore' },
             { slug: 'docs/operations/upgrading' },
             { slug: 'docs/operations/troubleshooting' },

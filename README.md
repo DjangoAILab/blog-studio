@@ -16,9 +16,10 @@ browser journey without turning your website over to a hosted AI CMS.
 
 ![Blog Studio Site Agent — durable Sessions, approval modes, and explicit Markdown context](docs/media/site-agent-demo.gif)
 
-> Status: v0.1.0 is released. The current branch completes the evidence-backed
-> Site-first and Site Agent capability gates; it is not presented as a new
-> public release until the normal review and release workflow finishes.
+> Status: v0.1.0 is released. Unreleased work merges to `dev` and deploys the
+> internal home-server editor. A new public release exists only after that
+> revision is merged to `main` and tagged. See
+> [Development and release](docs/guides/development-and-release.md).
 
 ## Product promise
 

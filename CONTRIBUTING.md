@@ -4,8 +4,9 @@ Thank you for helping make file-based publishing calmer and safer.
 
 ## Before opening a change
 
-1. Search existing issues and read the [architecture](docs/architecture.md) and
-   [product definition](docs/product.md).
+1. Search existing issues and read the
+   [architecture](docs/architecture/overview.md) and
+   [product definition](docs/product/product-definition.md).
 2. Keep generator-, storage-, and provider-specific behavior behind an adapter;
    `packages/core` must remain provider-independent.
 3. Do not introduce collaboration, scheduling, AI writing, or hosted-control-
@@ -32,7 +33,11 @@ change must prove failure, retry, and rollback behavior, not only success.
 
 ## Pull requests
 
-- Keep one coherent change per pull request.
+Unreleased product work targets `dev`. After merge, GitHub Actions deploys the
+internal home-server editor. `main` plus a signed `vX.Y.Z` tag is the stable
+channel. See [Development and release](docs/guides/development-and-release.md).
+
+- Keep one coherent change per pull request, opened against `dev`.
 - Explain user impact, compatibility, risk, verification, and rollback.
 - Update generated reference documentation with `pnpm --filter
 @blog-studio/website docs:generate` when contracts or configuration change.
