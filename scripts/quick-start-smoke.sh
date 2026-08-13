@@ -25,11 +25,26 @@ compose() {
   docker compose --project-directory "$repository_root" -p "$project" "$@"
 }
 
+dump_studio() {
+  echo "quick-start studio diagnostics${1:+: $1}" >&2
+  compose ps >&2 || true
+  compose logs --tail=200 studio >&2 || true
+}
+
 cleanup() {
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$fixture"
 }
-trap cleanup EXIT INT TERM
+
+on_exit() {
+  local status=$?
+  if [[ $status -ne 0 ]]; then
+    dump_studio "exit $status"
+  fi
+  cleanup
+}
+trap on_exit EXIT
+trap cleanup INT TERM
 
 mkdir -p "$fixture/config" "$fixture/data" "$fixture/secrets" "$fixture/workspace"
 cp "$repository_root/examples/config/blog-studio.yml" "$fixture/config/blog-studio.yml"
@@ -52,31 +67,27 @@ printf '%s\n' "$owner_password" | compose run --rm -T studio \
   --password-stdin
 compose up -d studio
 
-fail_studio() {
-  echo "quick-start studio did not become healthy${1:+: $1}" >&2
-  compose ps >&2 || true
-  compose logs --tail=200 studio >&2 || true
+container="$(compose ps -q studio)"
+[[ -n "$container" ]] || {
+  dump_studio 'container id missing after compose up'
   exit 1
 }
-
-container="$(compose ps -aq --status running studio)"
-container="${container%%$'\n'*}"
-[[ -n "$container" ]] || fail_studio 'container id missing after compose up'
 health='missing'
 for _ in $(seq 1 90); do
-  if ! docker inspect "$container" >/dev/null 2>&1; then
-    fail_studio 'container disappeared'
-  fi
   health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
   if [[ "$health" == 'healthy' ]]; then
     break
   fi
   if [[ "$health" == 'unhealthy' || "$health" == 'exited' || "$health" == 'dead' ]]; then
-    fail_studio "$health"
+    dump_studio "$health"
+    exit 1
   fi
   sleep 0.5
 done
-[[ "$health" == 'healthy' ]] || fail_studio "$health"
+[[ "$health" == 'healthy' ]] || {
+  dump_studio "$health"
+  exit 1
+}
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/sites")" == '401' ]]
 
 session="$(curl --fail --silent --show-error \
