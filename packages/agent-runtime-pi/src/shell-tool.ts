@@ -60,7 +60,7 @@ export function createSiteShellTool(
               .filter(Boolean)
               .join('\n') || 'Command failed',
           );
-          throw new Error(text);
+          throw new Error(text, { cause: error });
         }
       };
       const text = runMutation
