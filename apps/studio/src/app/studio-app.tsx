@@ -862,7 +862,7 @@ export function StudioApp() {
   return (
     <MotionConfig reducedMotion="user">
       <div
-        className={`studio-shell studio2-shell${agentDocked ? ' is-agent-open' : ''}`}
+        className={`studio-shell studio2-shell${agentDocked ? ' is-agent-open' : ''}${destination === 'content' ? ' is-content' : ''}`}
       >
         <StudioNavigation
           destination={destination}
