@@ -132,7 +132,7 @@ body::before {
   }
 }
 .studio2-shell.is-agent-open {
-  padding-right: min(32rem, calc(38vw + 16px));
+  padding-right: 0;
 }
 .agent-panel {
   position: fixed;
@@ -151,6 +151,14 @@ body::before {
   box-shadow: var(--studio-shadow-panel);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   backdrop-filter: blur(24px) saturate(150%);
+}
+.studio2-shell.is-agent-open.is-content .agent-panel {
+  top: 232px;
+  right: max(28px, calc((100% - min(1320px, 100% - 56px)) / 2));
+  bottom: 0;
+  height: calc(100vh - 232px);
+  width: min(30rem, 38vw);
+  border-radius: 30px 30px 0 0;
 }
 .agent-panel button,
 .agent-panel select,
@@ -383,6 +391,14 @@ body::before {
   flex-wrap: wrap;
   gap: 0.4rem;
   margin: 0 0 0.4rem;
+}
+.studio2-attachment-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 0.65rem;
+}
+.studio2-attachment-list .studio2-attachment {
+  width: 100%;
 }
 .agent-history-chips em {
   border: 1px solid var(--line);
@@ -658,11 +674,18 @@ body::before {
 }
 
 @media (max-width: 860px) {
-  .studio2-shell.is-agent-open {
-    padding-right: 0;
+  .studio2-shell.is-agent-open.is-content .workspace-grid {
+    width: 100%;
+    margin: 14px auto 0;
   }
+  .studio2-shell.is-agent-open.is-content .agent-panel,
   .agent-panel {
+    top: 16px;
+    right: 16px;
+    bottom: 16px;
+    height: auto;
     width: min(calc(100vw - 24px), 28rem);
+    border-radius: 24px;
   }
 }
 @media (max-width: 700px) {
@@ -3165,11 +3188,11 @@ select:focus-visible,
   grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  width: min(100%, 280px);
-  padding: 8px;
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid var(--studio-line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.86);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .studio2-attachment-preview,
@@ -5266,6 +5289,12 @@ select:focus-visible,
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.studio2-shell.is-agent-open.is-content .workspace-grid {
+  width: min(1320px, calc(100% - 56px - min(30rem, 38vw) - 20px));
+  margin-left: max(28px, calc((100% - min(1320px, 100% - 56px)) / 2));
+  margin-right: auto;
 }
 
 .studio3-library-slot,

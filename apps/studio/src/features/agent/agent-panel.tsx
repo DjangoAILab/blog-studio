@@ -781,10 +781,24 @@ export function AgentPanel({
                               : 'AI'
                             : '你'}
                         </span>
-                        {entry.type === 'user' && entry.chips.length > 0 ? (
+                        {entry.type === 'user' &&
+                        entry.chips.some((chip) => chip.kind !== 'attachment') ? (
                           <div className="agent-history-chips">
-                            {entry.chips.map((chip) =>
-                              chip.kind === 'attachment' ? (
+                            {entry.chips
+                              .filter((chip) => chip.kind !== 'attachment')
+                              .map((chip) => (
+                                <em key={`${entry.id}-${chip.label}`}>
+                                  {chip.label}
+                                </em>
+                              ))}
+                          </div>
+                        ) : null}
+                        {entry.type === 'user' &&
+                        entry.chips.some((chip) => chip.kind === 'attachment') ? (
+                          <div className="studio2-attachment-list">
+                            {entry.chips
+                              .filter((chip) => chip.kind === 'attachment')
+                              .map((chip) => (
                                 <AttachmentCard
                                   key={`${entry.id}-${chip.label}`}
                                   chip={chip}
@@ -798,12 +812,7 @@ export function AgentPanel({
                                       }
                                     : {})}
                                 />
-                              ) : (
-                                <em key={`${entry.id}-${chip.label}`}>
-                                  {chip.label}
-                                </em>
-                              ),
-                            )}
+                              ))}
                           </div>
                         ) : null}
                         {entry.text ? (
@@ -900,6 +909,36 @@ export function AgentPanel({
                     void send();
                   }}
                 >
+                  {attachments.length > 0 ? (
+                    <div className="studio2-attachment-list">
+                      {attachments.map((attachment) => (
+                        <AttachmentCard
+                          key={attachment.id}
+                          chip={{
+                            kind: 'attachment',
+                            label: attachment.filename,
+                            attachmentId: attachment.id,
+                            mimeType: attachment.mimeType,
+                            filename: attachment.filename,
+                          }}
+                          {...(attachmentHref(attachment.id)
+                            ? {
+                                href: attachmentHref(attachment.id),
+                                downloadHref: attachmentHref(
+                                  attachment.id,
+                                  true,
+                                ),
+                              }
+                            : {})}
+                          onRemove={() =>
+                            setAttachments((items) =>
+                              items.filter((item) => item.id !== attachment.id),
+                            )
+                          }
+                        />
+                      ))}
+                    </div>
+                  ) : null}
                   <div className="agent-contexts" aria-label="本次消息上下文">
                     {includeSelection && selectionContext ? (
                       <span className="studio2-composer-tag">
@@ -920,32 +959,6 @@ export function AgentPanel({
                         </button>
                       </span>
                     ) : null}
-                    {attachments.map((attachment) => (
-                      <AttachmentCard
-                        key={attachment.id}
-                        chip={{
-                          kind: 'attachment',
-                          label: attachment.filename,
-                          attachmentId: attachment.id,
-                          mimeType: attachment.mimeType,
-                          filename: attachment.filename,
-                        }}
-                        {...(attachmentHref(attachment.id)
-                          ? {
-                              href: attachmentHref(attachment.id),
-                              downloadHref: attachmentHref(
-                                attachment.id,
-                                true,
-                              ),
-                            }
-                          : {})}
-                        onRemove={() =>
-                          setAttachments((items) =>
-                            items.filter((item) => item.id !== attachment.id),
-                          )
-                        }
-                      />
-                    ))}
                     {activeSessionId ? (
                       <label className="agent-mode-select">
                         执行模式
