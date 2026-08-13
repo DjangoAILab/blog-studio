@@ -2262,7 +2262,79 @@ content:
       url: `/api/workspaces/test-blog/documents/${payload.source.ref.documentId}?collection=drafts`,
       headers: { cookie: session.cookie },
     });
-    expect(read.json()).toMatchObject({ draft: null });
+    expect(read.json()).toMatchObject({ draft: null, source: { body: '' } });
+    await expect(
+      readFile(join(workspace, payload.source.ref.path), 'utf8'),
+    ).resolves.toMatch(/title: New draft[\s\S]*---\n$/);
+  });
+
+  it('discards an untracked Site draft without deleting the file', async () => {
+    const { app, workspace } = await fixture();
+    const session = await login(app);
+    const headers = {
+      cookie: session.cookie,
+      origin,
+      'x-csrf-token': session.csrfToken,
+    };
+    const registered = await app.inject({
+      method: 'POST',
+      url: '/api/sites',
+      headers,
+      payload: { candidateId: 'test-blog', displayName: 'Discard Site' },
+    });
+    const siteId = registered.json<{ site: { id: string } }>().site.id;
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/workspaces/test-blog/documents',
+      headers,
+      payload: { title: 'Browser draft', slug: 'browser-draft' },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const payload = created.json<{
+      source: {
+        revision: string;
+        ref: { documentId: string; path: string };
+        frontMatter: Record<string, unknown>;
+      };
+    }>();
+    const documentId = payload.source.ref.documentId;
+    const saved = await app.inject({
+      method: 'PUT',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=drafts`,
+      headers,
+      payload: {
+        expectedVersion: 0,
+        sourceRevision: payload.source.revision,
+        frontMatter: payload.source.frontMatter,
+        body: 'Refresh still exists.\n',
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+
+    const discarded = await app.inject({
+      method: 'DELETE',
+      url: `/api/sites/${siteId}/content/${documentId}/working-copy?collection=drafts`,
+      headers,
+      payload: { expectedVersion: 0 },
+    });
+    expect(discarded.statusCode, discarded.body).toBe(200);
+    expect(discarded.json()).toEqual({ discarded: true });
+
+    const read = await app.inject({
+      url: `/api/sites/${siteId}/content/${documentId}?collection=drafts`,
+      headers,
+    });
+    expect(read.statusCode, read.body).toBe(200);
+    expect(read.json()).toMatchObject({
+      source: { body: '' },
+      draft: null,
+    });
+    const raw = await readFile(
+      join(workspace, payload.source.ref.path),
+      'utf8',
+    );
+    expect(raw).toContain('title: Browser draft');
+    expect(raw).not.toContain('Refresh still exists');
   });
 
   it('rejects missing CSRF and reuses a healthy preview until stopped', async () => {
@@ -2494,8 +2566,8 @@ content:
       url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
       headers: { cookie: session.cookie },
     });
-    const savedRevision = saved.json<{ source: { revision: string } }>()
-      .source.revision;
+    const savedRevision = saved.json<{ source: { revision: string } }>().source
+      .revision;
     expect((await saveDraft(1, savedRevision, ' ')).statusCode).toBe(200);
     const stale = await app.inject({
       method: 'DELETE',

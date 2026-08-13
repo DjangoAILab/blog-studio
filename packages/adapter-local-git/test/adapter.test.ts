@@ -1,5 +1,12 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -150,5 +157,24 @@ describe('local Git repository inspection', () => {
         encoding: 'utf8',
       }).trim(),
     ).toBe('modified.md');
+  });
+
+  it('restores committed files and refuses to delete drafts that are not in HEAD', async () => {
+    const root = fixture();
+    writeFileSync(join(root, 'modified.md'), 'dirty\n');
+    writeFileSync(join(root, 'source-draft.md'), 'never committed\n');
+    git(root, 'add', 'source-draft.md');
+    const adapter = new LocalGitRepositoryAdapter();
+
+    await adapter.restorePath(root, 'modified.md');
+    expect(readFileSync(join(root, 'modified.md'), 'utf8')).toBe('before\n');
+
+    await expect(adapter.restorePath(root, 'source-draft.md')).rejects.toThrow(
+      /No committed version/,
+    );
+    expect(existsSync(join(root, 'source-draft.md'))).toBe(true);
+    expect(readFileSync(join(root, 'source-draft.md'), 'utf8')).toBe(
+      'never committed\n',
+    );
   });
 });

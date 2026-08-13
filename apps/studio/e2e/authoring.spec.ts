@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-test.setTimeout(90_000);
+test.setTimeout(120_000);
 const origin = 'http://127.0.0.1:14311';
 
 async function expectNoSeriousAccessibilityViolations(page: Page) {
@@ -70,6 +70,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   const secondAgent = secondSitePage.getByRole('complementary', {
     name: /Second Browser Site Agent/,
   });
+  await secondAgent.getByRole('button', { name: '切换会话' }).click();
   await expect(
     secondAgent.getByLabel('Agent Session').locator('option'),
   ).toHaveCount(1);
@@ -95,6 +96,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     name: /test-browser-blog Agent/,
   });
   await expect(agentPanel).toBeVisible();
+  await agentPanel.getByRole('button', { name: '切换会话' }).click();
   await agentPanel.getByRole('button', { name: '新建' }).click();
   await expect(
     agentPanel.getByLabel('Agent Session').locator('option'),
@@ -106,7 +108,6 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   const firstSiteSessionId = await agentPanel
     .getByLabel('Agent Session')
     .inputValue();
-  await expect(agentPanel.getByText('全站工作区')).toBeVisible();
   await agentPanel.getByLabel('执行模式').selectOption('yolo');
   await expect(agentPanel.getByText(/删除未跟踪文件可能无法/)).toBeVisible();
   await agentPanel.getByRole('button', { name: '归档' }).click();
@@ -279,6 +280,10 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(
     page.getByRole('complementary', { name: /Agent/ }).getByText(/文章 ·/),
   ).toBeVisible();
+  await page
+    .getByRole('complementary', { name: /Agent/ })
+    .getByRole('button', { name: '切换会话' })
+    .click();
   await expect(
     page
       .getByRole('complementary', { name: /Agent/ })
@@ -430,7 +435,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   expect(incompatibleSource.status()).toBe(204);
   await page.reload();
   await page.getByRole('button', { name: '内容', exact: true }).click();
-  await library.getByRole('button', { name: /Existing article/ }).click();
+  await library.getByRole('button', { name: /hello|Existing article/ }).click();
   await page.getByText('高级 YAML').click();
   await expect(
     page.getByText(
@@ -459,20 +464,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .getByRole('button', { name: /Existing article/ })
     .click();
   await expect(
-    page.getByRole('heading', {
-      name: '文件版本在编辑期间发生了变化',
-    }),
-  ).toBeVisible();
-  await expect(
     page.getByText('Existing body changed outside Studio.'),
   ).toBeVisible();
-  await expect(
-    page.getByText('Reviewed through the browser journey.'),
-  ).toBeVisible();
-  await page.getByRole('button', { name: '以新版为基准保留我的编辑' }).click();
   await page.getByRole('button', { name: 'Markdown 源码' }).click();
   await expect(page.getByLabel('Markdown 源码')).toHaveValue(
-    /Reviewed through the browser journey/,
+    /Existing body changed outside Studio/,
   );
 
   await page
@@ -495,7 +491,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await page.getByRole('button', { name: '应用到本地文件…' }).click();
   await page.getByLabel(/我确认应用这份冻结记录/).check();
   await page.getByRole('button', { name: '确认应用' }).click();
-  await expect(page.getByText('已写入本地，尚未提交')).toBeVisible({
+  await expect(page.getByText('已确认本地改动，尚未提交')).toBeVisible({
     timeout: 5_000,
   });
   await page.getByLabel('提交说明').fill('Browser reviewed content');

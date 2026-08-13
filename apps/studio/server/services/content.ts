@@ -174,7 +174,8 @@ export class ContentService {
       const publishedAt = summary.publishedAt;
       const contentUpdatedAt = summary.contentUpdatedAt ?? summary.updatedAt;
       const filesystemModifiedAt = summary.filesystemModifiedAt;
-      const activityAt = contentUpdatedAt ?? publishedAt ?? filesystemModifiedAt;
+      const activityAt =
+        contentUpdatedAt ?? publishedAt ?? filesystemModifiedAt;
       return {
         siteId: site.id,
         documentId: summary.ref.documentId,
@@ -376,10 +377,7 @@ export class ContentService {
         modifiedAt: savedAt,
       });
     } catch (error) {
-      if (
-        error instanceof Error &&
-        /revision conflict/i.test(error.message)
-      ) {
+      if (error instanceof Error && /revision conflict/i.test(error.message)) {
         const latest = await workspace.generator.readDocument(
           workspace.config.workspace.root,
           current.source.ref,
@@ -467,41 +465,53 @@ export class ContentService {
     );
     const workspaceId = this.sites.workspaceId(input.siteId);
     const workspace = this.workspaces.get(workspaceId);
-    const restore = workspace.repository as {
+    const root = workspace.config.workspace.root;
+    const repository = workspace.repository as {
+      readCommitted?(root: string, path: string): Promise<string | undefined>;
       restorePath?(root: string, path: string): Promise<void>;
     };
-    if (!restore.restorePath) {
-      throw new BlogStudioError(
-        'DOCUMENT_CONFLICT',
-        'This repository cannot restore a committed file version',
-        { path: current.source.ref.path },
-      );
-    }
-    try {
-      await restore.restorePath(
-        workspace.config.workspace.root,
-        current.source.ref.path,
-      );
-    } catch (error) {
-      if (
-        !(error instanceof Error) ||
-        !/No committed version/i.test(error.message)
-      ) {
+    const committed = repository.readCommitted
+      ? await repository.readCommitted(root, current.source.ref.path)
+      : undefined;
+    if (committed !== undefined) {
+      if (!repository.restorePath) {
         throw new BlogStudioError(
           'DOCUMENT_CONFLICT',
-          error instanceof Error
-            ? error.message
-            : 'No committed version is available to restore',
+          'This repository cannot restore a committed file version',
           { path: current.source.ref.path },
         );
       }
-      const title = current.source.frontMatter.title;
-      await workspace.generator.writeDocument(workspace.config.workspace.root, {
+      await repository.restorePath(root, current.source.ref.path);
+      return;
+    }
+    const title = current.source.frontMatter.title;
+    try {
+      await workspace.generator.writeDocument(root, {
         ref: current.source.ref,
         expectedRevision: current.source.revision,
         frontMatter: {
           ...current.source.frontMatter,
           ...(typeof title === 'string' ? { title } : {}),
+        },
+        body: '',
+      });
+    } catch (error) {
+      if (!(
+        error instanceof Error && /revision conflict/i.test(error.message)
+      )) {
+        throw error;
+      }
+      const latest = await workspace.generator.readDocument(
+        root,
+        current.source.ref,
+      );
+      const latestTitle = latest.frontMatter.title;
+      await workspace.generator.writeDocument(root, {
+        ref: latest.ref,
+        expectedRevision: latest.revision,
+        frontMatter: {
+          ...latest.frontMatter,
+          ...(typeof latestTitle === 'string' ? { title: latestTitle } : {}),
         },
         body: '',
       });

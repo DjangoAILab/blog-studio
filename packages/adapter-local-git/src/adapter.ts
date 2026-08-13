@@ -223,14 +223,9 @@ export class LocalGitRepositoryAdapter implements RepositoryAdapter {
     }
   }
 
-  public async restorePath(
-    workspaceRoot: string,
-    path: string,
-  ): Promise<void> {
-    const tracked = (
-      await git(workspaceRoot, ['ls-files', '--', path])
-    ).trim();
-    if (!tracked) {
+  public async restorePath(workspaceRoot: string, path: string): Promise<void> {
+    const committed = await this.readCommitted(workspaceRoot, path);
+    if (committed === undefined) {
       throw new Error(`No committed version to restore: ${path}`);
     }
     await git(workspaceRoot, ['checkout', 'HEAD', '--', path]);

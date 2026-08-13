@@ -9,6 +9,7 @@ import type {
   AgentSessionDetails,
   AgentSessionSummary,
 } from '../../app/api.js';
+import { presentAgentHistory, type PresentedTool } from './agent-history.js';
 
 interface AgentPanelProps {
   readonly api: StudioApi;
@@ -80,6 +81,7 @@ export function AgentPanel({
   onWorkspaceChanged,
 }: AgentPanelProps) {
   const [open, setOpen] = useState(false);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const [sessions, setSessions] = useState<readonly AgentSessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState('');
   const [details, setDetails] = useState<AgentSessionDetails>();
@@ -94,14 +96,26 @@ export function AgentPanel({
     readonly AgentAttachmentSummary[]
   >([]);
   const [liveText, setLiveText] = useState('');
+  const [liveTools, setLiveTools] = useState<readonly PresentedTool[]>([]);
   const eventSource = useRef<EventSource | undefined>(undefined);
   const cursor = useRef(0);
+  const historyEnd = useRef<HTMLDivElement>(null);
 
   const activeSession = sessions.find((item) => item.id === activeSessionId);
   const activeTurn = [...(details?.turns ?? [])]
     .reverse()
     .find((turn) => activeTurnStates.has(turn.status));
-  const latestTurn = details?.turns.at(-1);
+
+  const presented = useMemo(
+    () =>
+      presentAgentHistory({
+        history: details?.history ?? [],
+        attachments: details?.attachments ?? attachments,
+        liveTools,
+        liveText,
+      }),
+    [attachments, details, liveText, liveTools],
+  );
 
   async function loadSessions(nextSiteId: string): Promise<void> {
     const result = await api.agentSessions(nextSiteId, true);
@@ -131,8 +145,11 @@ export function AgentPanel({
     eventSource.current?.close();
     setDetails(undefined);
     setAttachments([]);
+    setLiveTools([]);
+    setLiveText('');
     setIncludeArticle(true);
     setIncludeSelection(false);
+    setSwitcherOpen(false);
     if (!siteId) {
       setSessions([]);
       setActiveSessionId('');
@@ -167,6 +184,10 @@ export function AgentPanel({
     setIncludeArticle(true);
   }, [articleContext?.documentId]);
 
+  useEffect(() => {
+    historyEnd.current?.scrollIntoView({ block: 'end' });
+  }, [presented]);
+
   useEffect(
     () => () => {
       eventSource.current?.close();
@@ -179,12 +200,17 @@ export function AgentPanel({
     if (includeArticle && articleContext) result.push(articleContext);
     if (includeSelection && selectionContext) result.push(selectionContext);
     return result;
-  }, [
-    articleContext,
-    includeArticle,
-    includeSelection,
-    selectionContext,
-  ]);
+  }, [articleContext, includeArticle, includeSelection, selectionContext]);
+
+  function upsertLiveTool(next: PresentedTool): void {
+    setLiveTools((items) => {
+      const index = items.findIndex((item) => item.id === next.id);
+      if (index === -1) return [...items, next];
+      return items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...next } : item,
+      );
+    });
+  }
 
   function connectEvents(): void {
     if (!siteId || !activeSessionId) return;
@@ -197,11 +223,40 @@ export function AgentPanel({
       try {
         const value = JSON.parse(event.data) as {
           readonly sequence?: number;
-          readonly payload?: { readonly role?: string; readonly text?: string };
+          readonly type?: string;
+          readonly payload?: {
+            readonly role?: string;
+            readonly text?: string;
+            readonly toolCallId?: string;
+            readonly toolName?: string;
+            readonly paths?: readonly string[];
+            readonly failed?: boolean;
+          };
         };
         if (typeof value.sequence === 'number') cursor.current = value.sequence;
-        if (value.payload?.role === 'assistant' && value.payload.text) {
-          setLiveText(value.payload.text);
+        const payload = value.payload;
+        if (payload?.role === 'assistant' && payload.text) {
+          setLiveText(payload.text);
+        }
+        const toolId = payload?.toolCallId;
+        const toolName = payload?.toolName;
+        if (toolId && toolName) {
+          const running =
+            value.type === 'tool-start' || value.type === 'tool-running';
+          upsertLiveTool({
+            type: 'tool',
+            id: toolId,
+            name: toolName,
+            paths: payload.paths ?? [],
+            status: running
+              ? 'running'
+              : payload.failed
+                ? 'failed'
+                : 'succeeded',
+          });
+        }
+        if (payload?.paths && payload.paths.length > 0) {
+          onWorkspaceChanged?.(payload.paths);
         }
       } catch {
         // A malformed transient event is followed by the durable snapshot.
@@ -212,21 +267,14 @@ export function AgentPanel({
       'message-end',
       'approval-required',
       'turn-running',
+      'tool-start',
+      'tool-end',
+      'tool-running',
+      'tool-succeeded',
+      'workspace-changed',
     ]) {
       source.addEventListener(type, receive as EventListener);
     }
-    source.addEventListener('workspace-changed', ((
-      event: MessageEvent<string>,
-    ) => {
-      try {
-        const value = JSON.parse(event.data) as {
-          readonly payload?: { readonly paths?: readonly string[] };
-        };
-        onWorkspaceChanged?.(value.payload?.paths ?? []);
-      } catch {
-        onWorkspaceChanged?.([]);
-      }
-    }) as EventListener);
     for (const type of ['message-end', 'approval-required', 'turn-running']) {
       source.addEventListener(type, () => void refreshDetails());
     }
@@ -239,6 +287,8 @@ export function AgentPanel({
     ]) {
       source.addEventListener(type, () => {
         source.close();
+        setLiveTools([]);
+        setLiveText('');
         onWorkspaceChanged?.([]);
         void refreshDetails();
       });
@@ -272,6 +322,7 @@ export function AgentPanel({
     setBusy(true);
     setError('');
     setLiveText('');
+    setLiveTools([]);
     try {
       await api.submitAgentMessage({
         siteId,
@@ -295,19 +346,23 @@ export function AgentPanel({
     }
   }
 
+  const sessionTitle = activeSession?.displayName ?? '新会话';
+
   return (
     <>
-      <button
-        className="agent-launcher"
-        type="button"
-        aria-expanded={open}
-        aria-controls="site-agent-panel"
-        disabled={!siteId}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span aria-hidden="true">✦</span>
-        Agent
-      </button>
+      {open ? null : (
+        <button
+          className="agent-launcher"
+          type="button"
+          aria-expanded={open}
+          aria-controls="site-agent-panel"
+          disabled={!siteId}
+          onClick={() => setOpen(true)}
+        >
+          <span aria-hidden="true">✦</span>
+          Agent
+        </button>
+      )}
       <AnimatePresence>
         {open ? (
           <motion.aside
@@ -320,97 +375,92 @@ export function AgentPanel({
             transition={{ duration: 0.2 }}
           >
             <header className="agent-panel-header">
-              <div>
-                <span>SITE AGENT</span>
-                <strong>{siteName ?? '选择一个站点'}</strong>
-              </div>
-              <button
-                type="button"
-                aria-label="关闭 Agent"
-                onClick={() => setOpen(false)}
-              >
-                ×
-              </button>
-            </header>
-
-            <div className="agent-session-bar">
-              <select
-                aria-label="Agent Session"
-                value={activeSessionId}
-                onChange={(event) => setActiveSessionId(event.target.value)}
-              >
-                <option value="">选择 Session</option>
-                {sessions.map((session) => (
-                  <option key={session.id} value={session.id}>
-                    {session.state === 'archived' ? '〔已归档〕' : ''}
-                    {session.displayName}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={busy || !siteId}
-                onClick={() => void createSession()}
-              >
-                新建
-              </button>
-              <button
-                type="button"
-                disabled={!activeSession || activeSession.state === 'archived'}
-                onClick={() => {
-                  if (!siteId || !activeSession) return;
-                  const displayName = window.prompt(
-                    'Session 名称',
-                    activeSession.displayName,
-                  );
-                  if (!displayName?.trim()) return;
-                  void api
-                    .updateAgentSession({
-                      siteId,
-                      sessionId: activeSession.id,
-                      displayName,
-                    })
-                    .then(() => loadSessions(siteId));
-                }}
-              >
-                改名
-              </button>
-              <button
-                type="button"
-                disabled={
-                  !activeSession ||
-                  activeSession.state === 'archived' ||
-                  Boolean(activeTurn)
-                }
-                onClick={() => {
-                  if (!siteId || !activeSession) return;
-                  void api
-                    .archiveAgentSession(siteId, activeSession.id)
-                    .then(() => loadSessions(siteId));
-                }}
-              >
-                归档
-              </button>
-            </div>
-
-            {activeSession?.state === 'archived' ? (
-              <div className="agent-empty">
-                <p>这个 Session 已归档，历史仍然保留。</p>
+              <strong>{sessionTitle}</strong>
+              <div className="agent-header-actions">
                 <button
                   type="button"
+                  aria-expanded={switcherOpen}
+                  onClick={() => setSwitcherOpen((value) => !value)}
+                >
+                  切换会话
+                </button>
+                <button
+                  type="button"
+                  aria-label="关闭 Agent"
                   onClick={() => {
-                    if (!siteId) return;
-                    void api
-                      .restoreAgentSession(siteId, activeSession.id)
-                      .then(() => loadSessions(siteId));
+                    setSwitcherOpen(false);
+                    setOpen(false);
                   }}
                 >
-                  恢复 Session
+                  ×
                 </button>
               </div>
-            ) : activeSessionId ? (
-              <>
-                <div className="agent-mode-row">
+            </header>
+
+            {switcherOpen ? (
+              <div className="agent-switcher">
+                <select
+                  aria-label="Agent Session"
+                  value={activeSessionId}
+                  onChange={(event) => setActiveSessionId(event.target.value)}
+                >
+                  <option value="">选择 Session</option>
+                  {sessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {session.state === 'archived' ? '〔已归档〕' : ''}
+                      {session.displayName}
+                    </option>
+                  ))}
+                </select>
+                <div className="agent-switcher-actions">
+                  <button
+                    type="button"
+                    disabled={busy || !siteId}
+                    onClick={() => void createSession()}
+                  >
+                    新建
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !activeSession || activeSession.state === 'archived'
+                    }
+                    onClick={() => {
+                      if (!siteId || !activeSession) return;
+                      const displayName = window.prompt(
+                        'Session 名称',
+                        activeSession.displayName,
+                      );
+                      if (!displayName?.trim()) return;
+                      void api
+                        .updateAgentSession({
+                          siteId,
+                          sessionId: activeSession.id,
+                          displayName,
+                        })
+                        .then(() => loadSessions(siteId));
+                    }}
+                  >
+                    改名
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !activeSession ||
+                      activeSession.state === 'archived' ||
+                      Boolean(activeTurn)
+                    }
+                    onClick={() => {
+                      if (!siteId || !activeSession) return;
+                      void api
+                        .archiveAgentSession(siteId, activeSession.id)
+                        .then(() => loadSessions(siteId));
+                    }}
+                  >
+                    归档
+                  </button>
+                </div>
+                {activeSessionId ? (
                   <label>
                     执行模式
                     <select
@@ -439,23 +489,9 @@ export function AgentPanel({
                       <option value="yolo">YOLO</option>
                     </select>
                   </label>
-                  <small>
-                    {details?.effectiveApproval.source ?? 'default'} ·
-                    全站工作区
-                  </small>
-                </div>
-                {latestTurn ? (
-                  <p
-                    className="agent-turn-state"
-                    data-state={latestTurn.status}
-                    role="status"
-                  >
-                    本轮：{turnLabels[latestTurn.status]}
-                    {latestTurn.errorCode ? ` · ${latestTurn.errorCode}` : ''}
-                  </p>
                 ) : null}
                 <details className="agent-mode-defaults">
-                  <summary>默认模式与持久化层级</summary>
+                  <summary>默认模式</summary>
                   <label>
                     全局默认
                     <select
@@ -514,27 +550,77 @@ export function AgentPanel({
                     Studio 恢复。
                   </p>
                 ) : null}
+              </div>
+            ) : null}
 
+            {activeSession?.state === 'archived' ? (
+              <div className="agent-empty">
+                <p>这个 Session 已归档，历史仍然保留。</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!siteId) return;
+                    void api
+                      .restoreAgentSession(siteId, activeSession.id)
+                      .then(() => loadSessions(siteId));
+                  }}
+                >
+                  恢复 Session
+                </button>
+              </div>
+            ) : activeSessionId ? (
+              <>
                 <div className="agent-history" aria-live="polite">
-                  {(details?.history ?? []).map((entry) => (
-                    <article key={entry.id} data-role={entry.role}>
-                      <span>
-                        {entry.role === 'assistant'
-                          ? 'Agent'
-                          : entry.role === 'user'
-                            ? '你'
-                            : 'Context'}
-                      </span>
-                      <p>{entry.text ?? `图片 × ${entry.imageCount ?? 0}`}</p>
-                    </article>
-                  ))}
-                  {liveText ? (
-                    <article data-role="assistant" className="is-streaming">
-                      <span>Agent · 正在回答</span>
-                      <p>{liveText}</p>
-                    </article>
-                  ) : null}
-                  {(details?.history.length ?? 0) === 0 && !liveText ? (
+                  {presented.map((entry) => {
+                    if (entry.type === 'tool') {
+                      return (
+                        <details
+                          className="agent-tool"
+                          data-status={entry.status}
+                          key={entry.id}
+                          open={entry.status === 'running'}
+                        >
+                          <summary>
+                            {entry.status === 'running' ? '正在调用' : '已调用'}{' '}
+                            {entry.name}
+                          </summary>
+                          {entry.paths.length > 0 ? (
+                            <code>{entry.paths.join(', ')}</code>
+                          ) : null}
+                        </details>
+                      );
+                    }
+                    return (
+                      <article
+                        key={entry.id}
+                        data-role={entry.type === 'user' ? 'user' : 'assistant'}
+                        className={
+                          entry.type === 'assistant' && entry.streaming
+                            ? 'is-streaming'
+                            : undefined
+                        }
+                      >
+                        <span>
+                          {entry.type === 'assistant'
+                            ? entry.streaming
+                              ? 'Agent · 正在回答'
+                              : 'Agent'
+                            : '你'}
+                        </span>
+                        {entry.type === 'user' && entry.chips.length > 0 ? (
+                          <div className="agent-history-chips">
+                            {entry.chips.map((chip) => (
+                              <em key={`${entry.id}-${chip.label}`}>
+                                {chip.label}
+                              </em>
+                            ))}
+                          </div>
+                        ) : null}
+                        {entry.text ? <p>{entry.text}</p> : null}
+                      </article>
+                    );
+                  })}
+                  {presented.length === 0 ? (
                     <div className="agent-empty">
                       <b>从整个站点开始。</b>
                       <p>
@@ -543,6 +629,7 @@ export function AgentPanel({
                       </p>
                     </div>
                   ) : null}
+                  <div ref={historyEnd} />
                 </div>
 
                 {(details?.approvals ?? [])
@@ -593,6 +680,17 @@ export function AgentPanel({
                       </div>
                     </section>
                   ))}
+
+                {activeTurn ? (
+                  <p
+                    className="agent-turn-state"
+                    data-state={activeTurn.status}
+                    role="status"
+                  >
+                    {turnLabels[activeTurn.status]}
+                    {activeTurn.errorCode ? ` · ${activeTurn.errorCode}` : ''}
+                  </p>
+                ) : null}
 
                 <form
                   className="agent-composer"
@@ -714,7 +812,10 @@ export function AgentPanel({
             ) : (
               <div className="agent-empty">
                 <b>还没有 Session</b>
-                <p>新建一个会话；它会跟随当前 Site，而不是当前页面。</p>
+                <p>
+                  点右上角「切换会话」新建一个；它会跟随当前
+                  Site，而不是当前页面。
+                </p>
               </div>
             )}
 

@@ -231,6 +231,7 @@ export function StudioApp() {
   const [version, setVersion] = useState(0);
   const [mode, setMode] = useState<'visual' | 'source'>('visual');
   const [saveState, setSaveState] = useState<SaveState>('clean');
+  const saveGeneration = useRef(0);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewError, setPreviewError] = useState('');
@@ -582,7 +583,15 @@ export function StudioApp() {
     return () => {
       cancelled = true;
     };
-  }, [api, loadedDocumentId, selected, site, version]);
+  }, [
+    api,
+    document?.source.revision,
+    editorEpoch,
+    loadedDocumentId,
+    selected,
+    site,
+    version,
+  ]);
 
   useEffect(() => {
     if (
@@ -593,6 +602,7 @@ export function StudioApp() {
       loadedDocumentId !== selected.documentId
     )
       return;
+    const generation = saveGeneration.current;
     const timer = window.setTimeout(() => {
       setSaveState('saving');
       void api
@@ -606,6 +616,7 @@ export function StudioApp() {
           body,
         })
         .then((result) => {
+          if (generation !== saveGeneration.current) return;
           setDocument({
             source: result.source,
             draft: null,
@@ -614,6 +625,7 @@ export function StudioApp() {
           setSaveState('saved');
         })
         .catch((reason: unknown) => {
+          if (generation !== saveGeneration.current) return;
           setSaveState(
             reason instanceof Error && /conflict/i.test(reason.message)
               ? 'conflict'
@@ -641,9 +653,7 @@ export function StudioApp() {
     setPanel('write');
   }
 
-  async function reloadOpenDocument(
-    paths?: readonly string[],
-  ): Promise<void> {
+  async function reloadOpenDocument(paths?: readonly string[]): Promise<void> {
     if (!site || !selected) return;
     if (
       paths &&
@@ -664,6 +674,7 @@ export function StudioApp() {
       selected.documentId,
       selected.collectionId,
     );
+    saveGeneration.current += 1;
     setDocument(restored);
     setLoadedDocumentId(selected.documentId);
     setBody(restored.source.body);
@@ -1248,9 +1259,7 @@ export function StudioApp() {
                       uploadResource(upload.file);
                     }}
                   />
-                  {(selected?.state === 'modified' || saveState === 'saved') &&
-                  site &&
-                  selected ? (
+                  {site && selected ? (
                     <button
                       className="discard-button"
                       onClick={() => {
@@ -1260,6 +1269,7 @@ export function StudioApp() {
                           )
                         )
                           return;
+                        const generation = ++saveGeneration.current;
                         void api
                           .discardWorkingCopy({
                             siteId: site.id,
@@ -1273,6 +1283,7 @@ export function StudioApp() {
                               selected.documentId,
                               selected.collectionId,
                             );
+                            if (generation !== saveGeneration.current) return;
                             setDocument(restored);
                             setBody(restored.source.body);
                             setFrontMatter(restored.source.frontMatter);
@@ -1289,9 +1300,18 @@ export function StudioApp() {
                               site.id,
                               contentQuery,
                             );
+                            if (generation !== saveGeneration.current) return;
                             setSiteContent(refreshed.content);
                           })
-                          .catch(() => setSaveState('conflict'));
+                          .catch((reason: unknown) => {
+                            if (generation !== saveGeneration.current) return;
+                            setSaveState(
+                              reason instanceof Error &&
+                                /conflict/i.test(reason.message)
+                                ? 'conflict'
+                                : 'error',
+                            );
+                          });
                       }}
                     >
                       放弃修改

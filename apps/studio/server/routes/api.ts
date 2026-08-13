@@ -802,12 +802,18 @@ export function registerApiRoutes(
       ) as Record<string, FrontMatterValue>;
       let source = created.source;
       if (Object.keys(configuredDefaults).length > 0) {
-        await workspace.generator.writeDocument(workspace.config.workspace.root, {
-          ref: created.source.ref,
-          expectedRevision: created.source.revision,
-          frontMatter: { ...created.source.frontMatter, ...configuredDefaults },
-          body: created.source.body,
-        });
+        await workspace.generator.writeDocument(
+          workspace.config.workspace.root,
+          {
+            ref: created.source.ref,
+            expectedRevision: created.source.revision,
+            frontMatter: {
+              ...created.source.frontMatter,
+              ...configuredDefaults,
+            },
+            body: created.source.body,
+          },
+        );
         source = await workspace.generator.readDocument(
           workspace.config.workspace.root,
           created.source.ref,
@@ -1740,26 +1746,26 @@ export function registerApiRoutes(
         ref,
       );
       const restore = workspace.repository as {
+        readCommitted?(root: string, path: string): Promise<string | undefined>;
         restorePath?(root: string, path: string): Promise<void>;
       };
-      try {
-        if (!restore.restorePath) throw new Error('No committed version');
+      const committed = restore.readCommitted
+        ? await restore.readCommitted(workspace.config.workspace.root, ref.path)
+        : undefined;
+      if (committed !== undefined && restore.restorePath) {
         await restore.restorePath(workspace.config.workspace.root, ref.path);
-      } catch {
-        const title = source.frontMatter.title;
-        await workspace.generator.writeDocument(
-          workspace.config.workspace.root,
-          {
-            ref,
-            expectedRevision: source.revision,
-            frontMatter: {
-              ...source.frontMatter,
-              ...(typeof title === 'string' ? { title } : {}),
-            },
-            body: '',
-          },
-        );
+        return { discarded: true };
       }
+      const title = source.frontMatter.title;
+      await workspace.generator.writeDocument(workspace.config.workspace.root, {
+        ref,
+        expectedRevision: source.revision,
+        frontMatter: {
+          ...source.frontMatter,
+          ...(typeof title === 'string' ? { title } : {}),
+        },
+        body: '',
+      });
       return { discarded: true };
     },
   );
