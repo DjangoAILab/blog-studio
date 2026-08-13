@@ -52,17 +52,30 @@ printf '%s\n' "$owner_password" | compose run --rm -T studio \
   --password-stdin
 compose up -d studio
 
-container="$(compose ps -q studio)"
-for _ in $(seq 1 60); do
-  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}' "$container")"
-  if [[ "$health" == 'healthy' ]]; then break; fi
-  if [[ "$health" == 'unhealthy' ]]; then
-    compose logs --tail=200 studio >&2
-    exit 1
+fail_studio() {
+  echo "quick-start studio did not become healthy${1:+: $1}" >&2
+  compose ps >&2 || true
+  compose logs --tail=200 studio >&2 || true
+  exit 1
+}
+
+container="$(compose ps -aq studio | head -n 1)"
+[[ -n "$container" ]] || fail_studio 'container id missing after compose up'
+health='missing'
+for _ in $(seq 1 90); do
+  if ! docker inspect "$container" >/dev/null 2>&1; then
+    fail_studio 'container disappeared'
+  fi
+  health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container")"
+  if [[ "$health" == 'healthy' ]]; then
+    break
+  fi
+  if [[ "$health" == 'unhealthy' || "$health" == 'exited' || "$health" == 'dead' ]]; then
+    fail_studio "$health"
   fi
   sleep 0.5
 done
-[[ "${health:-missing}" == 'healthy' ]]
+[[ "$health" == 'healthy' ]] || fail_studio "$health"
 [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "$origin/api/sites")" == '401' ]]
 
 session="$(curl --fail --silent --show-error \
