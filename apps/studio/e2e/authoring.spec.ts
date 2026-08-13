@@ -77,14 +77,18 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   await expect(
     secondSwitcher.getByLabel('AI Session').locator('option'),
   ).toHaveCount(1);
-  await secondSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
+  await secondSwitcher
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await secondAgent.getByRole('button', { name: '新建' }).click();
   await expect(secondAgent.getByText('新会话').first()).toBeVisible();
   await secondAgent.getByRole('button', { name: '切换' }).click();
   await expect(
     secondSwitcher.getByLabel('AI Session').locator('option'),
   ).toHaveCount(2);
-  await secondSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
+  await secondSwitcher
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await secondAgent.getByRole('button', { name: '关闭 AI' }).click();
   await secondSitePage.getByRole('button', { name: '配置本地调试' }).click();
   await expect(
@@ -114,7 +118,9 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   const firstSiteSessionId = await sessionSwitcher
     .getByLabel('AI Session')
     .inputValue();
-  await sessionSwitcher.getByRole('button', { name: '关闭', exact: true }).click();
+  await sessionSwitcher
+    .getByRole('button', { name: '关闭', exact: true })
+    .click();
   await agentPanel.getByLabel('执行模式').selectOption('yolo');
   await agentPanel.getByRole('button', { name: '归档' }).click();
   await expect(
@@ -280,9 +286,11 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
   }
   await page.keyboard.up('Shift');
   await page.getByRole('button', { name: '加入对话' }).click();
-  await expect(
-    page.getByRole('complementary', { name: /AI/ }).getByText(/#1/),
-  ).toBeVisible();
+  const mixTag = page
+    .getByRole('complementary', { name: /AI/ })
+    .locator('.tagify__tag', { hasText: '#1' });
+  await expect(mixTag).toBeVisible();
+  await expect(mixTag).toHaveAttribute('title', /浏览器可靠草稿/);
   await page
     .getByRole('complementary', { name: /AI/ })
     .getByRole('button', { name: '切换' })
@@ -294,11 +302,6 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .getByRole('dialog', { name: '切换会话' })
     .getByRole('button', { name: '关闭', exact: true })
     .click();
-  await expect(
-    page
-      .getByRole('complementary', { name: /AI/ })
-      .getByText(/浏览器可靠草稿/),
-  ).toBeVisible();
   await page.getByRole('button', { name: '关闭 AI' }).click();
 
   await page.route(

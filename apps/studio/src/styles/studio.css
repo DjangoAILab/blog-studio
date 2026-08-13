@@ -55,12 +55,11 @@ body::before {
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 999px;
   color: var(--studio-ink);
-  background:
-    linear-gradient(
-      160deg,
-      rgba(255, 255, 255, 0.58),
-      rgba(248, 244, 236, 0.28)
-    );
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.58),
+    rgba(248, 244, 236, 0.28)
+  );
   box-shadow:
     0 16px 40px rgba(32, 40, 37, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -224,6 +223,23 @@ body::before {
   min-height: 34px;
   padding: 0 0.7rem;
   font-size: 0.72rem;
+}
+.agent-settings-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 13px;
+  color: var(--studio-ink);
+  background: var(--studio-fill-strong);
+  cursor: pointer;
+}
+.agent-settings-button svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 .agent-switcher {
   display: grid;
@@ -586,6 +602,37 @@ body::before {
   border-color: var(--moss);
   box-shadow: 0 0 0 2px #83967533;
 }
+.agent-composer .tagify {
+  --tags-border-color: var(--line);
+  --tags-hover-border-color: var(--moss);
+  --tags-focus-border-color: var(--moss);
+  --tag-bg: #efe4d6;
+  --tag-hover: #e5d4c2;
+  --tag-text-color: var(--ink);
+  --tag-remove-btn-color: var(--muted);
+  --tag-border-radius: 999px;
+  --tag-pad: 0.12rem 0.42rem;
+  --placeholder-color: var(--muted);
+  --input-color: var(--ink);
+  width: 100%;
+  min-height: 6.4rem;
+  border-radius: 12px;
+  background: white;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.agent-composer .tagify--focus {
+  box-shadow: 0 0 0 2px #83967533;
+}
+.agent-composer .tagify__input {
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.agent-composer .tagify__tag {
+  margin-block: 0.12rem;
+  vertical-align: baseline;
+}
 .agent-composer-actions {
   display: flex;
   justify-content: space-between;
@@ -633,20 +680,22 @@ body::before {
   right: 1rem;
   top: 1rem;
   z-index: 6;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border: 1px solid var(--studio-line);
-  border-radius: 999px;
+  border-radius: 10px;
   background: rgba(252, 251, 249, 0.94);
   color: var(--studio-ink);
-  padding: 0.55rem 0.8rem;
   box-shadow: 0 8px 24px rgba(32, 40, 37, 0.12);
-  font-size: 0.68rem;
-  font-weight: 750;
   cursor: pointer;
 }
-.milkdown-toolbar .toolbar-item:has(text) {
-  width: auto;
-  min-width: 76px;
-  padding: 4px 10px;
+.agent-selection-button svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 .studio2-composer-tag {
   display: inline-flex;
@@ -714,6 +763,7 @@ body::before {
   .agent-panel,
   .agent-history article,
   .agent-composer > textarea,
+  .agent-composer .tagify,
   .agent-context-chip {
     border-color: currentColor;
   }
@@ -5304,7 +5354,9 @@ select:focus-visible,
   grid-template-columns: minmax(0, 1fr) minmax(22rem, 34vw);
 }
 
-.studio2-shell.is-content .workspace-grid.is-agent-open.is-library-collapsed .studio3-library-slot {
+.studio2-shell.is-content
+  .workspace-grid.is-agent-open.is-library-collapsed
+  .studio3-library-slot {
   display: none;
 }
 

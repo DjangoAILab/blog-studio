@@ -7,6 +7,7 @@ import '@milkdown/crepe/theme/frame.css';
 import { Milkdown, MilkdownProvider, useEditor } from '@milkdown/react';
 import { useEffect, useRef } from 'react';
 
+import { addToChatIconMarkup } from '../agent/add-to-chat-icon.js';
 import {
   isProtectedHtmlSource,
   protectedSourceLabel,
@@ -25,12 +26,6 @@ interface VisualEditorProps {
   readonly onSelectionChange?: (selection?: EditorSelection) => void;
   readonly onAddToChat?: (selection: EditorSelection) => void;
 }
-
-const addToChatIcon = `
-  <svg xmlns="http://www.w3.org/2000/svg" width="72" height="24" viewBox="0 0 72 24">
-    <text x="0" y="17" font-size="12" font-weight="700" fill="currentColor">加入对话</text>
-  </svg>
-`;
 
 const protectedHtmlSourceView = $view(htmlSchema.node, () => (node) => {
   const source = String(node.attrs.value ?? '');
@@ -80,7 +75,7 @@ function EditorSurface({
         [Crepe.Feature.Toolbar]: {
           buildToolbar: (builder) => {
             builder.addGroup('studio-ai', 'AI').addItem('add-to-chat', {
-              icon: addToChatIcon,
+              icon: addToChatIconMarkup,
               active: () => false,
               onRun: (ctx) => {
                 const view = ctx.get(editorViewCtx);
