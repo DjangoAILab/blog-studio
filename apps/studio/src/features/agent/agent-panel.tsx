@@ -1,6 +1,7 @@
 import { Dialog } from '@base-ui/react/dialog';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import type {
   StudioApi,
@@ -30,6 +31,7 @@ interface AgentPanelProps {
   readonly openRequest: number;
   readonly requestedSessionId?: string;
   readonly createRequested?: boolean;
+  readonly host?: HTMLElement | null;
   readonly onOpenChange?: (open: boolean) => void;
   readonly onSelectionConsumed: () => void;
   readonly onWorkspaceChanged?: (paths: readonly string[]) => void;
@@ -163,6 +165,7 @@ export function AgentPanel({
   openRequest,
   requestedSessionId,
   createRequested = false,
+  host,
   onOpenChange,
   onSelectionConsumed,
   onWorkspaceChanged,
@@ -497,11 +500,12 @@ export function AgentPanel({
           AI
         </button>
       )}
+      {((tree) => (host && open ? createPortal(tree, host) : tree))(
       <AnimatePresence>
         {open ? (
           <motion.aside
             id="site-agent-panel"
-            className="agent-panel"
+            className={`agent-panel${host ? ' is-embedded' : ''}`}
             aria-label={`${siteName ?? '当前站点'} AI`}
             initial={{ x: 28, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -1096,7 +1100,8 @@ export function AgentPanel({
             ) : null}
           </motion.aside>
         ) : null}
-      </AnimatePresence>
+      </AnimatePresence>,
+      )}
     </>
   );
 }
