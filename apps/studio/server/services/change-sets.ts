@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { parseMarkdown } from '@blog-studio/adapter-hexo';
 import { createArticleAssetScope } from '@blog-studio/assets';
 import {
   BlogStudioError,
@@ -151,6 +152,7 @@ export class ChangeSetService {
       summaries.map((summary) => [summary.ref.documentId, summary] as const),
     );
     const documents: FrozenDocumentChange[] = [];
+    const seen = new Set<string>();
     for (const metadata of this.drafts.listMetadataForWorkspace(
       createWorkspaceId(workspaceId),
     )) {
@@ -162,6 +164,7 @@ export class ChangeSetService {
       if (!snapshot || !summary)
         throw new Error(`Draft source is missing: ${metadata.documentId}`);
       const source = await workspace.generator.readDocument(root, summary.ref);
+      seen.add(metadata.documentId);
       documents.push({
         documentId: metadata.documentId,
         collectionId: summary.ref.collectionId,
@@ -177,6 +180,34 @@ export class ChangeSetService {
           snapshot.sourceRevision === summary.revision
             ? 'modified'
             : 'conflicted',
+      });
+    }
+    const reader = workspace.repository as {
+      readCommitted?(root: string, path: string): Promise<string | undefined>;
+    };
+    for (const change of repositoryStatus.changes) {
+      if (change.state === 'ignored' || change.state === 'deleted') continue;
+      const summary = summaries.find((item) => item.ref.path === change.path);
+      if (!summary || seen.has(summary.ref.documentId)) continue;
+      const source = await workspace.generator.readDocument(root, summary.ref);
+      const committed = reader.readCommitted
+        ? await reader.readCommitted(root, summary.ref.path)
+        : undefined;
+      const original = committed ? parseMarkdown(committed) : undefined;
+      seen.add(summary.ref.documentId);
+      documents.push({
+        documentId: summary.ref.documentId,
+        collectionId: summary.ref.collectionId,
+        path: summary.ref.path,
+        sourceRevision: summary.revision,
+        draftVersion: 0,
+        draftSavedAt:
+          summary.filesystemModifiedAt ?? '1970-01-01T00:00:00.000Z',
+        originalFrontMatter: original?.frontMatter ?? source.frontMatter,
+        originalBody: original?.body ?? source.body,
+        frontMatter: source.frontMatter,
+        body: source.body,
+        state: 'modified',
       });
     }
     documents.sort((left, right) => left.path.localeCompare(right.path));
@@ -307,14 +338,17 @@ export class ChangeSetService {
         source.ref.workspaceId,
         source.ref.documentId,
       );
-      if (
-        source.revision !== frozen.sourceRevision ||
-        !draft ||
-        draft.version !== frozen.draftVersion ||
-        draft.sourceRevision !== frozen.sourceRevision ||
-        canonical(draft.frontMatter) !== canonical(frozen.frontMatter) ||
-        draft.body !== frozen.body
-      ) {
+      const diskMatchesFrozen =
+        canonical(source.frontMatter) === canonical(frozen.frontMatter) &&
+        source.body === frozen.body;
+      const sqliteMatches =
+        source.revision === frozen.sourceRevision &&
+        Boolean(draft) &&
+        draft!.version === frozen.draftVersion &&
+        draft!.sourceRevision === frozen.sourceRevision &&
+        canonical(draft!.frontMatter) === canonical(frozen.frontMatter) &&
+        draft!.body === frozen.body;
+      if (!diskMatchesFrozen && !sqliteMatches) {
         this.repository.invalidate(id, this.now().toISOString());
         throw new ChangeSetConflictError(
           `Document changed after preparation: ${frozen.path}`,
@@ -350,11 +384,16 @@ export class ChangeSetService {
         this.now().toISOString(),
       );
       for (const document of documents) {
-        this.drafts.delete(
+        const leftover = this.drafts.get(
           document.ref.workspaceId,
           document.ref.documentId,
-          document.draftVersion,
         );
+        if (leftover)
+          this.drafts.delete(
+            document.ref.workspaceId,
+            document.ref.documentId,
+            leftover.version,
+          );
       }
       return review(appliedRecord);
     } catch (error) {

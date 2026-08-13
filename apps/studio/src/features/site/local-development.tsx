@@ -80,7 +80,7 @@ export function LocalDevelopment({
         </span>
       </header>
       <p>
-        运行命令只会在隔离的站点副本中执行；保存的工作副本会在下一次启动或重启时同步。
+        运行命令只会在隔离的站点副本中执行；磁盘上的当前稿会在下一次启动或重启时同步。
       </p>
       {details.message ? <p role="alert">{details.message}</p> : null}
       <div>

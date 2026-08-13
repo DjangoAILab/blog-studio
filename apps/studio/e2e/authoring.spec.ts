@@ -272,7 +272,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     await page.keyboard.press('ArrowRight');
   }
   await page.keyboard.up('Shift');
-  await page.getByRole('button', { name: '附加选区到 Agent' }).click();
+  await page.getByRole('button', { name: '加入对话' }).click();
   await expect(
     page.getByRole('complementary', { name: /Agent/ }).getByText(/选区 · L/),
   ).toBeVisible();
@@ -401,7 +401,7 @@ test('creates, autosaves, reloads, previews, and discards a native draft', async
     .first()
     .click();
   await expect(page.getByRole('heading', { name: '更改审阅' })).toBeVisible();
-  await expect(page.getByText('冻结记录未写入文件')).toBeVisible();
+  await expect(page.getByText('改动已在磁盘上，整理后可提交')).toBeVisible();
   await page.getByRole('button', { name: 'Agent' }).click();
   await expect(
     page.getByRole('complementary', { name: /Browser Test Blog Agent/ }),

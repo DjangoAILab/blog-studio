@@ -212,6 +212,30 @@ export class LocalGitRepositoryAdapter implements RepositoryAdapter {
     };
   }
 
+  public async readCommitted(
+    workspaceRoot: string,
+    path: string,
+  ): Promise<string | undefined> {
+    try {
+      return await git(workspaceRoot, ['show', `HEAD:${path}`]);
+    } catch {
+      return undefined;
+    }
+  }
+
+  public async restorePath(
+    workspaceRoot: string,
+    path: string,
+  ): Promise<void> {
+    const tracked = (
+      await git(workspaceRoot, ['ls-files', '--', path])
+    ).trim();
+    if (!tracked) {
+      throw new Error(`No committed version to restore: ${path}`);
+    }
+    await git(workspaceRoot, ['checkout', 'HEAD', '--', path]);
+  }
+
   public push(): Promise<void> {
     return Promise.reject(new Error('Local Git push is not implemented'));
   }

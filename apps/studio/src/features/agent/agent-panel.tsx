@@ -15,16 +15,13 @@ interface AgentPanelProps {
   readonly siteId?: string;
   readonly siteName?: string;
   readonly articleContext?: Extract<AgentMessageContext, { type: 'article' }>;
-  readonly editorBufferContext?: Extract<
-    AgentMessageContext,
-    { type: 'editor-buffer' }
-  >;
   readonly selectionContext?: Extract<
     AgentMessageContext,
     { type: 'markdown-selection' }
   >;
   readonly openRequest: number;
   readonly onSelectionConsumed: () => void;
+  readonly onWorkspaceChanged?: (paths: readonly string[]) => void;
 }
 
 const activeTurnStates = new Set(['queued', 'running', 'waiting-approval']);
@@ -77,10 +74,10 @@ export function AgentPanel({
   siteId,
   siteName,
   articleContext,
-  editorBufferContext,
   selectionContext,
   openRequest,
   onSelectionConsumed,
+  onWorkspaceChanged,
 }: AgentPanelProps) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<readonly AgentSessionSummary[]>([]);
@@ -92,7 +89,6 @@ export function AgentPanel({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [includeArticle, setIncludeArticle] = useState(true);
-  const [includeBuffer, setIncludeBuffer] = useState(false);
   const [includeSelection, setIncludeSelection] = useState(false);
   const [attachments, setAttachments] = useState<
     readonly AgentAttachmentSummary[]
@@ -136,7 +132,6 @@ export function AgentPanel({
     setDetails(undefined);
     setAttachments([]);
     setIncludeArticle(true);
-    setIncludeBuffer(false);
     setIncludeSelection(false);
     if (!siteId) {
       setSessions([]);
@@ -182,14 +177,11 @@ export function AgentPanel({
   const contexts = useMemo(() => {
     const result: AgentMessageContext[] = [];
     if (includeArticle && articleContext) result.push(articleContext);
-    if (includeBuffer && editorBufferContext) result.push(editorBufferContext);
     if (includeSelection && selectionContext) result.push(selectionContext);
     return result;
   }, [
     articleContext,
-    editorBufferContext,
     includeArticle,
-    includeBuffer,
     includeSelection,
     selectionContext,
   ]);
@@ -223,6 +215,18 @@ export function AgentPanel({
     ]) {
       source.addEventListener(type, receive as EventListener);
     }
+    source.addEventListener('workspace-changed', ((
+      event: MessageEvent<string>,
+    ) => {
+      try {
+        const value = JSON.parse(event.data) as {
+          readonly payload?: { readonly paths?: readonly string[] };
+        };
+        onWorkspaceChanged?.(value.payload?.paths ?? []);
+      } catch {
+        onWorkspaceChanged?.([]);
+      }
+    }) as EventListener);
     for (const type of ['message-end', 'approval-required', 'turn-running']) {
       source.addEventListener(type, () => void refreshDetails());
     }
@@ -235,6 +239,7 @@ export function AgentPanel({
     ]) {
       source.addEventListener(type, () => {
         source.close();
+        onWorkspaceChanged?.([]);
         void refreshDetails();
       });
     }
@@ -279,7 +284,6 @@ export function AgentPanel({
       });
       setText('');
       setAttachments([]);
-      setIncludeBuffer(false);
       setIncludeSelection(false);
       onSelectionConsumed();
       await refreshDetails();
@@ -618,20 +622,6 @@ export function AgentPanel({
                         details={selectionContext.text}
                         onRemove={() => setIncludeSelection(false)}
                       />
-                    ) : null}
-                    {includeBuffer && editorBufferContext ? (
-                      <ContextChip
-                        label="未保存编辑缓冲"
-                        details={`${editorBufferContext.body.length} 字符 · revision ${editorBufferContext.sourceRevision}`}
-                        onRemove={() => setIncludeBuffer(false)}
-                      />
-                    ) : editorBufferContext ? (
-                      <button
-                        type="button"
-                        onClick={() => setIncludeBuffer(true)}
-                      >
-                        ＋ 编辑缓冲
-                      </button>
                     ) : null}
                     {attachments.map((attachment) => (
                       <ContextChip

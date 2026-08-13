@@ -669,7 +669,10 @@ export class StudioApi {
     readonly frontMatter: Readonly<Record<string, unknown>>;
     readonly body: string;
   }) {
-    return this.#request<{ draft: { version: number } }>(
+    return this.#request<{
+      draft: { version: number };
+      source: DocumentPayload['source'];
+    }>(
       `/api/sites/${input.siteId}/content/${input.documentId}/working-copy?collection=${encodeURIComponent(input.collection)}`,
       {
         method: 'PUT',

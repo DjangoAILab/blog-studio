@@ -821,6 +821,23 @@ describe('Studio workspace API', () => {
 
   it('queries published, draft, and modified content through the Site contract', async () => {
     const { app, workspace } = await fixture({ additionalOlderPost: true });
+    execFileSync('git', ['-C', workspace, 'init', '-q']);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.name',
+      'Studio Test',
+    ]);
+    execFileSync('git', [
+      '-C',
+      workspace,
+      'config',
+      'user.email',
+      'studio@example.invalid',
+    ]);
+    execFileSync('git', ['-C', workspace, 'add', '.']);
+    execFileSync('git', ['-C', workspace, 'commit', '-qm', 'baseline']);
     const session = await login(app);
     const headers = {
       cookie: session.cookie,
@@ -915,14 +932,16 @@ describe('Studio workspace API', () => {
           title: 'Edited Hello',
           tags: ['Release', '中文'],
         },
-        body: 'SQLite working copy only\n',
+        body: 'Disk authoring copy\n',
       },
     });
     expect(saved.statusCode, saved.body).toBe(200);
-    expect(saved.json()).toMatchObject({ draft: { version: 1 } });
+    expect(saved.json()).toMatchObject({
+      source: { body: 'Disk authoring copy\n' },
+    });
     expect(
       await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
-    ).toContain('Body');
+    ).toContain('Disk authoring copy');
 
     const nativeDraft = await app.inject({
       method: 'POST',
@@ -960,10 +979,10 @@ describe('Studio workspace API', () => {
           { id: 'drafts', count: 1 },
           { id: 'posts', count: 2 },
         ],
-        tags: [
+        tags: expect.arrayContaining([
           { name: 'Release', count: 1 },
           { name: '中文', count: 1 },
-        ],
+        ]),
       },
     });
     expect(mergedContent.items).toEqual(
@@ -1004,7 +1023,6 @@ describe('Studio workspace API', () => {
             state: 'modified',
             sourceState: 'published',
             tags: ['Release', '中文'],
-            workingCopy: { version: 1, stale: false },
           },
         ],
       },
@@ -1042,17 +1060,6 @@ describe('Studio workspace API', () => {
       ).json(),
     ).toMatchObject({ content: { total: 0 } });
 
-    await writeFile(
-      join(workspace, 'source', '_posts', 'hello.md'),
-      '---\ntitle: Canonical changed\ndate: 2026-08-02 10:00:00\n---\nChanged elsewhere\n',
-    );
-    const staleList = await app.inject({
-      url: `/api/sites/${siteId}/content?state=modified`,
-      headers,
-    });
-    expect(staleList.json()).toMatchObject({
-      content: { items: [{ workingCopy: { version: 1, stale: true } }] },
-    });
     const staleSave = await app.inject({
       method: 'PUT',
       url: workingCopyUrl,
@@ -1066,18 +1073,6 @@ describe('Studio workspace API', () => {
     });
     expect(staleSave.statusCode).toBe(409);
     expect(staleSave.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
-
-    const unavailableDiscardUrl = `/api/sites/${siteId}/content/${published.documentId}/unavailable-working-copy`;
-    const sourceStillAvailable = await app.inject({
-      method: 'DELETE',
-      url: unavailableDiscardUrl,
-      headers,
-      payload: { expectedVersion: 1 },
-    });
-    expect(sourceStillAvailable.statusCode).toBe(409);
-    expect(sourceStillAvailable.json()).toMatchObject({
-      code: 'DOCUMENT_CONFLICT',
-    });
 
     await writeFile(
       join(workspace, 'source', '_posts', 'hello.md'),
@@ -1122,40 +1117,17 @@ describe('Studio workspace API', () => {
 
     await unlink(join(workspace, 'source', '_posts', 'hello.md'));
     const unavailableList = await app.inject({
-      url: `/api/sites/${siteId}/content?state=modified`,
+      url: `/api/sites/${siteId}/content`,
       headers,
     });
     expect(unavailableList.statusCode, unavailableList.body).toBe(200);
     expect(unavailableList.json()).toMatchObject({
       content: {
-        counts: { modified: 1 },
-        items: [
-          {
-            documentId: published.documentId,
-            title: 'Edited Hello',
-            state: 'modified',
-            sourceState: 'unavailable',
-            workingCopy: { version: 1, stale: true },
-          },
-        ],
+        items: expect.not.arrayContaining([
+          expect.objectContaining({ documentId: published.documentId }),
+        ]),
       },
     });
-    expect(unavailableList.body).not.toContain('SQLite working copy only');
-
-    const staleDiscard = await app.inject({
-      method: 'DELETE',
-      url: unavailableDiscardUrl,
-      headers,
-      payload: { expectedVersion: 2 },
-    });
-    expect(staleDiscard.statusCode).toBe(409);
-    const discarded = await app.inject({
-      method: 'DELETE',
-      url: unavailableDiscardUrl,
-      headers,
-      payload: { expectedVersion: 1 },
-    });
-    expect(discarded.statusCode, discarded.body).toBe(200);
   });
 
   it('exposes configured front-matter fields and applies their defaults to a native draft', async () => {
@@ -1511,7 +1483,7 @@ resources:
       payload,
     });
     expect(conflict.statusCode, conflict.body).toBe(409);
-    expect(conflict.json()).toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(conflict.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
     await writeFile(
       join(workspace, 'source', '_posts', 'hello.md'),
       '---\ntitle: Changed outside Studio\ndate: 2026-08-02 10:00:00\n---\nExternal change\n',
@@ -1822,12 +1794,14 @@ resources:
         documents: [
           expect.objectContaining({
             documentId,
-            draftVersion: 1,
+            draftVersion: 0,
             state: 'modified',
             body: 'Prepared body\n',
           }),
         ],
-        repositoryChanges: [],
+        repositoryChanges: [
+          expect.objectContaining({ path: 'source/_posts/hello.md' }),
+        ],
       },
     });
     expect(firstChangeSet.fingerprint).toMatch(/^sha256:[a-f0-9]{64}$/);
@@ -1928,7 +1902,7 @@ content:
     expect(
       (
         await app.inject({
-          url: `/api/sites/${siteId}/content?state=published`,
+          url: `/api/sites/${siteId}/content?state=modified`,
           headers,
         })
       ).json(),
@@ -2262,7 +2236,7 @@ content:
       draft: { version: number };
     }>();
     expect(payload.source.ref.path).toBe('source/_drafts/new-draft.md');
-    expect(payload.draft.version).toBe(1);
+    expect(payload.draft.version).toBe(0);
     await expect(
       readFile(join(workspace, payload.source.ref.path), 'utf8'),
     ).resolves.toContain('title: New draft');
@@ -2277,18 +2251,11 @@ content:
     expect(duplicate.json()).toMatchObject({ code: 'DOCUMENT_CONFLICT' });
 
     const discardUrl = `/api/workspaces/test-blog/documents/${payload.source.ref.documentId}/draft?collection=drafts`;
-    const stale = await app.inject({
-      method: 'DELETE',
-      url: discardUrl,
-      headers,
-      payload: { expectedVersion: 2 },
-    });
-    expect(stale.statusCode).toBe(409);
     const discarded = await app.inject({
       method: 'DELETE',
       url: discardUrl,
       headers,
-      payload: { expectedVersion: 1 },
+      payload: { expectedVersion: 0 },
     });
     expect(discarded.json()).toEqual({ discarded: true });
     const read = await app.inject({
@@ -2378,7 +2345,7 @@ content:
     );
     expect(
       await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
-    ).toContain('Body');
+    ).toContain('Preview draft');
     expect(content.headers['content-security-policy']).toContain('sandbox');
     expect(
       (await app.inject({ method: 'DELETE', url, headers })).json(),
@@ -2489,19 +2456,23 @@ content:
       source: { revision: string; frontMatter: Record<string, unknown> };
     }>().source;
     const draftUrl = `/api/workspaces/test-blog/documents/${documentId}/draft?collection=posts`;
-    const saveDraft = async (expectedVersion: number) =>
+    const saveDraft = async (
+      expectedVersion: number,
+      revision: string,
+      suffix = '',
+    ) =>
       await app.inject({
         method: 'PUT',
         url: draftUrl,
         headers,
         payload: {
           expectedVersion,
-          sourceRevision: source.revision,
+          sourceRevision: revision,
           frontMatter: source.frontMatter,
-          body: `![kept](${referenced.publicUrl})\n`,
+          body: `![kept](${referenced.publicUrl})${suffix}\n`,
         },
       });
-    expect((await saveDraft(0)).statusCode).toBe(200);
+    expect((await saveDraft(0, source.revision)).statusCode).toBe(200);
 
     const orphanUrl = `/api/workspaces/test-blog/documents/${documentId}/assets/orphans?collection=posts`;
     const firstPlan = await app.inject({
@@ -2519,7 +2490,13 @@ content:
       orphan.key,
     ]);
 
-    expect((await saveDraft(1)).statusCode).toBe(200);
+    const saved = await app.inject({
+      url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
+      headers: { cookie: session.cookie },
+    });
+    const savedRevision = saved.json<{ source: { revision: string } }>()
+      .source.revision;
+    expect((await saveDraft(1, savedRevision, ' ')).statusCode).toBe(200);
     const stale = await app.inject({
       method: 'DELETE',
       url: orphanUrl,
@@ -2744,13 +2721,13 @@ content:
       url: `/api/workspaces/test-blog/documents/${documentId}/draft?collection=drafts`,
       headers,
       payload: {
-        expectedVersion: 1,
+        expectedVersion: 0,
         sourceRevision: createdPayload.source.revision,
         frontMatter: createdPayload.source.frontMatter,
         body: 'Native draft body\n',
       },
     });
-    expect(saved.json()).toMatchObject({ draft: { version: 2 } });
+    expect(saved.json()).toMatchObject({ draft: { version: 1 } });
 
     const previewStarted = await app.inject({
       method: 'POST',
@@ -2866,13 +2843,14 @@ content:
     ).toBe('failed');
     expect(
       await readFile(join(workspace, 'source', '_posts', 'hello.md'), 'utf8'),
-    ).toContain('Body');
+    ).toContain('Must survive failed build');
     const after = await app.inject({
       url: `/api/workspaces/test-blog/documents/${documentId}?collection=posts`,
       headers: { cookie: session.cookie },
     });
     expect(after.json()).toMatchObject({
-      draft: { version: 1, body: 'Must survive failed build\n' },
+      source: { body: 'Must survive failed build\n' },
+      draft: null,
     });
   });
 

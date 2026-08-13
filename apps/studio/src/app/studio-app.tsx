@@ -252,6 +252,7 @@ export function StudioApp() {
     Extract<AgentMessageContext, { type: 'markdown-selection' }> | undefined
   >();
   const [agentOpenRequest, setAgentOpenRequest] = useState(0);
+  const [editorEpoch, setEditorEpoch] = useState(0);
   const resourceInput = useRef<HTMLInputElement>(null);
 
   function uploadResource(file: File): void {
@@ -539,16 +540,16 @@ export function StudioApp() {
         if (cancelled) return;
         setDocument(result);
         setLoadedDocumentId(selected.documentId);
-        const nextBody = result.draft?.body ?? result.source.body;
+        const nextBody = result.source.body;
         setBody(nextBody);
         setMode(/\{%[\s\S]*?%\}/.test(nextBody) ? 'source' : 'visual');
-        const matter = result.draft?.frontMatter ?? result.source.frontMatter;
+        const matter = result.source.frontMatter;
         setFrontMatter(matter);
         setTitle(
           typeof matter.title === 'string' ? matter.title : selected.title,
         );
-        setVersion(result.draft?.version ?? 0);
-        setSaveState(result.stale ? 'conflict' : 'clean');
+        setVersion(0);
+        setSaveState('clean');
       });
     return () => {
       cancelled = true;
@@ -605,7 +606,11 @@ export function StudioApp() {
           body,
         })
         .then((result) => {
-          setVersion(result.draft.version);
+          setDocument({
+            source: result.source,
+            draft: null,
+          });
+          setVersion(0);
           setSaveState('saved');
         })
         .catch((reason: unknown) => {
@@ -634,6 +639,51 @@ export function StudioApp() {
     setSelected(item);
     setDestination('content');
     setPanel('write');
+  }
+
+  async function reloadOpenDocument(
+    paths?: readonly string[],
+  ): Promise<void> {
+    if (!site || !selected) return;
+    if (
+      paths &&
+      paths.length > 0 &&
+      !paths.some(
+        (path) =>
+          path === selected.path ||
+          path.endsWith(`/${selected.path}`) ||
+          selected.path.endsWith(path),
+      )
+    ) {
+      const refreshed = await api.content(site.id, contentQuery);
+      setSiteContent(refreshed.content);
+      return;
+    }
+    const restored = await api.siteDocument(
+      site.id,
+      selected.documentId,
+      selected.collectionId,
+    );
+    setDocument(restored);
+    setLoadedDocumentId(selected.documentId);
+    setBody(restored.source.body);
+    setFrontMatter(restored.source.frontMatter);
+    setTitle(
+      typeof restored.source.frontMatter.title === 'string'
+        ? restored.source.frontMatter.title
+        : selected.title,
+    );
+    setVersion(0);
+    setSaveState('clean');
+    setEditorEpoch((value) => value + 1);
+    const refreshed = await api.content(site.id, contentQuery);
+    setSiteContent(refreshed.content);
+    setSelected(
+      (current) =>
+        refreshed.content.items.find(
+          (item) => item.documentId === current?.documentId,
+        ) ?? current,
+    );
   }
 
   function prepareChanges(): void {
@@ -1057,7 +1107,7 @@ export function StudioApp() {
               <span>文章</span>
               <i />
               {selected?.state === 'modified'
-                ? '工作副本'
+                ? '未提交改动'
                 : selected?.sourceState === 'draft'
                   ? '草稿'
                   : '已发布'}
@@ -1198,13 +1248,15 @@ export function StudioApp() {
                       uploadResource(upload.file);
                     }}
                   />
-                  {version > 0 && site && selected ? (
+                  {(selected?.state === 'modified' || saveState === 'saved') &&
+                  site &&
+                  selected ? (
                     <button
                       className="discard-button"
                       onClick={() => {
                         if (
                           !window.confirm(
-                            '放弃已自动保存的修改并恢复到文件版本？原生 Markdown 文件不会被删除。',
+                            '放弃磁盘上尚未提交的修改，恢复到 Git 中的版本？新草稿若还没有提交记录，正文会清空。',
                           )
                         )
                           return;
@@ -1232,6 +1284,12 @@ export function StudioApp() {
                             );
                             setVersion(0);
                             setSaveState('clean');
+                            setEditorEpoch((value) => value + 1);
+                            const refreshed = await api.content(
+                              site.id,
+                              contentQuery,
+                            );
+                            setSiteContent(refreshed.content);
                           })
                           .catch(() => setSaveState('conflict'));
                       }}
@@ -1333,8 +1391,25 @@ export function StudioApp() {
                     }
                   >
                     <VisualEditor
-                      key={`${selected?.documentId}-${mode}`}
+                      key={`${selected?.documentId}-${mode}-${document.source.revision}-${editorEpoch}`}
                       markdown={body}
+                      onSelectionChange={(selection) => {
+                        if (!selected) {
+                          setMarkdownSelection(undefined);
+                          return;
+                        }
+                        if (!selection) {
+                          setMarkdownSelection(undefined);
+                          return;
+                        }
+                        setMarkdownSelection({
+                          type: 'markdown-selection',
+                          documentId: selected.documentId,
+                          startLine: selection.startLine,
+                          endLine: selection.endLine,
+                          text: selection.text,
+                        });
+                      }}
                       resolveImageSource={(source) =>
                         `/api/sites/${site?.id ?? ''}/content/${selected?.documentId}/resource?collection=${encodeURIComponent(selected?.collectionId ?? '')}&source=${encodeURIComponent(source)}`
                       }
@@ -1376,20 +1451,22 @@ export function StudioApp() {
                         });
                       }}
                     />
-                    {markdownSelection ? (
-                      <button
-                        className="agent-selection-button"
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
-                          setAgentSelection(markdownSelection);
-                          setAgentOpenRequest((value) => value + 1);
-                        }}
-                      >
-                        ✦ 附加选区到 Agent
-                      </button>
-                    ) : null}
                   </div>
+                ) : null}
+                {markdownSelection &&
+                document &&
+                loadedDocumentId === selected?.documentId ? (
+                  <button
+                    className="agent-selection-button"
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setAgentSelection(markdownSelection);
+                      setAgentOpenRequest((value) => value + 1);
+                    }}
+                  >
+                    加入对话
+                  </button>
                 ) : null}
               </section>
             )}
@@ -1423,19 +1500,11 @@ export function StudioApp() {
                 },
               }
             : {})}
-          {...(destination === 'content' && selected && document
-            ? {
-                editorBufferContext: {
-                  type: 'editor-buffer' as const,
-                  documentId: selected.documentId,
-                  collectionId: selected.collectionId,
-                  sourceRevision: document.source.revision,
-                  body,
-                },
-              }
-            : {})}
           {...(agentSelection ? { selectionContext: agentSelection } : {})}
           onSelectionConsumed={() => setAgentSelection(undefined)}
+          onWorkspaceChanged={(paths) => {
+            void reloadOpenDocument(paths);
+          }}
         />
       </div>
     </MotionConfig>

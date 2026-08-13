@@ -899,7 +899,16 @@ export class SiteAgentSessionService {
             this.#emit(
               this.#requireTurn(sessionId, context.turnId),
               'tool-succeeded',
-              { toolCallId: mutation.toolCallId, toolName: mutation.toolName },
+              {
+                toolCallId: mutation.toolCallId,
+                toolName: mutation.toolName,
+                paths: mutation.paths,
+              },
+            );
+            this.#emit(
+              this.#requireTurn(sessionId, context.turnId),
+              'workspace-changed',
+              { paths: mutation.paths },
             );
             return result;
           },
