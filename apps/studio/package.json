@@ -47,13 +47,13 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.12.1",
+    "@axe-core/playwright": "4.13.0",
     "@earendil-works/pi-coding-agent": "0.84.1",
     "@playwright/test": "1.62.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.0.5",
     "sharp": "0.35.3",
-    "vite": "8.2.0"
+    "vite": "8.2.1"
   }
 }
