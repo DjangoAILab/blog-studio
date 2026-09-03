@@ -81,6 +81,7 @@ import type { SiteAgentVisionAdapter } from './services/site-agent-vision.js';
 const SESSION_COOKIE = 'blog_studio_session';
 const CSRF_COOKIE = 'blog_studio_csrf';
 const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+export type StudioAuthenticationMode = 'none' | 'password';
 
 export interface StudioServerOptions {
   readonly configurationPaths: readonly string[];
@@ -96,6 +97,8 @@ export interface StudioServerOptions {
   readonly agentAttachmentDirectory?: string;
   readonly agentVisionAdapter?: SiteAgentVisionAdapter;
   readonly authToken?: string;
+  /** Password protection is opt-in; the executable defaults to `none`. */
+  readonly authenticationMode?: StudioAuthenticationMode;
   readonly cookieSecret: string;
   readonly allowedOrigins: readonly string[];
   readonly secureCookies?: boolean;
@@ -118,6 +121,7 @@ function equalSecret(left: string, right: string): boolean {
 export async function createStudioServer(
   options: StudioServerOptions,
 ): Promise<FastifyInstance> {
+  const authenticationMode = options.authenticationMode ?? 'none';
   if (options.authToken !== undefined && options.authToken.length < 16)
     throw new Error('Authentication token must contain at least 16 characters');
   if (options.cookieSecret.length < 32)
@@ -338,7 +342,8 @@ export async function createStudioServer(
   }
 
   function setupStatus(): StudioSetupStatus {
-    const credentialsReady = ownerAuth.status().initialized;
+    const credentialsReady =
+      authenticationMode === 'none' || ownerAuth.status().initialized;
     const configurationValid = configurationError === undefined;
     const siteRegistered = siteRepository.list().length > 0;
     return {
@@ -419,7 +424,10 @@ export async function createStudioServer(
       : { status: 'ok' as const },
   );
   app.get('/api/setup/status', setupStatus);
-  app.get('/api/auth/status', () => ownerAuth.status());
+  app.get('/api/auth/status', () => ({
+    mode: authenticationMode,
+    ...ownerAuth.status(),
+  }));
 
   app.post<{ Body: { password?: string; token?: string } }>(
     '/api/session',
@@ -428,7 +436,6 @@ export async function createStudioServer(
         body: {
           type: 'object',
           additionalProperties: false,
-          anyOf: [{ required: ['password'] }, { required: ['token'] }],
           properties: {
             password: { type: 'string', maxLength: 1024 },
             token: { type: 'string', maxLength: 1024 },
@@ -445,7 +452,10 @@ export async function createStudioServer(
           status: 403,
         });
       }
-      if (currentLoginFailures(request.ip) >= maximumLoginFailures) {
+      if (
+        authenticationMode === 'password' &&
+        currentLoginFailures(request.ip) >= maximumLoginFailures
+      ) {
         return reply
           .header('retry-after', Math.ceil(loginFailureWindowMs / 1000))
           .code(429)
@@ -457,7 +467,25 @@ export async function createStudioServer(
       }
 
       let sessionValue: string;
-      if (ownerAuth.status().initialized) {
+      if (authenticationMode === 'none') {
+        const signedSession = request.cookies[SESSION_COOKIE];
+        const signedCsrf = request.cookies[CSRF_COOKIE];
+        const existingSession = signedSession
+          ? request.unsignCookie(signedSession)
+          : undefined;
+        const existingCsrf = signedCsrf
+          ? request.unsignCookie(signedCsrf)
+          : undefined;
+        if (
+          existingSession?.valid &&
+          existingSession.value === 'unprotected' &&
+          existingCsrf?.valid &&
+          existingCsrf.value
+        ) {
+          return { authenticated: true, csrfToken: existingCsrf.value };
+        }
+        sessionValue = 'unprotected';
+      } else if (ownerAuth.status().initialized) {
         if (request.body.password === undefined) {
           recordLoginFailure(request.ip);
           return reply.code(401).send({
@@ -537,9 +565,13 @@ export async function createStudioServer(
       unsignedSession.valid &&
       sessionValue !== null &&
       ((sessionValue === 'legacy-authenticated' &&
+        authenticationMode === 'password' &&
         !ownerAuth.status().initialized &&
         options.authToken !== undefined) ||
+        (sessionValue === 'unprotected' && authenticationMode === 'none') ||
         (sessionValue !== 'legacy-authenticated' &&
+          sessionValue !== 'unprotected' &&
+          authenticationMode === 'password' &&
           ownerAuth.validateSession(sessionValue)));
     if (!validSession) {
       await reply.code(401).send({
@@ -588,6 +620,14 @@ export async function createStudioServer(
       },
     },
     async (request, reply) => {
+      if (authenticationMode !== 'password') {
+        return reply.code(409).send({
+          type: 'about:blank',
+          title: 'Password authentication is disabled',
+          status: 409,
+          code: 'PASSWORD_AUTH_DISABLED',
+        });
+      }
       const signed = request.cookies[SESSION_COOKIE];
       const unsigned = signed ? request.unsignCookie(signed) : undefined;
       if (!unsigned?.valid || !unsigned.value) {
@@ -617,7 +657,8 @@ export async function createStudioServer(
     if (
       unsigned?.valid &&
       unsigned.value &&
-      unsigned.value !== 'legacy-authenticated'
+      unsigned.value !== 'legacy-authenticated' &&
+      unsigned.value !== 'unprotected'
     ) {
       ownerAuth.logout(unsigned.value);
     }

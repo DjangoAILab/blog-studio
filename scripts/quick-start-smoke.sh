@@ -2,11 +2,12 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/blog-studio-quick-start.XXXXXX")"
+# Keep bind-mounted fixtures below the checkout: Colima and Docker Desktop may
+# not share macOS's per-session TMPDIR or /tmp with their Linux VM.
+fixture="$(mktemp -d "$repository_root/.blog-studio-quick-start.XXXXXX")"
 project="blog-studio-quick-start-$$"
 port="${BLOG_STUDIO_QUICK_START_PORT:-24310}"
 origin="http://127.0.0.1:${port}"
-owner_password='quick-start-owner-password'
 cookie_secret='quick-start-cookie-secret-with-more-than-thirty-two-characters'
 
 export BLOG_STUDIO_IMAGE="${BLOG_STUDIO_QUICK_START_IMAGE:-blog-studio:quick-start}"
@@ -61,10 +62,6 @@ compose config --quiet
 if [[ "${BLOG_STUDIO_QUICK_START_SKIP_BUILD:-false}" != 'true' ]]; then
   compose build --pull studio
 fi
-printf '%s\n' "$owner_password" | compose run --rm -T studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite \
-  --password-stdin
 compose up -d studio
 
 container="$(compose ps -q studio)"
@@ -94,7 +91,7 @@ session="$(curl --fail --silent --show-error \
   --cookie-jar "$fixture/cookies" \
   --header "Origin: $origin" \
   --header 'Content-Type: application/json' \
-  --data "{\"password\":\"$owner_password\"}" \
+  --data '{}' \
   "$origin/api/session")"
 csrf="$(node -e 'const input=JSON.parse(process.argv[1]);process.stdout.write(input.csrfToken)' "$session")"
 setup="$(curl --fail --silent --show-error "$origin/api/setup/status")"
@@ -150,4 +147,4 @@ test -s "$fixture/data/blog-studio.sqlite"
 git -C "$fixture/workspace" grep -q 'Quick Start verified body' -- . ||
   grep -Rq 'Quick Start verified body' "$fixture/workspace"
 
-echo 'quick start passed: owner password, Site discovery/registration, Git repository, unified content, disk autosave, real preview, publish disabled'
+echo 'quick start passed: password-free access, Site discovery/registration, Git repository, unified content, disk autosave, real preview, publish disabled'

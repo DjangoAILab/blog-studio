@@ -6,12 +6,14 @@ fixture="$(mktemp -d "${TMPDIR:-/tmp}/blog-studio-browser-e2e.XXXXXX")"
 server_pid=''
 invalid_server_pid=''
 uninitialized_server_pid=''
+unprotected_server_pid=''
 mutator_pid=''
 
 cleanup() {
   if [[ -n "$server_pid" ]]; then kill "$server_pid" >/dev/null 2>&1 || true; fi
   if [[ -n "$invalid_server_pid" ]]; then kill "$invalid_server_pid" >/dev/null 2>&1 || true; fi
   if [[ -n "$uninitialized_server_pid" ]]; then kill "$uninitialized_server_pid" >/dev/null 2>&1 || true; fi
+  if [[ -n "$unprotected_server_pid" ]]; then kill "$unprotected_server_pid" >/dev/null 2>&1 || true; fi
   if [[ -n "$mutator_pid" ]]; then kill "$mutator_pid" >/dev/null 2>&1 || true; fi
   rm -rf "$fixture"
 }
@@ -170,6 +172,7 @@ printf '%s' 'browser-test-owner-password' | \
 BLOG_STUDIO_CONFIG_PATHS="$fixture/invalid-blog-studio.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
 BLOG_STUDIO_DATABASE_PATH="$invalid_studio_database" \
+BLOG_STUDIO_AUTH_MODE=password \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-invalid-cookie-secret-with-thirty-two-characters' \
 BLOG_STUDIO_ALLOWED_ORIGINS='http://127.0.0.1:14312' \
 BLOG_STUDIO_SECURE_COOKIES=false \
@@ -182,6 +185,7 @@ invalid_server_pid=$!
 BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml,$fixture/blog-studio-two.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
 BLOG_STUDIO_DATABASE_PATH="$fixture/data/uninitialized-studio.sqlite" \
+BLOG_STUDIO_AUTH_MODE=password \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-uninitialized-cookie-secret-thirty-two-characters' \
 BLOG_STUDIO_ALLOWED_ORIGINS='http://127.0.0.1:14313' \
 BLOG_STUDIO_SECURE_COOKIES=false \
@@ -190,6 +194,18 @@ BLOG_STUDIO_PORT=14313 \
 BLOG_STUDIO_CLIENT_DIRECTORY="$studio_directory/dist/client" \
 node "$studio_directory/dist/server/main.js" &
 uninitialized_server_pid=$!
+
+BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml,$fixture/blog-studio-two.yml" \
+BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
+BLOG_STUDIO_DATABASE_PATH="$fixture/data/unprotected-studio.sqlite" \
+BLOG_STUDIO_COOKIE_SECRET='browser-test-unprotected-cookie-secret-thirty-two-characters' \
+BLOG_STUDIO_ALLOWED_ORIGINS='http://127.0.0.1:14315' \
+BLOG_STUDIO_SECURE_COOKIES=false \
+BLOG_STUDIO_HOST=127.0.0.1 \
+BLOG_STUDIO_PORT=14315 \
+BLOG_STUDIO_CLIENT_DIRECTORY="$studio_directory/dist/client" \
+node "$studio_directory/dist/server/main.js" &
+unprotected_server_pid=$!
 
 BLOG_STUDIO_E2E_SOURCE="$fixture/site/source/_posts/hello.md" \
 node --input-type=module -e '
@@ -225,6 +241,7 @@ mutator_pid=$!
 BLOG_STUDIO_CONFIG_PATHS="$fixture/blog-studio.yml,$fixture/blog-studio-two.yml" \
 BLOG_STUDIO_WORKSPACE_ROOT="$fixture" \
 BLOG_STUDIO_DATABASE_PATH="$studio_database" \
+BLOG_STUDIO_AUTH_MODE=password \
 BLOG_STUDIO_COOKIE_SECRET='browser-test-cookie-secret-with-at-least-thirty-two-characters' \
 BLOG_STUDIO_ALLOWED_ORIGINS='http://127.0.0.1:14311' \
 BLOG_STUDIO_SECURE_COOKIES=false \

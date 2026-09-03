@@ -22,7 +22,7 @@ browser journey without turning your website over to a hosted AI CMS.
   <img src="docs/media/ai-add-to-chat.png" alt="加入对话 AI-plus control on a selected sentence" width="32%" />
 </p>
 
-> Status: v0.3.0 is the public AI-first release. `dev` still deploys the
+> Status: v0.3.1 is the public local-first release. `dev` still deploys the
 > internal home-server editor. Production installs pin the tagged GHCR digest.
 > See [Development and release](docs/guides/development-and-release.md).
 
@@ -78,20 +78,19 @@ configured.
 ```sh
 docker compose config --quiet
 docker compose build
-docker compose run --rm studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite
 docker compose up -d
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-The initialization command reads and confirms the new owner password without
-echoing it. Open the configured HTTPS route, log in with that password, edit
-the discovered `Example Blog` Site, and choose preview. Registration creates
-only the Site identity and audit record in SQLite. To connect your own site,
-replace the example workspace with a clean trusted checkout, install its locked
-dependencies on the host, configure its generator/publisher adapters, and
-review the discovered candidate before registering it.
+Open the configured route, edit the discovered `Example Blog` Site, and choose
+preview. Blog Studio defaults to password-free access for local and trusted-LAN
+use. Anyone who can reach the configured origin can edit, so set
+`BLOG_STUDIO_AUTH_MODE=password` and initialize an Owner password when the
+network boundary is not sufficient. Registration creates only the Site identity
+and audit record in SQLite. To connect your own site, replace the example
+workspace with a clean trusted checkout, install its locked dependencies on the
+host, configure its generator/publisher adapters, and review the discovered
+candidate before registering it.
 
 Port 4310 binds only to localhost. Use the supplied Traefik override, another
 TLS reverse proxy, or a private tunnel for browser access; do not expose the

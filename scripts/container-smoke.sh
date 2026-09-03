@@ -115,6 +115,7 @@ start_container() {
     --env BLOG_STUDIO_CONFIG_PATHS=/config/blog-studio.yml \
     --env BLOG_STUDIO_WORKSPACE_ROOT=/workspaces \
     --env BLOG_STUDIO_DATABASE_PATH=/data/blog-studio.sqlite \
+    --env BLOG_STUDIO_AUTH_MODE=password \
     --env BLOG_STUDIO_COOKIE_SECRET_FILE=/run/secrets/cookie_secret \
     --env BLOG_STUDIO_ALLOWED_ORIGINS="$origin" \
     --env BLOG_STUDIO_SECURE_COOKIES=false \
@@ -284,7 +285,7 @@ test -s "$fixture/data/agent-runtime/auth.json"
 test -s "$fixture/data/agent-sessions"/*
 test -s "$fixture/data/agent-attachments/$site_id/$agent_session_id/$agent_attachment_id"
 document="$(curl --fail --silent --show-error --cookie "$fixture/cookies" "$origin/api/sites/$site_id/content/$document_id?collection=posts")"
-container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft?.version!==1 || !input.draft.body.includes("Durable draft")) process.exit(1)' "$document"
+container_node -e 'const input=JSON.parse(process.argv[1]); if(input.draft!==null || !input.source.body.includes("Durable draft")) process.exit(1)' "$document"
 
 docker stop --time 10 "$container" >/dev/null
 docker rm "$container" >/dev/null
