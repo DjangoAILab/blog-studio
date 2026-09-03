@@ -36,6 +36,7 @@ const apps: FastifyInstance[] = [];
 interface FixtureOptions {
   readonly existingCosObjects?: Map<string, Uint8Array>;
   readonly ownerPassword?: string;
+  readonly authenticationMode?: StudioServerOptions['authenticationMode'];
   readonly invalidConfiguration?: boolean;
   readonly omitLegacyAuthToken?: boolean;
   readonly secondWorkspace?: boolean;
@@ -247,6 +248,7 @@ ${contentModel}
     allowedWorkspaceRoot: parent,
     databasePath,
     previewStateDirectory,
+    authenticationMode: options.authenticationMode ?? 'password',
     ...(options.omitLegacyAuthToken ? {} : { authToken }),
     cookieSecret,
     allowedOrigins: [origin],
@@ -378,6 +380,7 @@ describe('Studio workspace API', () => {
       site: { state: 'not-registered', nextAction: 'discover-site' },
     });
     expect((await app.inject('/api/auth/status')).json()).toEqual({
+      mode: 'password',
       initialized: false,
     });
     const attemptedClaim = await app.inject({
@@ -391,6 +394,7 @@ describe('Studio workspace API', () => {
       code: 'OWNER_NOT_INITIALIZED',
     });
     expect((await app.inject('/api/auth/status')).json()).toEqual({
+      mode: 'password',
       initialized: false,
     });
   });
@@ -476,6 +480,7 @@ describe('Studio workspace API', () => {
     const ownerPassword = 'owner initialized passphrase';
     const { app } = await fixture({ ownerPassword });
     expect((await app.inject('/api/auth/status')).json()).toEqual({
+      mode: 'password',
       initialized: true,
       generation: 1,
     });
@@ -593,6 +598,100 @@ describe('Studio workspace API', () => {
       payload: { token: authToken },
     });
     expect(rejected.statusCode).toBe(403);
+  });
+
+  it('opens an origin-bound session without a password when authentication is disabled', async () => {
+    const { app } = await fixture({
+      authenticationMode: 'none',
+      omitLegacyAuthToken: true,
+    });
+    expect((await app.inject('/api/setup/status')).json()).toEqual({
+      ready: false,
+      credentials: { state: 'ready' },
+      configuration: { state: 'valid' },
+      site: { state: 'not-registered', nextAction: 'discover-site' },
+    });
+    expect((await app.inject('/api/auth/status')).json()).toEqual({
+      mode: 'none',
+      initialized: false,
+    });
+    expect((await app.inject('/api/workspaces')).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/session',
+          headers: { origin: 'https://attacker.example' },
+          payload: {},
+        })
+      ).statusCode,
+    ).toBe(403);
+
+    const opened = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { origin },
+      payload: {},
+    });
+    expect(opened.statusCode, opened.body).toBe(200);
+    const sessionCookie = cookies(opened);
+    const csrfToken = opened.json<{ csrfToken: string }>().csrfToken;
+    const reopened = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { cookie: sessionCookie, origin },
+      payload: {},
+    });
+    expect(reopened.statusCode, reopened.body).toBe(200);
+    expect(reopened.json()).toMatchObject({ csrfToken });
+    expect(reopened.headers['set-cookie']).toBeUndefined();
+    expect(
+      (
+        await app.inject({
+          url: '/api/workspaces',
+          headers: { cookie: sessionCookie },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/workspaces/test-blog/scan',
+          headers: { cookie: sessionCookie, origin },
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/workspaces/test-blog/scan',
+          headers: {
+            cookie: sessionCookie,
+            origin,
+            'x-csrf-token': csrfToken,
+          },
+        })
+      ).statusCode,
+    ).toBe(200);
+    const passwordChange = await app.inject({
+      method: 'PATCH',
+      url: '/api/auth/password',
+      headers: {
+        cookie: sessionCookie,
+        origin,
+        'x-csrf-token': csrfToken,
+      },
+      payload: {
+        currentPassword: 'unused current password',
+        newPassword: 'unused replacement password',
+      },
+    });
+    expect(passwordChange.statusCode).toBe(409);
+    expect(passwordChange.json()).toMatchObject({
+      code: 'PASSWORD_AUTH_DISABLED',
+    });
   });
 
   it('discovers and confirms a v0.1 workspace as a user-facing Site', async () => {

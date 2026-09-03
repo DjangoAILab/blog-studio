@@ -18,7 +18,7 @@ Blog Studio 是一款面向 Markdown 与 Git 网站的自托管 AI 内容工作�
   <img src="docs/media/ai-add-to-chat.png" alt="选中句子后的加入对话 AI 加号按钮" width="32%" />
 </p>
 
-> 状态：v0.3.0 是面向公众的 AI First 版本。`dev` 仍部署 home-server 不稳定编辑器。生产安装请钉住带标签的 GHCR digest。见[开发与发布](docs/guides/development-and-release.md)。
+> 状态：v0.3.1 是面向公众的本地优先版本。`dev` 仍部署 home-server 不稳定编辑器。生产安装请钉住带标签的 GHCR digest。见[开发与发布](docs/guides/development-and-release.md)。
 
 ## 产品承诺
 
@@ -61,14 +61,11 @@ git -C workspace commit -m "Initialize example workspace"
 ```sh
 docker compose config --quiet
 docker compose build
-docker compose run --rm studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite
 docker compose up -d
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-初始化命令会读取并确认新的 owner 密码，且不会回显。打开配置的 HTTPS 路由，用该密码登录，编辑发现的 `Example Blog` Site 并选择预览。注册只会在 SQLite 中创建 Site identity 和审计记录。要接入自己的网站，请把示例工作区替换为干净可信的 checkout，在主机安装锁定依赖，配置生成器/发布器适配器，并在注册前审查发现的候选项。
+打开配置的访问地址，编辑发现的 `Example Blog` Site 并选择预览。Blog Studio 默认采用适合本机与可信局域网的无密码模式；能访问该 origin 的人都可以编辑。如网络边界不足以提供保护，请设置 `BLOG_STUDIO_AUTH_MODE=password` 并初始化 Owner 密码。注册只会在 SQLite 中创建 Site identity 和审计记录。要接入自己的网站，请把示例工作区替换为干净可信的 checkout，在主机安装锁定依赖，配置生成器/发布器适配器，并在注册前审查发现的候选项。
 
 4310 端口只绑定 localhost。浏览器访问请使用随附 Traefik 覆盖文件、其他 TLS 反向代理或私有隧道；不要把明文 HTTP 端口暴露到 LAN 或公网。配置远程发布器前请阅读[完整自行托管指南](apps/website/src/content/docs/zh-cn/docs/guides/self-hosting.md)。
 

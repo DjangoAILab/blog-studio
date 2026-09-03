@@ -53,27 +53,35 @@ as a local Git repository. This uses the built-in command generator and
 `publish.adapter: none`: writing, durable autosave, and real preview work, while
 the release button remains disabled until a verified target is configured.
 
-Validate the deployment, build the image, and initialize the first owner
-password from a trusted terminal. The password is read twice without echo and
-is stored only as a memory-hard verifier in SQLite:
+Validate the deployment and build the image. Password-free access is the
+default for local and trusted-LAN use:
 
 ```sh
 docker compose config --quiet
 docker compose build --pull
-docker compose run --rm studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-Open the configured HTTPS hostname and enter the owner password. A successful
-health response alone does not bypass the session and CSRF boundary used by the
-remaining API. The first authenticated journey discovers the configured
-workspace as a Site candidate. Review its identity, content counts, Git state
-and capabilities before registration; registration does not rewrite the Site
-checkout or publish anything. See [Sites and first run](sites-and-first-run.md).
+Open the configured hostname. The browser automatically receives a signed
+session and CSRF token; anyone who can reach the allowed origin can edit. The
+first journey discovers the configured workspace as a Site candidate. Review
+its identity, content counts, Git state and capabilities before registration;
+registration does not rewrite the Site checkout or publish anything. See
+[Sites and first run](sites-and-first-run.md).
+
+For an untrusted LAN, shared host, tunnel, or any broader exposure, opt into
+password protection before starting Studio. The CLI reads the password twice
+without echo and stores only a memory-hard verifier in SQLite:
+
+```sh
+printf '\nBLOG_STUDIO_AUTH_MODE=password\n' >> .env
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
+docker compose up -d
+```
 
 Inspect credential state or recover a forgotten password from the trusted host:
 

@@ -56,23 +56,30 @@ For optional vision, create `secrets/vision_api_key` as the same owner and mode
 endpoint, `minimax-m3` model, and in-container key-file path in `.env`. Never
 place either credential value in `.env`, YAML, or an image layer.
 
-## 2. Initialize the owner and start
+## 2. Choose access mode and start
 
 ```sh
 docker compose config --quiet
 docker compose build --pull
-docker compose run --rm studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-The CLI reads and confirms the first owner password without echo. Open the
-configured HTTPS origin and log in with that password. All non-health
-application APIs still require a signed session; mutations additionally require
-same-origin CSRF validation.
+Blog Studio defaults to password-free access for local and trusted-LAN use.
+Open the configured origin and Studio will establish a signed browser session;
+mutations still require same-origin CSRF validation. Anyone who can reach that
+origin can edit.
+
+For an untrusted LAN, shared host, tunnel, or broader exposure, set
+`BLOG_STUDIO_AUTH_MODE=password` in `.env` before startup and initialize the
+Owner password from the trusted host:
+
+```sh
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
+```
 
 Use the same trusted-container entry point for status or recovery:
 

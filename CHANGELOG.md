@@ -6,6 +6,16 @@ All notable changes to Blog Studio are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-03
+
+### Changed
+
+- Password-free local and trusted-LAN access is now the default. Operators can
+  opt into the existing Owner-password flow with
+  `BLOG_STUDIO_AUTH_MODE=password`.
+- Password-free sessions retain exact-origin and CSRF checks, and System
+  Settings explains the active access boundary.
+
 ## [0.3.0] - 2026-08-14
 
 ### Added
@@ -61,5 +71,6 @@ All notable changes to Blog Studio are documented here. The format follows
 - Public positioning is an AI-first content workspace. Landing and README use a
   photograph-to-essay task to show vision and outline.
 
-[Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DjangoAILab/blog-studio/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/DjangoAILab/blog-studio/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/DjangoAILab/blog-studio/compare/v0.1.0...v0.3.0

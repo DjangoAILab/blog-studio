@@ -361,9 +361,11 @@ export class StudioApi {
   }
 
   public authStatus() {
-    return this.#request<{ initialized: boolean; generation?: number }>(
-      '/api/auth/status',
-    );
+    return this.#request<{
+      mode: 'none' | 'password';
+      initialized: boolean;
+      generation?: number;
+    }>('/api/auth/status');
   }
 
   public setupStatus() {
@@ -374,6 +376,14 @@ export class StudioApi {
     const result = await this.#request<{ csrfToken: string }>('/api/session', {
       method: 'POST',
       body: JSON.stringify({ password }),
+    });
+    this.setCsrfToken(result.csrfToken);
+  }
+
+  public async openUnprotectedSession(): Promise<void> {
+    const result = await this.#request<{ csrfToken: string }>('/api/session', {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
     this.setCsrfToken(result.csrfToken);
   }

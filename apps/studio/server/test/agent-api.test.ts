@@ -280,6 +280,7 @@ verification:
     configurationPaths: [configOne, configTwo],
     allowedWorkspaceRoot: parent,
     databasePath,
+    authenticationMode: 'password',
     agentSessionDirectory: join(parent, 'agent-sessions'),
     agentRuntimeFactory: runtimeFactory,
     agentAttachmentDirectory: join(parent, 'agent-attachments'),

@@ -183,6 +183,9 @@ export function StudioApp() {
   const [ownerInitialized, setOwnerInitialized] = useState<boolean | null>(
     null,
   );
+  const [authenticationMode, setAuthenticationMode] = useState<
+    'none' | 'password' | null
+  >(null);
   const [setupStatus, setSetupStatus] = useState<StudioSetupStatus>();
   const [setupChecked, setSetupChecked] = useState(false);
   const [setupRetrying, setSetupRetrying] = useState(false);
@@ -383,8 +386,12 @@ export function StudioApp() {
       setSetupChecked(true);
       if (status.configuration.state === 'valid') {
         const auth = await api.authStatus();
+        setAuthenticationMode(auth.mode);
         setOwnerInitialized(auth.initialized);
-        if (auth.initialized) await loadStudioState();
+        if (auth.mode === 'none') {
+          await api.openUnprotectedSession();
+          await loadStudioState();
+        } else if (auth.initialized) await loadStudioState();
         else setAuthenticated(false);
       }
       return status;
@@ -462,17 +469,22 @@ export function StudioApp() {
       .then(async ([setup, auth]) => {
         setSetupStatus(setup);
         setSetupChecked(true);
+        setAuthenticationMode(auth.mode);
         setOwnerInitialized(auth.initialized);
         if (setup.configuration.state !== 'valid') {
           setAuthenticated(false);
           return;
         }
-        if (auth.initialized) await loadStudioState();
+        if (auth.mode === 'none') {
+          await api.openUnprotectedSession();
+          await loadStudioState();
+        } else if (auth.initialized) await loadStudioState();
         else setAuthenticated(false);
       })
       .catch(() => {
         setSetupChecked(true);
         setSetupError('无法读取首次运行状态');
+        setAuthenticationMode('password');
         setOwnerInitialized(false);
         setAuthenticated(false);
       });
@@ -839,7 +851,12 @@ export function StudioApp() {
       });
   }
 
-  if (!setupChecked || authenticated === null || ownerInitialized === null)
+  if (
+    !setupChecked ||
+    authenticated === null ||
+    ownerInitialized === null ||
+    authenticationMode === null
+  )
     return <div className="boot-screen">BLOG / STUDIO</div>;
   if (!setupStatus || setupStatus.configuration.state === 'invalid')
     return (
@@ -1067,6 +1084,7 @@ export function StudioApp() {
               />
             ) : destination === 'settings' ? (
               <SystemSettings
+                authenticationMode={authenticationMode}
                 key="settings"
                 onChangePassword={(input) => api.changePassword(input)}
                 onLogout={async () => {
