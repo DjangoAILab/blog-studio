@@ -49,3 +49,20 @@ test('distinguishes credentials not ready from invalid configuration', async ({
   ).toBe(true);
   await expectNoSeriousAccessibilityViolations(page);
 });
+
+test('opens the default password-free mode without a login screen', async ({
+  page,
+}) => {
+  const sessionResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/session') &&
+      response.request().method() === 'POST',
+  );
+  await page.goto('http://127.0.0.1:14315/');
+  await expect(
+    page.getByRole('heading', { name: '先把你的站点带进来。' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Owner 密码')).toHaveCount(0);
+  expect((await sessionResponse).ok()).toBe(true);
+  await expectNoSeriousAccessibilityViolations(page);
+});

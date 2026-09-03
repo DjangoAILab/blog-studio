@@ -13,19 +13,24 @@ reachable. The public status exposes only safe state and next-action labels:
 
 | State                 | Meaning                                                                          | Safe next action                                    |
 | --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Credentials not ready | No owner password verifier exists                                                | Initialize it from the trusted host CLI             |
+| Credentials not ready | Password mode is enabled but no owner password verifier exists                   | Initialize it from the trusted host CLI             |
 | Configuration invalid | The administrator configuration cannot be loaded safely                          | Repair the mounted configuration, then retry        |
 | No Site registered    | Credentials and configuration are valid, but no Site identity has been confirmed | Log in, inspect discovery, and register a candidate |
 
 These facets are independent. Invalid configuration keeps the recovery page,
 password login and setup status reachable, but health is degraded and Site,
 content, preview, ChangeSet and release APIs fail closed. The browser can never
-claim first ownership.
+claim first ownership in password mode.
 
-## Initialize the owner
+## Choose the access mode
 
-Run the CLI from the trusted host. Interactive initialization reads and
-confirms the password without echoing it:
+Password-free mode is the default for local and trusted-LAN use. The browser
+opens directly and automatically establishes the signed session and CSRF token
+used by the API. Anyone who can reach the allowed origin can edit.
+
+When `BLOG_STUDIO_AUTH_MODE=password` is configured, initialize the owner from
+the trusted host. Interactive initialization reads and confirms the password
+without echoing it:
 
 ```sh
 docker compose run --rm studio \
@@ -40,9 +45,9 @@ keeps the password out of process arguments and Compose interpolation.
 
 ## Discover and register a Site
 
-After password login, Studio inspects only workspaces already declared by the
-administrator configuration and confined to the configured allowlisted root.
-Each candidate previews:
+After opening Studio (and logging in when password mode is enabled), Studio
+inspects only workspaces already declared by the administrator configuration
+and confined to the configured allowlisted root. Each candidate previews:
 
 - proposed display name and canonical URL;
 - generator and Provider capabilities;

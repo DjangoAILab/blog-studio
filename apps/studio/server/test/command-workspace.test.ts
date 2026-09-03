@@ -81,6 +81,7 @@ content:
     configurationPaths: [config],
     allowedWorkspaceRoot: parent,
     databasePath: join(parent, 'studio.sqlite'),
+    authenticationMode: 'password',
     authToken,
     cookieSecret,
     allowedOrigins: [origin],

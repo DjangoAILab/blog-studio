@@ -15,6 +15,7 @@ services:
       BLOG_STUDIO_CONFIG_PATHS: /config/blog-studio.yml
       BLOG_STUDIO_WORKSPACE_ROOT: /workspaces
       BLOG_STUDIO_DATABASE_PATH: /data/blog-studio.sqlite
+      BLOG_STUDIO_AUTH_MODE: ${BLOG_STUDIO_AUTH_MODE:-none}
       BLOG_STUDIO_AGENT_RUNTIME_DIRECTORY: ${BLOG_STUDIO_AGENT_RUNTIME_DIRECTORY:-/data/agent-runtime}
       BLOG_STUDIO_COOKIE_SECRET_FILE: /run/secrets/cookie_secret
       BLOG_STUDIO_VISION_ENDPOINT: ${BLOG_STUDIO_VISION_ENDPOINT:-}

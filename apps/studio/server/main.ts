@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createStudioServer } from './app.js';
+import { createStudioServer, type StudioAuthenticationMode } from './app.js';
 import { createTencentProviderFactories } from './providers/tencent.js';
 import { OpenAiCompatibleVisionAdapter } from './services/site-agent-vision.js';
 
@@ -48,6 +48,13 @@ function portEnvironment(): number {
   return value;
 }
 
+function authenticationModeEnvironment(): StudioAuthenticationMode {
+  const value = process.env.BLOG_STUDIO_AUTH_MODE?.trim() || 'none';
+  if (value !== 'none' && value !== 'password')
+    throw new Error('BLOG_STUDIO_AUTH_MODE must be either none or password');
+  return value;
+}
+
 const providerFactories = createTencentProviderFactories();
 const legacyAuthToken = optionalSecret('BLOG_STUDIO_AUTH_TOKEN');
 const agentRuntimeDirectory =
@@ -58,6 +65,7 @@ const app = await createStudioServer({
   configurationPaths: listEnvironment('BLOG_STUDIO_CONFIG_PATHS'),
   allowedWorkspaceRoot: requiredEnvironment('BLOG_STUDIO_WORKSPACE_ROOT'),
   databasePath: requiredEnvironment('BLOG_STUDIO_DATABASE_PATH'),
+  authenticationMode: authenticationModeEnvironment(),
   ...(legacyAuthToken ? { authToken: legacyAuthToken } : {}),
   cookieSecret: requiredSecret('BLOG_STUDIO_COOKIE_SECRET'),
   allowedOrigins: listEnvironment('BLOG_STUDIO_ALLOWED_ORIGINS'),

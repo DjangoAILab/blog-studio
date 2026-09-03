@@ -37,20 +37,25 @@ chown -R 1000:1000 data workspace secrets
 
 Site Agent 需要在 `data/agent-runtime` 中配置 Pi 的 `auth.json`、`models.json` 和 `settings.json`：目录由 UID/GID 1000 拥有且权限 `0700`，三个文件由同一身份拥有且权限 `0600`，Pi 默认模型设为 `glm-5.2`。可选视觉功能使用同一 owner、权限 `0600` 的 `secrets/vision_api_key`；在 `.env` 中把 `BLOG_STUDIO_VISION_API_KEY_PATH` 指向主机文件，并设置 endpoint、`minimax-m3` 模型和容器内 key-file 路径。凭据值绝不能写入 `.env`、YAML 或镜像层。
 
-## 2. 初始化 owner 并启动
+## 2. 选择访问方式并启动
 
 ```sh
 docker compose config --quiet
 docker compose build --pull
-docker compose run --rm studio \
-  node dist/server/cli.js auth init \
-  --database /data/blog-studio.sqlite
 docker compose up -d
 docker compose ps
 curl --fail http://127.0.0.1:4310/api/health
 ```
 
-CLI 会读取并确认首位 owner 密码且不回显。打开配置的 HTTPS origin，用该密码登录。除 health 之外的应用 API 都要求签名 session；修改操作还要求同源 CSRF 验证。
+Blog Studio 默认采用适合本机与可信局域网的无密码模式。打开配置的 origin 后，Studio 会自动建立签名浏览器 session；修改操作仍要求同源 CSRF 验证。能访问该 origin 的人都可以编辑。
+
+对于不可信局域网、共享主机、隧道或更广泛的暴露范围，请在启动前于 `.env` 设置 `BLOG_STUDIO_AUTH_MODE=password`，再从可信主机初始化 Owner 密码：
+
+```sh
+docker compose run --rm studio \
+  node dist/server/cli.js auth init \
+  --database /data/blog-studio.sqlite
+```
 
 状态和恢复使用同一可信容器入口：
 
