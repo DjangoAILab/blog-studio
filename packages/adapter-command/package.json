@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@blog-studio/core": "workspace:*",
-    "yaml": "2.9.0"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@blog-studio/adapter-testkit": "workspace:*"
